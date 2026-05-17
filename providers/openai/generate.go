@@ -21,7 +21,7 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 		return nil, err
 	}
 
-	httpReq, err := p.newRequest(ctx, http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	httpReq, err := p.newRequest(ctx, http.MethodPost, "/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

@@ -28,7 +28,7 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.S
 		return nil, err
 	}
 
-	httpReq, err := p.newRequest(ctx, http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	httpReq, err := p.newRequest(ctx, http.MethodPost, "/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +97,21 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			return provider.Event{}, err
 		}
 		if !ok {
+			// EOF before [DONE]. OpenAI itself terminates the stream
+			// with `data: [DONE]`, but several OpenAI-compatible
+			// providers (MiniMax among them) just close the connection
+			// once the usage chunk has been sent. Synthesize the
+			// terminal MessageStop from the accumulated state so
+			// downstream consumers see a consistent end-of-stream.
+			if !r.stopped {
+				r.stopped = true
+				return provider.Event{
+					Type:       provider.EventMessageStop,
+					StopReason: r.stopReason,
+					Usage:      r.usage,
+					Model:      r.model,
+				}, nil
+			}
 			return provider.Event{}, io.EOF
 		}
 

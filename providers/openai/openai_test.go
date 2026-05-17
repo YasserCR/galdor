@@ -87,7 +87,7 @@ func TestGenerate_HappyPath(t *testing.T) {
 		if got := r.Header.Get("authorization"); got != "Bearer test-key" {
 			t.Errorf("authorization = %q", got)
 		}
-		if r.URL.Path != "/v1/chat/completions" {
+		if r.URL.Path != "/chat/completions" {
 			t.Errorf("Path = %q", r.URL.Path)
 		}
 		var body chatRequest

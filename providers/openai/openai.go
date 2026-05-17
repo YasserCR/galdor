@@ -15,8 +15,11 @@ import (
 // providerName is the stable adapter identifier reported by Name().
 const providerName = "openai"
 
-// defaultBaseURL is the production API endpoint.
-const defaultBaseURL = "https://api.openai.com"
+// defaultBaseURL is the production API endpoint. It already includes the
+// /v1 path segment so the adapter only needs to append /chat/completions
+// — this matches the convention used by OpenAI's own client libraries
+// and by every OpenAI-compatible provider's documentation.
+const defaultBaseURL = "https://api.openai.com/v1"
 
 // Config configures a Provider. APIKey is required; the rest have sensible
 // defaults suitable for production use.
