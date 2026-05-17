@@ -1,0 +1,58 @@
+name: DCO
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco-check:
+    name: Verify DCO sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check DCO sign-off on every commit in PR
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          MISSING=0
+          # Iterate every commit between the PR base and head
+          while IFS= read -r commit_hash; do
+            if [ -z "$commit_hash" ]; then continue; fi
+            MESSAGE=$(git log -1 --format="%B" "$commit_hash")
+            AUTHOR_NAME=$(git log -1 --format="%an" "$commit_hash")
+            AUTHOR_EMAIL=$(git log -1 --format="%ae" "$commit_hash")
+            EXPECTED="Signed-off-by: $AUTHOR_NAME <$AUTHOR_EMAIL>"
+            if ! printf '%s\n' "$MESSAGE" | grep -qF -- "$EXPECTED"; then
+              echo "::error::Commit $commit_hash is missing DCO sign-off"
+              echo "  expected trailer: $EXPECTED"
+              MISSING=1
+            fi
+          done < <(git rev-list "origin/$BASE_REF..$HEAD_SHA")
+
+          if [ "$MISSING" -eq 1 ]; then
+            cat <<'EOF'
+
+          One or more commits are missing a DCO sign-off.
+
+          Fix with:
+            git commit --amend --signoff         # last commit
+            git rebase --signoff origin/main     # multiple commits
+          Then:
+            git push --force-with-lease
+
+          See CONTRIBUTING.md for the full setup (incl. automatic sign-off).
+          EOF
+            exit 1
+          fi
+
+          echo "All commits in this PR are signed off. OK"
