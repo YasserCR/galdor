@@ -22,10 +22,10 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 - [x] `Provider` interface and `Request` / `Response` / shared `schema.Message` types
 - [x] Streaming primitives (`StreamReader`, `Event`, `CollectStream`)
 - [x] Anthropic adapter (reference) — `providers/anthropic`
-- [ ] OpenAI adapter
+- [x] OpenAI adapter — `providers/openai` (also targets Groq, Together, MiniMax, Mistral, ... via `BaseURL`)
 - [ ] Tool-calling normalization across providers
 - [x] Unit tests with recorded HTTP fixtures (httptest)
-- [x] Opt-in integration tests against the real API (Haiku, Sonnet, Opus)
+- [x] Opt-in integration tests against the real API (gated by `integration` tag + per-provider env var)
 
 **Outcome:** Drop-in SDK that already supersedes most ad-hoc wrappers.
 
