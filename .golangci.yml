@@ -1,11 +1,12 @@
-version: "2"
+# golangci-lint v1.x configuration (action pins v1.62.0 in .github/workflows/ci.yml).
+# Bump in lockstep if the action version changes.
 
 run:
   timeout: 5m
   tests: true
 
 linters:
-  default: none
+  disable-all: true
   enable:
     - errcheck
     - govet
@@ -25,34 +26,29 @@ linters:
     - nolintlint
     - prealloc
     - copyloopvar
+    - gofmt
+    - goimports
 
-  settings:
-    govet:
-      enable-all: true
-      disable:
-        - fieldalignment
-    revive:
-      rules:
-        - name: exported
-          arguments:
-            - disableStutteringCheck
-    gosec:
-      excludes:
-        - G104
-
-  exclusions:
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+  revive:
     rules:
-      - path: _test\.go
-        linters:
-          - gosec
-          - errcheck
-          - unparam
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+  gosec:
+    excludes:
+      - G104
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-
-formatters:
-  enable:
-    - gofmt
-    - goimports
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+        - unparam

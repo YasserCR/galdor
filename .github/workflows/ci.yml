@@ -13,6 +13,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     name: test
@@ -32,11 +36,15 @@ jobs:
           go-version: ${{ matrix.go }}
           cache: true
 
-      - name: Verify modules tidy
+      - name: Verify go.mod is tidy
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.24.x'
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum 2>/dev/null || (echo "go.mod/go.sum out of date; run 'go mod tidy'"; exit 1)
+          if [ -n "$(git status --porcelain -- go.mod go.sum)" ]; then
+            echo "::error::go.mod or go.sum is out of date; run 'go mod tidy'"
+            git --no-pager diff -- go.mod go.sum || true
+            exit 1
+          fi
 
       - name: Build
         run: go build ./...
