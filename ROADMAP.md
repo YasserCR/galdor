@@ -19,12 +19,12 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 
 ## Phase 1 — Provider Layer
 
-- `Provider` interface and `Request` / `Response` / `Message` types
-- Streaming primitives
-- Anthropic adapter (reference)
-- OpenAI adapter
-- Tool-calling normalization across providers
-- Tests with recorded HTTP fixtures
+- [x] `Provider` interface and `Request` / `Response` / shared `schema.Message` types
+- [x] Streaming primitives (`StreamReader`, `Event`, `CollectStream`)
+- [ ] Anthropic adapter (reference)
+- [ ] OpenAI adapter
+- [ ] Tool-calling normalization across providers
+- [ ] Tests with recorded HTTP fixtures
 
 **Outcome:** Drop-in SDK that already supersedes most ad-hoc wrappers.
 

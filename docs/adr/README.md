@@ -7,6 +7,7 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | ID | Title | Status |
 |----|-------|--------|
 | [ADR-001](ADR-001-foundational-decisions.md) | Foundational decisions | Accepted |
+| [ADR-002](ADR-002-provider-abstraction-shape.md) | Provider abstraction shape | Accepted |
 
 ## Conventions
 
