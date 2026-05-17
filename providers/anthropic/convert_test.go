@@ -1,0 +1,185 @@
+package anthropic
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/YasserCR/galdor/pkg/provider"
+	"github.com/YasserCR/galdor/pkg/schema"
+)
+
+func TestNormalizeStopReason(t *testing.T) {
+	t.Parallel()
+	cases := map[string]schema.StopReason{
+		"end_turn":      schema.StopReasonEndTurn,
+		"max_tokens":    schema.StopReasonMaxTokens,
+		"tool_use":      schema.StopReasonToolUse,
+		"stop_sequence": schema.StopReasonStopSequence,
+		"refusal":       schema.StopReasonRefusal,
+		"":              schema.StopReason(""),
+		"unknown_kind":  schema.StopReason("unknown_kind"),
+	}
+	for in, want := range cases {
+		if got := normalizeStopReason(in); got != want {
+			t.Errorf("normalizeStopReason(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestImageToWire_URL(t *testing.T) {
+	t.Parallel()
+	src, err := imageToWire(&schema.ImageContent{URL: "https://example.com/x.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.Type != "url" || src.URL != "https://example.com/x.png" {
+		t.Errorf("src = %+v", src)
+	}
+}
+
+func TestImageToWire_MissingMediaType(t *testing.T) {
+	t.Parallel()
+	_, err := imageToWire(&schema.ImageContent{Data: []byte{0x89}})
+	if !errors.Is(err, provider.ErrInvalidRequest) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestImageToWire_Empty(t *testing.T) {
+	t.Parallel()
+	_, err := imageToWire(&schema.ImageContent{})
+	if !errors.Is(err, provider.ErrInvalidRequest) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestBuildRequest_UnknownRole(t *testing.T) {
+	t.Parallel()
+	_, err := buildRequest(provider.Request{
+		Model:    "x",
+		Messages: []schema.Message{{Role: schema.Role("alien")}},
+	}, false)
+	if !errors.Is(err, provider.ErrInvalidRequest) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestBuildRequest_MaxTokensRespected(t *testing.T) {
+	t.Parallel()
+	mt := 4096
+	temp := 0.7
+	topP := 0.9
+	w, err := buildRequest(provider.Request{
+		Model:         "x",
+		Messages:      []schema.Message{schema.UserMessage("hi")},
+		MaxTokens:     &mt,
+		Temperature:   &temp,
+		TopP:          &topP,
+		StopSequences: []string{"END"},
+		Metadata:      map[string]string{"user_id": "alice"},
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.MaxTokens != mt || !w.Stream {
+		t.Errorf("MaxTokens / Stream wrong: %+v", w)
+	}
+	if w.Temperature == nil || *w.Temperature != 0.7 {
+		t.Errorf("Temperature = %v", w.Temperature)
+	}
+	if w.TopP == nil || *w.TopP != 0.9 {
+		t.Errorf("TopP = %v", w.TopP)
+	}
+	if len(w.StopSequences) != 1 || w.StopSequences[0] != "END" {
+		t.Errorf("StopSequences = %+v", w.StopSequences)
+	}
+	if w.Metadata == nil || w.Metadata.UserID != "alice" {
+		t.Errorf("Metadata = %+v", w.Metadata)
+	}
+}
+
+func TestBuildRequest_ToolsAttached(t *testing.T) {
+	t.Parallel()
+	w, err := buildRequest(provider.Request{
+		Model:    "x",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+		Tools: []schema.ToolDef{{
+			Name:        "weather",
+			Description: "get weather",
+			Schema:      []byte(`{"type":"object"}`),
+		}},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Tools) != 1 || w.Tools[0].Name != "weather" {
+		t.Errorf("tools = %+v", w.Tools)
+	}
+}
+
+func TestKindForStatus(t *testing.T) {
+	t.Parallel()
+	cases := map[int]error{
+		401: provider.ErrAuth,
+		403: provider.ErrAuth,
+		429: provider.ErrRateLimited,
+		400: provider.ErrInvalidRequest,
+		404: provider.ErrInvalidRequest,
+		500: provider.ErrServer,
+		503: provider.ErrServer,
+		200: nil,
+	}
+	for code, want := range cases {
+		if got := kindForStatus(code); got != want {
+			t.Errorf("kindForStatus(%d) = %v, want %v", code, got, want)
+		}
+	}
+}
+
+func TestKindForType(t *testing.T) {
+	t.Parallel()
+	cases := map[string]error{
+		"authentication_error":  provider.ErrAuth,
+		"permission_error":      provider.ErrAuth,
+		"rate_limit_error":      provider.ErrRateLimited,
+		"overloaded_error":      provider.ErrRateLimited,
+		"invalid_request_error": provider.ErrInvalidRequest,
+		"not_found_error":       provider.ErrInvalidRequest,
+		"api_error":             provider.ErrServer,
+		"unknown_x":             nil,
+	}
+	for in, want := range cases {
+		if got := kindForType(in); got != want {
+			t.Errorf("kindForType(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestCacheControl_Roundtrip(t *testing.T) {
+	t.Parallel()
+	if cacheControl(nil) != nil {
+		t.Error("nil hint must map to nil")
+	}
+	w := cacheControl(schema.EphemeralCache())
+	if w == nil || w.Type != schema.CacheTypeEphemeral {
+		t.Errorf("CacheControl mapping wrong: %+v", w)
+	}
+}
+
+func TestPartsToWire_AttachesCacheControlToLastBlock(t *testing.T) {
+	t.Parallel()
+	parts := []schema.ContentPart{
+		schema.TextPart("a"),
+		schema.TextPart("b"),
+	}
+	blocks, err := partsToWire(parts, schema.EphemeralCache())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocks[0].CacheControl != nil {
+		t.Errorf("first block should not carry cache_control: %+v", blocks[0])
+	}
+	if blocks[1].CacheControl == nil || blocks[1].CacheControl.Type != schema.CacheTypeEphemeral {
+		t.Errorf("last block must carry cache_control: %+v", blocks[1])
+	}
+}

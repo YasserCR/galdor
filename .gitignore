@@ -15,8 +15,9 @@ coverage.html
 
 # Go
 vendor/
-go.work
-go.work.sum
+# go.work and go.work.sum ARE committed: this is a multi-module repo
+# (providers/<name>/, memory/<backend>/) and the workspace is the
+# canonical dev setup.
 
 # IDE / OS
 .idea/
