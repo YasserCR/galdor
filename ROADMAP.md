@@ -44,12 +44,13 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 
 ## Phase 3 — Graph Runtime
 
-- `Graph[S]`, `Node`, `Edge`, `Runnable[S]`
-- Conditional edges
-- Streaming event channel
-- Checkpointer interface + in-memory implementation
-- Interrupt / resume
-- ReAct and Plan-and-Execute as helpers
+- [x] `Graph[S]`, `NodeFunc[S]`, `Edge`, `Runnable[S]` — `pkg/graph`
+- [x] Conditional edges via `Router[S]`
+- [x] Streaming event channel (`Runnable.Stream`, typed `Event[S]`)
+- [x] `START` / `END` sentinels, validation at `Compile()`, max-step guard
+- [ ] Checkpointer interface + in-memory implementation
+- [ ] Interrupt / resume
+- [ ] ReAct and Plan-and-Execute helpers (`pkg/agent`)
 
 **Outcome:** First real agent. Feature parity with basic LangGraph.
 
