@@ -50,7 +50,8 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 - [x] `START` / `END` sentinels, validation at `Compile()`, max-step guard
 - [x] Checkpointer interface + `MemoryCheckpointer` (history-preserving in-process impl)
 - [x] Interrupt / resume via `InterruptBefore` + `Resume` with `OverrideState` for human-in-the-loop edits
-- [ ] ReAct and Plan-and-Execute helpers (`pkg/agent`)
+- [x] ReAct helper (`pkg/agent.NewReAct`, `agent.Run` one-shot wrapper) — composes provider + tools + graph
+- [ ] Plan-and-Execute helper (`pkg/agent.NewPlanAndExecute` — follow-up)
 
 **Outcome:** First real agent. Feature parity with basic LangGraph.
 
