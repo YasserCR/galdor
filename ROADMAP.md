@@ -38,7 +38,7 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 - [x] Concurrent tool-call execution (`tool.ExecuteCalls`, preserves order, propagates cancellation)
 - [x] Tool registry + `schema.ToolDef` conversion (`tool.Registry`)
 - [x] End-to-end LLM ↔ tools loop example (`examples/tools-loop`)
-- [ ] 5–10 built-in tools (http, file read, shell, math, time, ...)
+- [x] Built-in tools (`pkg/tool/builtins`): `time` (now/parse/format), `math` (add/sub/mul/div/mod/pow/sqrt/abs/ln/log10/exp), `http_get` (allowlist + size cap + timeout), `file_read` (BaseDir confinement + size cap + symlink gate). Shell deferred to ADR-008 sandboxing policy.
 
 **Outcome:** Basic LLM ↔ tools loop working.
 
