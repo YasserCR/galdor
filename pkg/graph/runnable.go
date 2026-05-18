@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // defaultMaxSteps is the upper bound on the number of node
@@ -18,12 +19,36 @@ type Runnable[S any] struct {
 	nodes            map[string]NodeFunc[S]
 	staticEdges      map[string]string
 	conditionalEdges map[string]Router[S]
+	interruptBefore  map[string]struct{}
 	entry            string
 
 	// MaxSteps bounds Invoke / Stream to that many node transitions
 	// before failing with ErrMaxSteps. Zero means "use the package
 	// default" (defaultMaxSteps). Callers can override.
 	MaxSteps int
+}
+
+// RunOptions configures a single Invoke / Resume call. All fields
+// are optional; a zero-value RunOptions yields the same behavior as
+// Invoke without options.
+type RunOptions[S any] struct {
+	// Checkpointer, when non-nil, receives a checkpoint before each
+	// node and on terminal events. RunID must also be set.
+	Checkpointer Checkpointer[S]
+
+	// RunID identifies the run. Required when Checkpointer is set.
+	// Otherwise it is informational and used only for trace
+	// attribution (Phase 4 hooks in here later).
+	RunID string
+
+	// MaxSteps overrides Runnable.MaxSteps for this call when > 0.
+	MaxSteps int
+
+	// OverrideState, when non-nil on Resume, replaces the
+	// checkpoint's State before execution continues. Use for
+	// human-in-the-loop workflows where a person edits the state
+	// during the pause.
+	OverrideState *S
 }
 
 // Compile validates the graph and returns a Runnable.
@@ -97,6 +122,13 @@ func (g *Graph[S]) Compile() (*Runnable[S], error) {
 		}
 	}
 
+	// Interrupt-gated nodes must reference real, registered nodes.
+	for name := range g.interruptBefore {
+		if _, ok := g.nodes[name]; !ok {
+			problems = append(problems, fmt.Errorf("graph: InterruptBefore: unknown node %q", name))
+		}
+	}
+
 	if len(problems) > 0 {
 		return nil, &CompileError{Problems: problems}
 	}
@@ -105,8 +137,17 @@ func (g *Graph[S]) Compile() (*Runnable[S], error) {
 		nodes:            cloneNodes(g.nodes),
 		staticEdges:      cloneStrMap(g.staticEdges),
 		conditionalEdges: cloneRouters(g.conditionalEdges),
+		interruptBefore:  cloneSet(g.interruptBefore),
 		entry:            entry,
 	}, nil
+}
+
+func cloneSet(in map[string]struct{}) map[string]struct{} {
+	out := make(map[string]struct{}, len(in))
+	for k := range in {
+		out[k] = struct{}{}
+	}
+	return out
 }
 
 func cloneNodes[S any](in map[string]NodeFunc[S]) map[string]NodeFunc[S] {
@@ -165,27 +206,123 @@ func (r *Runnable[S]) resolveNext(current string, state S) (string, error) {
 
 // Invoke runs the graph synchronously, returning the final state once
 // END is reached. Cancellation through ctx is checked between every
-// step.
+// step. Equivalent to InvokeWith(ctx, initial, RunOptions[S]{}).
 func (r *Runnable[S]) Invoke(ctx context.Context, initial S) (S, error) {
-	state := initial
-	next := r.entry
-	maxSteps := r.maxStepsOrDefault()
+	return r.InvokeWith(ctx, initial, RunOptions[S]{})
+}
 
-	for step := 0; ; step++ {
+// InvokeWith runs the graph with extra options: an optional
+// Checkpointer (RunID required), per-call MaxSteps override, etc.
+// When the run hits an interrupt-gated node it saves a checkpoint
+// and returns ErrInterrupted; callers detect that with errors.Is and
+// continue with Resume.
+func (r *Runnable[S]) InvokeWith(ctx context.Context, initial S, opts RunOptions[S]) (S, error) {
+	if err := validateRunOptions(opts); err != nil {
+		return initial, err
+	}
+	return r.runLoop(ctx, initial, r.entry, 0, opts, false)
+}
+
+// Resume continues a previously interrupted run. opts.Checkpointer
+// and opts.RunID are required. The most recent checkpoint for that
+// run is loaded, optionally overridden via opts.OverrideState, and
+// execution resumes at the checkpoint's Node. The interrupt that
+// caused the original pause is bypassed for the first hop, so the
+// resumed node actually executes.
+func (r *Runnable[S]) Resume(ctx context.Context, opts RunOptions[S]) (S, error) {
+	if opts.Checkpointer == nil {
+		var zero S
+		return zero, ErrResumeMissingCheckpointer
+	}
+	if opts.RunID == "" {
+		var zero S
+		return zero, ErrResumeMissingRunID
+	}
+	ck, found, err := opts.Checkpointer.Load(ctx, opts.RunID)
+	if err != nil {
+		var zero S
+		return zero, fmt.Errorf("graph: load checkpoint: %w", err)
+	}
+	if !found {
+		var zero S
+		return zero, fmt.Errorf("%w: %q", ErrCheckpointNotFound, opts.RunID)
+	}
+	state := ck.State
+	if opts.OverrideState != nil {
+		state = *opts.OverrideState
+	}
+	return r.runLoop(ctx, state, ck.Node, ck.Step-1, opts, true)
+}
+
+// validateRunOptions enforces invariants that depend on opts only.
+func validateRunOptions[S any](opts RunOptions[S]) error {
+	if opts.Checkpointer != nil && opts.RunID == "" {
+		return ErrCheckpointerMissingRunID
+	}
+	return nil
+}
+
+// runLoop is the shared core of Invoke / InvokeWith / Resume. The
+// bypassInterrupt flag is true only when called from Resume; it
+// suppresses the interrupt check on the first hop so a resumed
+// node actually runs.
+func (r *Runnable[S]) runLoop(
+	ctx context.Context,
+	initial S,
+	startNode string,
+	startStep int,
+	opts RunOptions[S],
+	bypassInterrupt bool,
+) (S, error) {
+	state := initial
+	next := startNode
+	maxSteps := r.maxStepsOrDefault()
+	if opts.MaxSteps > 0 {
+		maxSteps = opts.MaxSteps
+	}
+
+	for step := startStep; ; step++ {
 		if err := ctx.Err(); err != nil {
 			return state, err
 		}
 		if next == END {
+			if err := r.saveCheckpoint(ctx, opts, Checkpoint[S]{
+				RunID: opts.RunID, Step: step, Node: END, State: state,
+				Reason: CheckpointReasonEnd, CreatedAt: time.Now(),
+			}); err != nil {
+				return state, err
+			}
 			return state, nil
 		}
 		if step >= maxSteps {
 			return state, fmt.Errorf("%w: limit %d", ErrMaxSteps, maxSteps)
 		}
 
+		// Interrupt gate. The first hop after a Resume bypasses it.
+		if _, gated := r.interruptBefore[next]; gated && !bypassInterrupt {
+			if err := r.saveCheckpoint(ctx, opts, Checkpoint[S]{
+				RunID: opts.RunID, Step: step + 1, Node: next, State: state,
+				Reason: CheckpointReasonInterrupt, CreatedAt: time.Now(),
+			}); err != nil {
+				return state, err
+			}
+			return state, fmt.Errorf("%w: at node %q", ErrInterrupted, next)
+		}
+		bypassInterrupt = false
+
 		node, ok := r.nodes[next]
 		if !ok {
 			return state, fmt.Errorf("%w: %q", ErrUnknownNode, next)
 		}
+
+		// Per-step checkpoint, before the node runs.
+		if err := r.saveCheckpoint(ctx, opts, Checkpoint[S]{
+			RunID: opts.RunID, Step: step + 1, Node: next, State: state,
+			Reason: CheckpointReasonStep, CreatedAt: time.Now(),
+		}); err != nil {
+			return state, err
+		}
+
 		out, err := node(ctx, state)
 		if err != nil {
 			return state, fmt.Errorf("node %q: %w", next, err)
@@ -198,6 +335,18 @@ func (r *Runnable[S]) Invoke(ctx context.Context, initial S) (S, error) {
 		}
 		next = nxt
 	}
+}
+
+// saveCheckpoint forwards a checkpoint to the configured Checkpointer
+// (no-op when none is configured).
+func (r *Runnable[S]) saveCheckpoint(ctx context.Context, opts RunOptions[S], ck Checkpoint[S]) error {
+	if opts.Checkpointer == nil {
+		return nil
+	}
+	if err := opts.Checkpointer.Save(ctx, ck); err != nil {
+		return fmt.Errorf("graph: save checkpoint: %w", err)
+	}
+	return nil
 }
 
 // Stream runs the graph and emits typed events on the returned

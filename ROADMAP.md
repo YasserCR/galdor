@@ -48,8 +48,8 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 - [x] Conditional edges via `Router[S]`
 - [x] Streaming event channel (`Runnable.Stream`, typed `Event[S]`)
 - [x] `START` / `END` sentinels, validation at `Compile()`, max-step guard
-- [ ] Checkpointer interface + in-memory implementation
-- [ ] Interrupt / resume
+- [x] Checkpointer interface + `MemoryCheckpointer` (history-preserving in-process impl)
+- [x] Interrupt / resume via `InterruptBefore` + `Resume` with `OverrideState` for human-in-the-loop edits
 - [ ] ReAct and Plan-and-Execute helpers (`pkg/agent`)
 
 **Outcome:** First real agent. Feature parity with basic LangGraph.

@@ -26,6 +26,25 @@ var (
 	// ErrEmptyRouterResult is returned when a conditional edge's
 	// router returns "" (intentional dead-ends should resolve to END).
 	ErrEmptyRouterResult = errors.New("graph: router returned empty next-node name")
+
+	// ErrInterrupted is returned by Invoke / Resume when execution
+	// paused at an interrupt-gated node. The associated Checkpointer
+	// holds the checkpoint that should be passed to Resume to
+	// continue. Callers detect this with errors.Is(err, ErrInterrupted).
+	ErrInterrupted = errors.New("graph: run interrupted")
+
+	// ErrResumeMissingCheckpointer is returned when Resume is called
+	// without a Checkpointer in the options.
+	ErrResumeMissingCheckpointer = errors.New("graph: Resume requires a Checkpointer")
+
+	// ErrResumeMissingRunID is returned when Resume is called without
+	// a RunID.
+	ErrResumeMissingRunID = errors.New("graph: Resume requires a RunID")
+
+	// ErrCheckpointerMissingRunID is returned when InvokeWith
+	// supplies a Checkpointer but no RunID — without one the caller
+	// cannot find the saved state again.
+	ErrCheckpointerMissingRunID = errors.New("graph: Checkpointer requires a RunID")
 )
 
 // CompileError aggregates every problem the builder found.

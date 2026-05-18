@@ -41,6 +41,13 @@ type Graph[S any] struct {
 	staticEdges      map[string]string
 	conditionalEdges map[string]Router[S]
 
+	// interruptBefore is the set of node names whose execution must
+	// be preceded by a pause. When the runtime reaches one of these
+	// it saves a checkpoint and returns ErrInterrupted instead of
+	// running the node. A subsequent Resume bypasses the gate for
+	// the immediately following hop.
+	interruptBefore map[string]struct{}
+
 	// errs accumulates problems found while building; surfaced at
 	// Compile time so the builder API stays chainable.
 	errs []error
@@ -52,7 +59,30 @@ func New[S any]() *Graph[S] {
 		nodes:            map[string]NodeFunc[S]{},
 		staticEdges:      map[string]string{},
 		conditionalEdges: map[string]Router[S]{},
+		interruptBefore:  map[string]struct{}{},
 	}
+}
+
+// InterruptBefore marks the named nodes as interrupt-gated. When a
+// run reaches one, the runtime saves a checkpoint and returns
+// ErrInterrupted. Callers detect this with errors.Is, optionally
+// inspect or modify the saved state, and call Resume to continue.
+//
+// Names are validated at Compile time: unknown nodes and reserved
+// sentinels (START / END) are rejected.
+func (g *Graph[S]) InterruptBefore(names ...string) *Graph[S] {
+	for _, name := range names {
+		if name == "" {
+			g.errs = append(g.errs, errors.New("graph: InterruptBefore: empty name"))
+			continue
+		}
+		if name == START || name == END {
+			g.errs = append(g.errs, fmt.Errorf("graph: InterruptBefore: %q is a reserved name", name))
+			continue
+		}
+		g.interruptBefore[name] = struct{}{}
+	}
+	return g
 }
 
 // AddNode registers fn under name. Returns the graph for chaining.
