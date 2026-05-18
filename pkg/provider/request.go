@@ -71,7 +71,13 @@ type ResponseFormat struct {
 // ResponseFormatType discriminates the variants of ResponseFormat.
 type ResponseFormatType string
 
+// Variants of ResponseFormatType.
 const (
+	// ResponseFormatJSONObject asks the model to emit any valid JSON
+	// object, without committing to a specific schema.
 	ResponseFormatJSONObject ResponseFormatType = "json_object"
+
+	// ResponseFormatJSONSchema asks the model to emit JSON matching
+	// the document in ResponseFormat.Schema.
 	ResponseFormatJSONSchema ResponseFormatType = "json_schema"
 )

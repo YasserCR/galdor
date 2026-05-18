@@ -14,8 +14,8 @@ type echoProvider struct {
 	caps Capabilities
 }
 
-func (e *echoProvider) Name() string                 { return "echo" }
-func (e *echoProvider) Capabilities() Capabilities   { return e.caps }
+func (e *echoProvider) Name() string               { return "echo" }
+func (e *echoProvider) Capabilities() Capabilities { return e.caps }
 func (e *echoProvider) Stream(ctx context.Context, _ Request) (StreamReader, error) {
 	return nil, ErrUnsupported
 }

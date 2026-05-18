@@ -300,7 +300,6 @@ func TestToolChoiceMapping(t *testing.T) {
 		{provider.ToolChoiceRequired, "any"}, // mapped to Anthropic vocabulary
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(string(c.in), func(t *testing.T) {
 			t.Parallel()
 			got := toolChoiceToWire(c.in)

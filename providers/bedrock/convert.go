@@ -97,11 +97,30 @@ func buildConverseInput(req provider.Request) (*bedrockruntime.ConverseInput, er
 	return in, nil
 }
 
+// clampInt32 reduces a Go int to the int32 range, saturating at the
+// boundaries. Used for Bedrock wire fields that take int32.
+func clampInt32(v int) int32 {
+	const maxI32 = int(^uint32(0) >> 1)
+	const minI32 = -maxI32 - 1
+	switch {
+	case v > maxI32:
+		return int32(maxI32)
+	case v < minI32:
+		return int32(minI32)
+	default:
+		return int32(v)
+	}
+}
+
 func buildInferenceConfig(req provider.Request) *brtypes.InferenceConfiguration {
 	cfg := &brtypes.InferenceConfiguration{}
 	set := false
 	if req.MaxTokens != nil {
-		v := int32(*req.MaxTokens)
+		// Bedrock's wire type is int32; clamp to that range to avoid an
+		// overflow on a pathological caller. Real model max-tokens
+		// ceilings are far below int32 max, so clamping at the
+		// boundary is effectively a no-op for sensible inputs.
+		v := clampInt32(*req.MaxTokens)
 		cfg.MaxTokens = &v
 		set = true
 	}

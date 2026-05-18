@@ -130,10 +130,21 @@ func TestKindForStatus(t *testing.T) {
 		200: nil,
 	}
 	for code, want := range cases {
-		if got := kindForStatus(code); got != want {
+		if got := kindForStatus(code); !sentinelEqual(got, want) {
 			t.Errorf("kindForStatus(%d) = %v, want %v", code, got, want)
 		}
 	}
+}
+
+// sentinelEqual compares classifier helpers' return values (a known
+// sentinel from pkg/provider or nil). errorlint flags == on errors, but
+// these are not wrapped — so we explicitly opt into errors.Is with a
+// nil-safe shim.
+func sentinelEqual(got, want error) bool {
+	if got == nil || want == nil {
+		return got == nil && want == nil
+	}
+	return errors.Is(got, want)
 }
 
 func TestKindForType(t *testing.T) {
@@ -149,7 +160,7 @@ func TestKindForType(t *testing.T) {
 		"unknown_x":             nil,
 	}
 	for in, want := range cases {
-		if got := kindForType(in); got != want {
+		if got := kindForType(in); !sentinelEqual(got, want) {
 			t.Errorf("kindForType(%q) = %v, want %v", in, got, want)
 		}
 	}

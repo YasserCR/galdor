@@ -34,7 +34,9 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.S
 	}
 	httpReq.Header.Set("accept", "text/event-stream")
 
-	resp, err := p.httpClient.Do(httpReq)
+	// Body ownership transfers to streamReader, whose Close() closes it.
+	// bodyclose can't trace that, so the linter is suppressed here.
+	resp, err := p.httpClient.Do(httpReq) //nolint:bodyclose // closed by streamReader.Close
 	if err != nil {
 		return nil, err
 	}

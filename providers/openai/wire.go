@@ -7,19 +7,19 @@ import "encoding/json"
 // changes to the wire format never leak upward.
 
 type chatRequest struct {
-	Model            string            `json:"model"`
-	Messages         []wireMessage     `json:"messages"`
-	MaxTokens        *int              `json:"max_tokens,omitempty"`
-	Temperature      *float64          `json:"temperature,omitempty"`
-	TopP             *float64          `json:"top_p,omitempty"`
-	Stop             []string          `json:"stop,omitempty"`
-	Stream           bool              `json:"stream,omitempty"`
-	StreamOptions    *wireStreamOpts   `json:"stream_options,omitempty"`
-	Tools            []wireTool        `json:"tools,omitempty"`
-	ToolChoice       json.RawMessage   `json:"tool_choice,omitempty"`
-	ResponseFormat   *wireRespFormat   `json:"response_format,omitempty"`
-	User             string            `json:"user,omitempty"`
-	ParallelToolCall *bool             `json:"parallel_tool_calls,omitempty"`
+	Model            string          `json:"model"`
+	Messages         []wireMessage   `json:"messages"`
+	MaxTokens        *int            `json:"max_tokens,omitempty"`
+	Temperature      *float64        `json:"temperature,omitempty"`
+	TopP             *float64        `json:"top_p,omitempty"`
+	Stop             []string        `json:"stop,omitempty"`
+	Stream           bool            `json:"stream,omitempty"`
+	StreamOptions    *wireStreamOpts `json:"stream_options,omitempty"`
+	Tools            []wireTool      `json:"tools,omitempty"`
+	ToolChoice       json.RawMessage `json:"tool_choice,omitempty"`
+	ResponseFormat   *wireRespFormat `json:"response_format,omitempty"`
+	User             string          `json:"user,omitempty"`
+	ParallelToolCall *bool           `json:"parallel_tool_calls,omitempty"`
 }
 
 type wireStreamOpts struct {
@@ -81,7 +81,7 @@ type wireFuncCall struct {
 }
 
 type wireRespFormat struct {
-	Type       string         `json:"type"` // "text", "json_object", "json_schema"
+	Type       string          `json:"type"` // "text", "json_object", "json_schema"
 	JSONSchema *wireJSONSchema `json:"json_schema,omitempty"`
 }
 
@@ -108,10 +108,10 @@ type wireChoice struct {
 }
 
 type wireUsage struct {
-	PromptTokens         int                   `json:"prompt_tokens"`
-	CompletionTokens     int                   `json:"completion_tokens"`
-	TotalTokens          int                   `json:"total_tokens"`
-	PromptTokensDetails  *wireTokenDetails     `json:"prompt_tokens_details,omitempty"`
+	PromptTokens        int               `json:"prompt_tokens"`
+	CompletionTokens    int               `json:"completion_tokens"`
+	TotalTokens         int               `json:"total_tokens"`
+	PromptTokensDetails *wireTokenDetails `json:"prompt_tokens_details,omitempty"`
 }
 
 type wireTokenDetails struct {
@@ -120,18 +120,18 @@ type wireTokenDetails struct {
 
 // chunk is one streaming chat completion chunk.
 type chatChunk struct {
-	ID      string            `json:"id"`
-	Object  string            `json:"object"`
-	Created int64             `json:"created"`
-	Model   string            `json:"model"`
-	Choices []chunkChoice     `json:"choices"`
-	Usage   *wireUsage        `json:"usage,omitempty"`
+	ID      string        `json:"id"`
+	Object  string        `json:"object"`
+	Created int64         `json:"created"`
+	Model   string        `json:"model"`
+	Choices []chunkChoice `json:"choices"`
+	Usage   *wireUsage    `json:"usage,omitempty"`
 }
 
 type chunkChoice struct {
-	Index        int          `json:"index"`
-	Delta        chunkDelta   `json:"delta"`
-	FinishReason string       `json:"finish_reason,omitempty"`
+	Index        int        `json:"index"`
+	Delta        chunkDelta `json:"delta"`
+	FinishReason string     `json:"finish_reason,omitempty"`
 }
 
 type chunkDelta struct {

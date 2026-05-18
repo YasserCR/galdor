@@ -105,9 +105,9 @@ type wireSafety struct {
 
 // generateResponse is the body of a successful non-streaming call.
 type generateResponse struct {
-	Candidates    []wireCandidate `json:"candidates"`
-	UsageMetadata wireUsage       `json:"usageMetadata"`
-	ModelVersion  string          `json:"modelVersion"`
+	Candidates     []wireCandidate     `json:"candidates"`
+	UsageMetadata  wireUsage           `json:"usageMetadata"`
+	ModelVersion   string              `json:"modelVersion"`
 	PromptFeedback *wirePromptFeedback `json:"promptFeedback,omitempty"`
 }
 
@@ -148,10 +148,10 @@ type wireUsage struct {
 // classification only in details[].reason.
 type errorResponse struct {
 	Error struct {
-		Code    int                `json:"code"`
-		Message string             `json:"message"`
-		Status  string             `json:"status"`
-		Details []wireErrorDetail  `json:"details,omitempty"`
+		Code    int               `json:"code"`
+		Message string            `json:"message"`
+		Status  string            `json:"status"`
+		Details []wireErrorDetail `json:"details,omitempty"`
 	} `json:"error"`
 }
 

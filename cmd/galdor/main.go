@@ -34,7 +34,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "version", "--version", "-v":
-		fmt.Fprintf(os.Stdout, "galdor %s\n", version)
+		_, _ = fmt.Fprintf(os.Stdout, "galdor %s\n", version)
 	case "help", "--help", "-h":
 		usage(os.Stdout)
 	case
@@ -49,17 +49,17 @@ func main() {
 		"serve",
 		"ui",
 		"mcp":
-		fmt.Fprintf(os.Stderr, "galdor %s: not yet implemented (Phase 0)\n", os.Args[1])
+		_, _ = fmt.Fprintf(os.Stderr, "galdor %s: not yet implemented (Phase 0)\n", os.Args[1])
 		os.Exit(64)
 	default:
-		fmt.Fprintf(os.Stderr, "galdor: unknown command %q\n\n", os.Args[1])
+		_, _ = fmt.Fprintf(os.Stderr, "galdor: unknown command %q\n\n", os.Args[1])
 		usage(os.Stderr)
 		os.Exit(64)
 	}
 }
 
 func usage(w *os.File) {
-	fmt.Fprint(w, `galdor — speak your AI agents into being.
+	_, _ = fmt.Fprint(w, `galdor — speak your AI agents into being.
 
 Usage:
   galdor <command> [arguments]

@@ -33,7 +33,7 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 	if resp.StatusCode/100 != 2 {
 		return nil, normalizeHTTPError(resp)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {

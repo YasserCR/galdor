@@ -88,9 +88,9 @@ jobs:
           cache: true
 
       - name: golangci-lint (${{ matrix.module }})
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.62.0
+          version: v2.12.2
           working-directory: ${{ matrix.module }}
           args: --config=${{ github.workspace }}/.golangci.yml
 

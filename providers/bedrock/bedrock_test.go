@@ -97,8 +97,10 @@ func TestGenerate_HappyPath(t *testing.T) {
 		if !strings.Contains(r.URL.Path, "anthropic.claude") {
 			t.Errorf("model not in path: %q", r.URL.Path)
 		}
+		// SigV4 still signs the request even with dummy creds, so
+		// Authorization must be present.
 		if r.Header.Get("authorization") == "" {
-			// SigV4 still runs even with anonymous creds — header present.
+			t.Error("authorization header missing")
 		}
 		w.Header().Set("content-type", "application/json")
 		_, _ = io.WriteString(w, fixtureConverseOK)

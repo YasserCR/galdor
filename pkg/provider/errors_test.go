@@ -45,7 +45,6 @@ func TestAPIError_ErrorString(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			if got := c.err.Error(); got != c.want {

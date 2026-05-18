@@ -11,7 +11,7 @@ type CacheControl struct {
 	Type string `json:"type"`
 }
 
-// Ephemeral is the conventional "short-lived cache" cache-control directive.
+// CacheTypeEphemeral is the conventional "short-lived cache" cache-control directive.
 const CacheTypeEphemeral = "ephemeral"
 
 // EphemeralCache returns a CacheControl directive for short-lived caching.

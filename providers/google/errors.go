@@ -14,7 +14,7 @@ import (
 // *provider.APIError. resp.Body is consumed; the caller must not read it
 // after this returns.
 func normalizeHTTPError(resp *http.Response) error {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	apiErr := &provider.APIError{
 		Provider:   providerName,

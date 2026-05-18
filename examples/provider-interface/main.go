@@ -63,9 +63,8 @@ func (stubProvider) Stream(_ context.Context, req provider.Request) (provider.St
 		chunks = append(chunks, reply[i:end])
 	}
 
-	events := []provider.Event{
-		{Type: provider.EventMessageStart, Model: req.Model},
-	}
+	events := make([]provider.Event, 0, 1+len(chunks)+1)
+	events = append(events, provider.Event{Type: provider.EventMessageStart, Model: req.Model})
 	for _, c := range chunks {
 		events = append(events, provider.Event{Type: provider.EventContentDelta, ContentDelta: c})
 	}
@@ -98,6 +97,12 @@ func (s *sliceStream) Recv(ctx context.Context) (provider.Event, error) {
 func (s *sliceStream) Close() error { return nil }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	var p provider.Provider = stubProvider{}
 	ctx := context.Background()
 
@@ -112,10 +117,9 @@ func main() {
 	fmt.Printf("provider:     %s\n", p.Name())
 	fmt.Printf("capabilities: %+v\n\n", p.Capabilities())
 
-	// Non-streaming call (assembled internally from a stream).
 	resp, err := p.Generate(ctx, req)
 	if err != nil {
-		log.Fatalf("generate: %v", err)
+		return fmt.Errorf("generate: %w", err)
 	}
 	fmt.Printf("Generate -> %q (stop=%s, tokens=%d/%d)\n",
 		resp.Message.Text(),
@@ -124,10 +128,9 @@ func main() {
 		resp.Usage.OutputTokens,
 	)
 
-	// Streaming call: print each chunk as it arrives.
 	stream, err := p.Stream(ctx, req)
 	if err != nil {
-		log.Fatalf("stream: %v", err)
+		return fmt.Errorf("stream: %w", err)
 	}
 	defer func() { _ = stream.Close() }()
 
@@ -136,10 +139,10 @@ func main() {
 		ev, err := stream.Recv(ctx)
 		if errors.Is(err, io.EOF) {
 			fmt.Println()
-			break
+			return nil
 		}
 		if err != nil {
-			log.Fatalf("recv: %v", err)
+			return fmt.Errorf("recv: %w", err)
 		}
 		if ev.Type == provider.EventContentDelta {
 			fmt.Print(ev.ContentDelta)

@@ -335,10 +335,21 @@ func TestKindForSmithyCode(t *testing.T) {
 		"WeirdNewException":             provider.ErrServer, // safe fallback
 	}
 	for code, want := range cases {
-		if got := kindForSmithyCode(code); got != want {
+		got := kindForSmithyCode(code)
+		if !sentinelEqual(got, want) {
 			t.Errorf("kindForSmithyCode(%q) = %v, want %v", code, got, want)
 		}
 	}
+}
+
+// sentinelEqual compares two sentinel-style errors that the
+// classification helpers return. Both nil compares equal; otherwise
+// errors.Is is used so future wrapping doesn't break callers.
+func sentinelEqual(got, want error) bool {
+	if got == nil || want == nil {
+		return got == nil && want == nil
+	}
+	return errors.Is(got, want)
 }
 
 func TestSafeStr(t *testing.T) {
@@ -373,7 +384,6 @@ func TestNormalizeAWSError_TypedExceptions(t *testing.T) {
 		{"internal", &brtypes.InternalServerException{Message: strPtr("boom")}, provider.ErrServer},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			err := normalizeAWSError(c.in)
@@ -391,13 +401,23 @@ func TestNormalizeAWSError_TypedExceptions(t *testing.T) {
 	}
 }
 
-func TestNormalizeAWSError_ContextErrorsPassThrough(t *testing.T) {
+func TestNormalizeAWSError_PlainErrorWrapped(t *testing.T) {
 	t.Parallel()
-	canceled := errors.New("ctx canceled")
-	if got := normalizeAWSError(canceled); got != canceled && got.Error() != canceled.Error() {
-		// Plain errors are wrapped in *APIError; we just want to make sure
-		// nothing panics. The pass-through path is exercised separately
-		// for context.Canceled in stream tests.
+	// Plain errors (anything not matching a typed Bedrock exception or
+	// smithy.APIError) get wrapped into *APIError with ErrServer as a
+	// safe default. context.Canceled / DeadlineExceeded have their own
+	// path tested separately in stream_test.go.
+	raw := errors.New("transport gave up")
+	out := normalizeAWSError(raw)
+	if out == nil {
+		t.Fatal("expected non-nil")
+	}
+	var apiErr *provider.APIError
+	if !errors.As(out, &apiErr) {
+		t.Fatalf("wrapped err not *APIError: %v", out)
+	}
+	if apiErr.Provider != "bedrock" {
+		t.Errorf("Provider = %q", apiErr.Provider)
 	}
 }
 

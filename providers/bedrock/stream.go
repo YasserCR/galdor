@@ -2,7 +2,6 @@ package bedrock
 
 import (
 	"context"
-	"errors"
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -40,26 +39,26 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.S
 	}
 
 	return &streamReader{
-		out:        out,
-		events:     out.GetStream().Events(),
-		toolByIdx:  map[int32]*toolBlockState{},
+		out:       out,
+		events:    out.GetStream().Events(),
+		toolByIdx: map[int32]*toolBlockState{},
 	}, nil
 }
 
 // streamReader bridges the SDK's typed event channel to galdor's
 // StreamReader iterator.
 type streamReader struct {
-	out       *bedrockruntime.ConverseStreamOutput
-	events    <-chan brtypes.ConverseStreamOutput
-	toolByIdx map[int32]*toolBlockState
-	model     string
-	usage     schema.Usage
-	stopReason schema.StopReason
+	out          *bedrockruntime.ConverseStreamOutput
+	events       <-chan brtypes.ConverseStreamOutput
+	toolByIdx    map[int32]*toolBlockState
+	model        string
+	usage        schema.Usage
+	stopReason   schema.StopReason
 	stopBuffered *provider.Event // MessageStop, emitted after Metadata
-	pending   []provider.Event
-	started   bool
-	stopped   bool
-	closed    bool
+	pending      []provider.Event
+	started      bool
+	stopped      bool
+	closed       bool
 }
 
 // toolBlockState tracks the id+name of a tool_use block across
@@ -244,7 +243,6 @@ func (r *streamReader) handleEvent(ev brtypes.ConverseStreamOutput) {
 	}
 }
 
-// Ensure r.handleEvent doesn't accidentally drop unknown event types in
-// the future when the SDK adds new ones — they'll just be silently
-// ignored, which is the safe forward-compat behavior.
-var _ = errors.New // silence the import when only used conditionally
+// Unknown SDK event types are silently ignored by handleEvent's switch,
+// which is the safe forward-compat behavior when the SDK adds new event
+// variants.

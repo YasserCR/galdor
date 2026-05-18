@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	smithy "github.com/aws/smithy-go"
 	brtypes "github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	smithy "github.com/aws/smithy-go"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 )
@@ -29,15 +29,15 @@ func normalizeAWSError(err error) error {
 
 	// Bedrock-specific typed errors.
 	var (
-		valErr     *brtypes.ValidationException
-		accessErr  *brtypes.AccessDeniedException
-		notFound   *brtypes.ResourceNotFoundException
-		throttle   *brtypes.ThrottlingException
-		quotaErr   *brtypes.ServiceQuotaExceededException
-		modelErr   *brtypes.ModelErrorException
-		modelTO    *brtypes.ModelTimeoutException
-		modelStrm  *brtypes.ModelStreamErrorException
-		internal   *brtypes.InternalServerException
+		valErr    *brtypes.ValidationException
+		accessErr *brtypes.AccessDeniedException
+		notFound  *brtypes.ResourceNotFoundException
+		throttle  *brtypes.ThrottlingException
+		quotaErr  *brtypes.ServiceQuotaExceededException
+		modelErr  *brtypes.ModelErrorException
+		modelTO   *brtypes.ModelTimeoutException
+		modelStrm *brtypes.ModelStreamErrorException
+		internal  *brtypes.InternalServerException
 	)
 
 	switch {
