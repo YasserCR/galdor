@@ -3,5 +3,6 @@ go 1.22
 use (
 	.
 	./providers/anthropic
+	./providers/google
 	./providers/openai
 )

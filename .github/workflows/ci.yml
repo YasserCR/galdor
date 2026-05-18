@@ -19,7 +19,7 @@ defaults:
 
 env:
   # Linted/tested modules. Whitespace-separated module roots, relative to repo root.
-  GALDOR_MODULES: ". providers/anthropic providers/openai"
+  GALDOR_MODULES: ". providers/anthropic providers/google providers/openai"
 
 jobs:
   test:
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/openai']
+        module: ['.', 'providers/anthropic', 'providers/google', 'providers/openai']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/openai']
+        module: ['.', 'providers/anthropic', 'providers/google', 'providers/openai']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
