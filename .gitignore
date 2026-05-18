@@ -36,3 +36,4 @@ vendor/
 *.sqlite
 *.sqlite-journal
 /observability-trace
+/scry-store

@@ -14,6 +14,7 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-006](ADR-006-checkpointing-and-interrupts.md) | Checkpointing and interrupt/resume | Accepted |
 | [ADR-007](ADR-007-agent-helpers.md) | Agent helpers (`pkg/agent`) | Accepted |
 | [ADR-008](ADR-008-observability-instrumentation.md) | Observability instrumentation | Accepted |
+| [ADR-009](ADR-009-sqlite-span-store-and-scry-cli.md) | SQLite span store and `galdor scry` CLI | Accepted |
 
 ## Conventions
 

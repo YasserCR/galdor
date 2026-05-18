@@ -59,9 +59,10 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 
 - [x] OTel instrumentation in provider, tool, graph (`pkg/observability`: `InstrumentProvider` / `InstrumentTool` / `InstrumentRegistry` / `TraceHooks[S]`); GenAI semantic conventions honored
 - [x] `graph.Hooks[S]` lifecycle extension point in `pkg/graph` (BeforeRun / AfterRun / BeforeNode / AfterNode)
-- [ ] Embedded storage (SQLite via `modernc.org/sqlite`) acting as an OTel span exporter
-- [ ] CLI `galdor scry` for trace exploration over the SQLite store
-- [ ] Latency, token and cost metrics derived from the same span pipeline
+- [x] Embedded storage (SQLite via `modernc.org/sqlite`) — `internal/store` + `observability.SQLiteExporter`
+- [x] CLI `galdor scry list` / `galdor scry show <run-id>` over the SQLite store (text + JSON output)
+- [ ] Latency, token and cost metrics derived from the same span pipeline (Phase 4 session C)
+- [ ] `galdor scry tail` live-follow mode (Phase 4 session C)
 
 **Outcome:** First-class agent debugging from the CLI.
 

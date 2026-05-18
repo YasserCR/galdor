@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
@@ -37,9 +38,10 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stdout, "galdor %s\n", version)
 	case "help", "--help", "-h":
 		usage(os.Stdout)
+	case "scry":
+		os.Exit(scry(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
 	case
 		"cast",
-		"scry",
 		"weave",
 		"spellbook",
 		"council",
