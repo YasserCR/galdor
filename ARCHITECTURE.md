@@ -1,6 +1,6 @@
 # galdor Architecture
 
-This document is a working overview of the galdor architecture. The authoritative design source is [`docs/PLAN.md`](docs/PLAN.md); this file summarizes it and is updated as decisions land via ADRs.
+This document is a working overview of the galdor architecture. Authoritative decisions live in [`docs/adr/`](docs/adr/); this file summarizes them and is updated as new decisions land.
 
 ## Layered view
 

@@ -12,7 +12,7 @@ galdor is a Go-native framework for building, orchestrating and observing real A
 
 **Work in progress — Phase 0 (Bootstrap).** APIs are unstable until v1.0.
 
-See [`docs/PLAN.md`](docs/PLAN.md) for the full design plan and [`ROADMAP.md`](ROADMAP.md) for delivery phases.
+See [`ROADMAP.md`](ROADMAP.md) for delivery phases and [`docs/adr/`](docs/adr/) for design decisions.
 
 ---
 

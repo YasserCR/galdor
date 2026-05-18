@@ -8,7 +8,7 @@
 
 ## Context
 
-galdor is a new Go-native framework for building, orchestrating and observing AI agents. Before writing runtime code, a set of foundational decisions must be locked in so that future ADRs can build on a stable base. This ADR captures the non-controversial choices that come out of `docs/PLAN.md` and turns them into a binding reference.
+galdor is a new Go-native framework for building, orchestrating and observing AI agents. Before writing runtime code, a set of foundational decisions must be locked in so that future ADRs can build on a stable base. This ADR captures the non-controversial choices that come out of pre-bootstrap design discussions and turns them into a binding reference.
 
 ## Decisions
 
@@ -126,7 +126,6 @@ Every operation that can block, hit the network, take a lock or be cancelled acc
 
 ## References
 
-- `docs/PLAN.md` — full design plan.
 - `README.md`, `GOVERNANCE.md`, `CONTRIBUTING.md`, `NOTICE`, `DCO.txt` — the operational expression of the decisions above.
 - [Developer Certificate of Origin 1.1](https://developercertificate.org).
 - [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).

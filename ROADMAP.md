@@ -2,7 +2,7 @@
 
 Phases are designed so that each one delivers value on its own. If the project pauses at any phase, what shipped is still useful.
 
-Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
+Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for context and rationale.
 
 ## Phase 0 — Foundations *(current)*
 
