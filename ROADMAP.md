@@ -61,8 +61,8 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 - [x] `graph.Hooks[S]` lifecycle extension point in `pkg/graph` (BeforeRun / AfterRun / BeforeNode / AfterNode)
 - [x] Embedded storage (SQLite via `modernc.org/sqlite`) — `internal/store` + `observability.SQLiteExporter`
 - [x] CLI `galdor scry list` / `galdor scry show <run-id>` over the SQLite store (text + JSON output)
-- [ ] Latency, token and cost metrics derived from the same span pipeline (Phase 4 session C)
-- [ ] `galdor scry tail` live-follow mode (Phase 4 session C)
+- [x] Latency (p50/p95/p99) and token metrics — `galdor scry stats [--by overall|provider|model]` (cost tracking needs a per-model price table; tracked for future session)
+- [x] `galdor scry tail` live-follow mode (text + json output, configurable poll interval)
 
 **Outcome:** First-class agent debugging from the CLI.
 
