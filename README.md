@@ -20,7 +20,7 @@ See [`docs/PLAN.md`](docs/PLAN.md) for the full design plan and [`ROADMAP.md`](R
 
 - A graph-based agent runtime executed with goroutines and channels
 - Truly provider-agnostic (Anthropic, OpenAI, Google, Bedrock, Azure, Ollama, vLLM)
-- Type-safe end-to-end using Go 1.22+ generics
+- Type-safe end-to-end using Go 1.25+ generics
 - Native observability: tracing, metrics, replay, eval — all in the same binary
 - Multi-agent as a first-class primitive
 - MCP (Model Context Protocol) integrated from day one

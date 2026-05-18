@@ -1,6 +1,6 @@
 module github.com/YasserCR/galdor/providers/anthropic
 
-go 1.22
+go 1.25
 
 require github.com/YasserCR/galdor v0.0.0-00010101000000-000000000000
 

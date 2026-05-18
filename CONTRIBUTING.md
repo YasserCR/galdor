@@ -10,7 +10,7 @@ This project adheres to the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). By p
 
 Requirements:
 
-- Go **1.22+** (no CGO required)
+- Go **1.25+** (no CGO required; the floor was bumped from 1.22 in ADR-003)
 - `golangci-lint` (matched to the version pinned in CI)
 - `git`
 
