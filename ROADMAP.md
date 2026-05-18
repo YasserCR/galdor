@@ -70,10 +70,12 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 
 - [x] Embedded HTTP server (`galdor ui`, loopback by default)
 - [x] Run list page + per-run span tree (server-rendered HTML)
-- [x] JSON API mirror at `/api/runs` and `/api/runs/{id}/spans`
+- [x] Per-span detail page with attribute table, events, and prompt/completion view
+- [x] Clickable span rows in the tree
+- [x] Opt-in content capture (`observability.WithCaptureContent`)
+- [x] JSON API mirror (`/api/runs`, `/api/runs/{id}/spans`, `/api/runs/{id}/spans/{spanID}`)
 - [x] CSS + templates embedded via `embed.FS` — no external assets
-- [ ] Input/output diff on provider spans (Session B)
-- [ ] Graph visualization (Session B)
+- [ ] Workflow graph visualization (DAG render — Session C)
 - [ ] Live updates via SSE (Session C)
 
 **Outcome:** Self-hosted "Langsmith-local" working.

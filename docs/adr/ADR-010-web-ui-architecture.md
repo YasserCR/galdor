@@ -99,6 +99,29 @@ LangSmith) defaults dark and the contrast on terminal-adjacent
 data lands cleaner. Light theme can come later as a CSS variable
 toggle if asked for; it's not v1 scope.
 
+### D8. Content capture is opt-in on `InstrumentProvider` (Session B)
+
+The span detail page surfaces prompt and completion messages
+when the producer recorded them as `gen_ai.prompt` /
+`gen_ai.completion` attributes. Capture is enabled per
+`InstrumentProvider` call via `observability.WithCaptureContent(true)`
+and **off by default**: prompts routinely carry PII, secrets, or
+proprietary text that should not silently land in a trace store
+the user might later commit, share, or expose via the dashboard.
+
+The decision lives on the producer side (one boolean, scoped to
+one instrumentation site) rather than as a render-time toggle
+because the wrong default is the one that quietly leaks data.
+A render-time switch can suppress display but cannot un-record;
+producer-side opt-in keeps the store free of content unless the
+user asked for it.
+
+Capture serializes the `schema.Message` slice (or single
+response message) as compact JSON into the attribute value. The
+UI decodes it back into structured form for the dashboard;
+`/api/runs/{id}/spans/{spanID}` returns the raw attribute so
+external tooling can re-parse it identically.
+
 ## Consequences
 
 **Now**
@@ -109,12 +132,21 @@ toggle if asked for; it's not v1 scope.
   rules (trace_id resolution, run status derivation).
 - External callers can hit `/api/runs` for a stable JSON shape.
 
+**Session B (this revision)**
+- Per-span detail page at `/runs/{id}/spans/{spanID}` with the
+  full attribute table, events list, and (when capture is on)
+  the prompt + completion messages rendered side-by-side.
+- Span rows in the tree are now anchor links, not just text.
+- Routes migrated to Go 1.22+ ServeMux patterns
+  (`/runs/{runID}/spans/{spanID}`) instead of `TrimPrefix`.
+- `observability.WithCaptureContent(bool)` option for opt-in
+  prompt/completion recording.
+
 **Later (deferred)**
-- Session B: graph visualization (DAG render), input/output diffs
-  on provider spans, attribute search.
-- Session C: live updates via SSE, polling cadence options,
-  Spellbook integration (prompt registry browsing once that ships
-  in Phase 7).
+- Session C: graph visualization (DAG render of the workflow,
+  not just the execution trace), live updates via SSE, polling
+  cadence options, Spellbook integration (prompt registry
+  browsing once that ships in Phase 7).
 - Eval surface (Phase 8) and Replay scrubber (Phase 9) plug into
   the same `Server.registerRoutes` ladder.
 

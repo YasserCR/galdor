@@ -100,7 +100,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	tracedProvider := observability.InstrumentProvider(&scriptedProvider{}, tracer)
+	tracedProvider := observability.InstrumentProvider(&scriptedProvider{}, tracer,
+		observability.WithCaptureContent(true))
 	tracedReg, err := observability.InstrumentRegistry(reg, tracer)
 	if err != nil {
 		return err

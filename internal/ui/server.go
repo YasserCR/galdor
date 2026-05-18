@@ -102,18 +102,22 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string, resolved func(
 }
 
 func (s *Server) registerRoutes() {
-	s.mux.HandleFunc("/", s.handleRoot)
-	s.mux.HandleFunc("/runs/", s.handleRun)
-	s.mux.HandleFunc("/api/runs", s.handleAPIRuns)
-	s.mux.HandleFunc("/api/runs/", s.handleAPIRunSpans)
-	s.mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	// Go 1.22+ ServeMux patterns: `{name}` captures a path segment,
+	// `{$}` anchors the path so "/" doesn't swallow everything.
+	s.mux.HandleFunc("GET /{$}", s.handleRoot)
+	s.mux.HandleFunc("GET /runs/{runID}", s.handleRun)
+	s.mux.HandleFunc("GET /runs/{runID}/spans/{spanID}", s.handleSpan)
+	s.mux.HandleFunc("GET /api/runs", s.handleAPIRuns)
+	s.mux.HandleFunc("GET /api/runs/{runID}/spans", s.handleAPIRunSpans)
+	s.mux.HandleFunc("GET /api/runs/{runID}/spans/{spanID}", s.handleAPISpan)
+	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
 
 	static, err := fs.Sub(assets, "static")
 	if err == nil {
-		s.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
+		s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
 	}
 }
 

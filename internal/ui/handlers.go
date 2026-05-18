@@ -5,21 +5,17 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/YasserCR/galdor/internal/store"
+	"github.com/YasserCR/galdor/pkg/observability"
+	"github.com/YasserCR/galdor/pkg/schema"
 )
 
-// handleRoot serves the run list at "/". Anything else not matched
-// by a more specific route falls into 404 here so the embedded
-// dashboard doesn't accidentally proxy unrelated paths.
+// handleRoot serves the run list at "/".
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
 	limit := parseLimit(r.URL.Query().Get("limit"), 50)
 	runs, err := s.store.ListRuns(r.Context(), limit)
 	if err != nil {
@@ -34,10 +30,10 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, "runs.html", data)
 }
 
-// handleRun serves the per-run span tree at "/runs/{id}".
+// handleRun serves the per-run span tree at "/runs/{runID}".
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
-	runID := strings.TrimPrefix(r.URL.Path, "/runs/")
-	if runID == "" || strings.Contains(runID, "/") {
+	runID := r.PathValue("runID")
+	if runID == "" {
 		http.NotFound(w, r)
 		return
 	}
@@ -51,24 +47,51 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 			fmt.Errorf("no spans recorded for run %q", runID))
 		return
 	}
-	roots, total, errors := buildSpanTree(spans)
+	roots, total, errs := buildSpanTree(spans, runID)
 	data := runPageData{
 		DBPath: s.dbPath,
 		RunID:  runID,
 		Total:  total,
-		Errors: errors,
+		Errors: errs,
 		Roots:  roots,
 	}
 	s.renderTemplate(w, "run.html", data)
 }
 
-// handleAPIRuns returns the run list as JSON. Same data the runs
-// page uses; useful for shell pipelines and future polling.
-func (s *Server) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/api/runs" {
+// handleSpan serves a single span's detail at
+// "/runs/{runID}/spans/{spanID}". The page surfaces the full
+// attribute table, status, events and — when content capture was
+// enabled — the prompt and completion messages.
+func (s *Server) handleSpan(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("runID")
+	spanID := r.PathValue("spanID")
+	if runID == "" || spanID == "" {
 		http.NotFound(w, r)
 		return
 	}
+	spans, err := s.store.SpansForRun(r.Context(), runID)
+	if err != nil {
+		s.renderError(w, http.StatusInternalServerError, "load spans", err)
+		return
+	}
+	var found *store.Span
+	for i := range spans {
+		if spans[i].SpanID == spanID {
+			found = &spans[i]
+			break
+		}
+	}
+	if found == nil {
+		s.renderError(w, http.StatusNotFound, "span not found",
+			fmt.Errorf("span %q not in run %q", spanID, runID))
+		return
+	}
+	s.renderTemplate(w, "span.html", buildSpanPage(*found, runID, s.dbPath))
+}
+
+// handleAPIRuns returns the run list as JSON. Same data the runs
+// page uses; useful for shell pipelines and future polling.
+func (s *Server) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r.URL.Query().Get("limit"), 50)
 	runs, err := s.store.ListRuns(r.Context(), limit)
 	if err != nil {
@@ -79,15 +102,9 @@ func (s *Server) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAPIRunSpans returns the spans for a single run at
-// "/api/runs/{id}/spans".
+// "/api/runs/{runID}/spans".
 func (s *Server) handleAPIRunSpans(w http.ResponseWriter, r *http.Request) {
-	rest := strings.TrimPrefix(r.URL.Path, "/api/runs/")
-	parts := strings.Split(rest, "/")
-	if len(parts) != 2 || parts[1] != "spans" {
-		http.NotFound(w, r)
-		return
-	}
-	runID := parts[0]
+	runID := r.PathValue("runID")
 	if runID == "" {
 		http.NotFound(w, r)
 		return
@@ -102,6 +119,29 @@ func (s *Server) handleAPIRunSpans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, spans)
+}
+
+// handleAPISpan returns a single span at
+// "/api/runs/{runID}/spans/{spanID}".
+func (s *Server) handleAPISpan(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("runID")
+	spanID := r.PathValue("spanID")
+	if runID == "" || spanID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	spans, err := s.store.SpansForRun(r.Context(), runID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err)
+		return
+	}
+	for _, sp := range spans {
+		if sp.SpanID == spanID {
+			writeJSON(w, http.StatusOK, sp)
+			return
+		}
+	}
+	writeJSONError(w, http.StatusNotFound, fmt.Errorf("span %q not in run %q", spanID, runID))
 }
 
 // renderTemplate executes name and writes it to w. Errors are
@@ -161,8 +201,12 @@ type runPageData struct {
 }
 
 // spanNode mirrors store.Span enriched with derived display strings
-// and pointer children so html/template can recurse.
+// and pointer children so html/template can recurse. RunID is
+// duplicated on every node because html/template's recursive
+// templates lose access to outer-scope `$`; it makes the row links
+// trivial to render.
 type spanNode struct {
+	RunID    string
 	SpanID   string
 	Name     string
 	Status   string
@@ -208,13 +252,16 @@ func buildRunRows(runs []store.RunSummary) []runRow {
 // buildSpanTree assembles the parent/child structure of spans. The
 // returned roots are sorted by start time; descendants too.
 // total/errors are aggregated so the run page banner doesn't need
-// to walk the tree again.
-func buildSpanTree(spans []store.Span) (roots []*spanNode, total, errors int) {
+// to walk the tree again. runID is stamped on each node so the
+// recursive row template can render absolute links without
+// reaching for outer-scope $.
+func buildSpanTree(spans []store.Span, runID string) (roots []*spanNode, total, errors int) {
 	byID := make(map[string]*spanNode, len(spans))
 	srcByID := make(map[string]store.Span, len(spans))
 	for _, sp := range spans {
 		srcByID[sp.SpanID] = sp
 		byID[sp.SpanID] = &spanNode{
+			RunID:    runID,
 			SpanID:   sp.SpanID,
 			Name:     sp.Name,
 			Status:   displayStatus(sp.StatusCode),
@@ -256,6 +303,159 @@ func buildSpanTree(spans []store.Span) (roots []*spanNode, total, errors int) {
 		sortByStart(node.Children)
 	}
 	return roots, total, errors
+}
+
+// spanPageData backs the span detail page. Prompt and Completion
+// are nil unless the producer opted into content capture via
+// observability.WithCaptureContent — the template branches on that
+// to suppress an empty "messages" panel.
+type spanPageData struct {
+	DBPath        string
+	RunID         string
+	SpanID        string
+	Name          string
+	ParentSpanID  string
+	TraceID       string
+	Status        string
+	StatusOK      bool
+	StatusMessage string
+	Duration      string
+	StartedAt     string
+	EndedAt       string
+	Attributes    []spanAttribute
+	Events        []store.Event
+	Prompt        []renderedMessage
+	Completion    *renderedMessage
+}
+
+type spanAttribute struct {
+	Key   string
+	Value string
+}
+
+// renderedMessage is the display-friendly view of a schema.Message:
+// the role plus a sequence of text blocks and tool call summaries.
+// We deliberately flatten ContentParts into strings so the template
+// doesn't need to know about the schema types.
+type renderedMessage struct {
+	Role      string
+	TextParts []string
+	ToolCalls []renderedToolCall
+}
+
+type renderedToolCall struct {
+	ID        string
+	Name      string
+	Arguments string
+}
+
+// buildSpanPage projects a store.Span into the template-ready
+// spanPageData. The transformation lives in Go so the template
+// stays declarative (no field-shape branching).
+func buildSpanPage(sp store.Span, runID, dbPath string) spanPageData {
+	out := spanPageData{
+		DBPath:        dbPath,
+		RunID:         runID,
+		SpanID:        sp.SpanID,
+		Name:          sp.Name,
+		ParentSpanID:  sp.ParentSpanID,
+		TraceID:       sp.TraceID,
+		Status:        displayStatus(sp.StatusCode),
+		StatusOK:      sp.StatusCode != "error",
+		StatusMessage: sp.StatusMessage,
+		Duration:      formatDuration(sp.Duration()),
+		StartedAt:     formatTimestamp(sp.StartTimeUnixNano),
+		EndedAt:       formatTimestamp(sp.EndTimeUnixNano),
+		Events:        sp.Events,
+	}
+
+	// Attributes are sorted alphabetically so the table is stable
+	// across reloads — JSON map iteration order isn't.
+	keys := make([]string, 0, len(sp.Attributes))
+	for k := range sp.Attributes {
+		// Skip the content-capture fields here so they don't dilute
+		// the attribute table; they get their own dedicated panel.
+		if k == observability.AttrGenAIPrompt || k == observability.AttrGenAICompletion {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		out.Attributes = append(out.Attributes, spanAttribute{
+			Key:   k,
+			Value: formatAttrValue(sp.Attributes[k]),
+		})
+	}
+
+	if raw, ok := sp.Attributes[observability.AttrGenAIPrompt].(string); ok && raw != "" {
+		out.Prompt = decodeMessages(raw)
+	}
+	if raw, ok := sp.Attributes[observability.AttrGenAICompletion].(string); ok && raw != "" {
+		msgs := decodeMessages("[" + raw + "]")
+		if len(msgs) > 0 {
+			out.Completion = &msgs[0]
+		}
+	}
+	return out
+}
+
+// decodeMessages parses the JSON-encoded message list that
+// InstrumentProvider stashes on the span. Best-effort: malformed
+// JSON yields an empty slice rather than an error, because the
+// detail page should still render even if the capture payload was
+// truncated or corrupted.
+func decodeMessages(raw string) []renderedMessage {
+	var msgs []schema.Message
+	if err := json.Unmarshal([]byte(raw), &msgs); err != nil {
+		return nil
+	}
+	out := make([]renderedMessage, 0, len(msgs))
+	for _, m := range msgs {
+		rm := renderedMessage{Role: string(m.Role)}
+		for _, p := range m.Content {
+			if p.Type == schema.ContentTypeText && p.Text != "" {
+				rm.TextParts = append(rm.TextParts, p.Text)
+			}
+		}
+		for _, c := range m.ToolCalls {
+			rm.ToolCalls = append(rm.ToolCalls, renderedToolCall{
+				ID:        c.ID,
+				Name:      c.Name,
+				Arguments: string(c.Arguments),
+			})
+		}
+		out = append(out, rm)
+	}
+	return out
+}
+
+// formatAttrValue renders an attribute value as a compact string.
+// Numbers come back as float64 (json default); integers display
+// without a trailing ".0".
+func formatAttrValue(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case float64:
+		if x == float64(int64(x)) {
+			return strconv.FormatInt(int64(x), 10)
+		}
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case nil:
+		return ""
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(b)
+	}
 }
 
 // extractExtras pulls the handful of attributes the dashboard

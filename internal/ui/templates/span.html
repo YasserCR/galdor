@@ -1,0 +1,85 @@
+{{ define "span.html" }}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>galdor scry — span {{ .SpanID }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/">galdor scry</a></div>
+    <nav class="links">
+      <a href="/api/runs/{{ .RunID }}/spans/{{ .SpanID }}">api</a>
+      <span class="db">{{ if .DBPath }}{{ .DBPath }}{{ end }}</span>
+    </nav>
+  </header>
+
+  <main>
+    <p class="crumb"><a href="/runs/{{ .RunID }}">← run {{ .RunID }}</a></p>
+    <h1><code>{{ .Name }}</code></h1>
+
+    <table class="kv">
+      <tbody>
+        <tr><th>Span ID</th>     <td class="mono">{{ .SpanID }}</td></tr>
+        {{ if .ParentSpanID }}<tr><th>Parent</th> <td class="mono">{{ .ParentSpanID }}</td></tr>{{ end }}
+        <tr><th>Trace ID</th>    <td class="mono dim">{{ .TraceID }}</td></tr>
+        <tr><th>Status</th>      <td><span class="badge {{ if .StatusOK }}ok{{ else }}err{{ end }}">{{ .Status }}</span>{{ if .StatusMessage }} <span class="dim">{{ .StatusMessage }}</span>{{ end }}</td></tr>
+        <tr><th>Duration</th>    <td>{{ .Duration }}</td></tr>
+        <tr><th>Started</th>     <td class="mono dim">{{ .StartedAt }}</td></tr>
+        <tr><th>Ended</th>       <td class="mono dim">{{ .EndedAt }}</td></tr>
+      </tbody>
+    </table>
+
+    {{ if or .Prompt .Completion }}
+    <h2>Messages</h2>
+    <div class="messages">
+      {{ if .Prompt }}
+      <section class="msgcol">
+        <h3>Prompt <span class="dim">({{ len .Prompt }} message{{ if ne (len .Prompt) 1 }}s{{ end }})</span></h3>
+        {{ range .Prompt }}{{ template "message" . }}{{ end }}
+      </section>
+      {{ end }}
+      {{ if .Completion }}
+      <section class="msgcol">
+        <h3>Completion</h3>
+        {{ template "message" .Completion }}
+      </section>
+      {{ end }}
+    </div>
+    {{ end }}
+
+    {{ if .Attributes }}
+    <h2>Attributes</h2>
+    <table class="kv attrs">
+      <tbody>
+        {{ range .Attributes }}
+        <tr><th class="mono">{{ .Key }}</th><td class="mono wrap">{{ .Value }}</td></tr>
+        {{ end }}
+      </tbody>
+    </table>
+    {{ end }}
+
+    {{ if .Events }}
+    <h2>Events</h2>
+    <ul class="events">
+      {{ range .Events }}<li><code>{{ .Name }}</code></li>{{ end }}
+    </ul>
+    {{ end }}
+  </main>
+
+  <footer><span class="dim">galdor scry web UI</span></footer>
+</body>
+</html>{{ end }}
+
+{{ define "message" }}
+<article class="msg msg-{{ .Role }}">
+  <header class="msg-role">{{ .Role }}</header>
+  {{ range .TextParts }}<pre class="msg-text">{{ . }}</pre>{{ end }}
+  {{ range .ToolCalls }}
+    <div class="toolcall">
+      <span class="dim">tool</span> <b>{{ .Name }}</b> <span class="dim mono">{{ .ID }}</span>
+      <pre class="mono wrap">{{ .Arguments }}</pre>
+    </div>
+  {{ end }}
+</article>
+{{ end }}

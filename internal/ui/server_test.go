@@ -220,6 +220,130 @@ func TestAPIRunSpans_MissingRun(t *testing.T) {
 	}
 }
 
+func TestSpanDetailPage(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy/spans/a1", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"galdor.provider.generate",
+		"anthropic",            // attribute table value
+		"claude-haiku-4-5",     // request model
+		"gen_ai.request.model", // attribute key
+		"run-happy",            // breadcrumb
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("span page missing %q", want)
+		}
+	}
+}
+
+func TestSpanDetailPage_RendersCapturedMessages(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s, err := store.Open(context.Background(), filepath.Join(dir, "traces.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Hand-craft a span carrying the gen_ai.prompt + gen_ai.completion
+	// attributes that InstrumentProvider would have produced with
+	// WithCaptureContent on.
+	prompt := `[{"role":"user","content":[{"type":"text","text":"what is 2+3?"}]}]`
+	completion := `{"role":"assistant","content":[{"type":"text","text":"the answer is 5"}]}`
+	if insErr := s.InsertSpans(context.Background(), []store.Span{
+		{
+			SpanID: "rcap", TraceID: "tcap", Name: "galdor.graph.run",
+			StartTimeUnixNano: 100, EndTimeUnixNano: 200,
+			StatusCode: "ok", RunID: "run-cap",
+			Attributes: map[string]any{"galdor.run.id": "run-cap"},
+		},
+		{
+			SpanID: "acap", TraceID: "tcap", ParentSpanID: "rcap",
+			Name:              "galdor.provider.generate",
+			StartTimeUnixNano: 110, EndTimeUnixNano: 190,
+			StatusCode: "ok",
+			Attributes: map[string]any{
+				"galdor.provider.name": "anthropic",
+				"gen_ai.prompt":        prompt,
+				"gen_ai.completion":    completion,
+			},
+		},
+	}); insErr != nil {
+		t.Fatal(insErr)
+	}
+	srv, err := NewServer(s, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-cap/spans/acap", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Messages",        // section heading
+		"what is 2",       // user prompt text (escaping aside, the substring is enough)
+		"3?",              // tail of the same prompt
+		"the answer is 5", // assistant completion
+		"msg-user",        // role-specific class
+		"msg-assistant",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("captured-messages page missing %q", want)
+		}
+	}
+	// Ensure the prompt/completion attribute keys are NOT also rendered
+	// in the attribute table (buildSpanPage skips them).
+	if strings.Contains(body, ">gen_ai.prompt<") {
+		t.Error("prompt key should be excluded from attribute table")
+	}
+}
+
+func TestSpanDetailPage_NotFound(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy/spans/does-not-exist", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestAPISpan(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/runs/run-happy/spans/a1", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var sp store.Span
+	if err := json.NewDecoder(rec.Body).Decode(&sp); err != nil {
+		t.Fatal(err)
+	}
+	if sp.SpanID != "a1" {
+		t.Errorf("SpanID = %q", sp.SpanID)
+	}
+}
+
+func TestRunPage_RowsAreLinks(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, `href="/runs/run-happy/spans/a1"`) {
+		t.Errorf("expected span row to link to its detail page; body=%s", body[:300])
+	}
+}
+
 func TestStaticCSS(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)

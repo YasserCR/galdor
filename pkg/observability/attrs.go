@@ -23,6 +23,13 @@ const (
 	AttrGenAIToolInputSize  = "gen_ai.tool.input_size_bytes"
 	AttrGenAIToolOutputSize = "gen_ai.tool.output_size_bytes"
 
+	// gen_ai.prompt / gen_ai.completion — emitted only when the
+	// caller opts into content capture via WithCaptureContent.
+	// Both are JSON-encoded so the UI can render them structured.
+	// Off by default because prompts often contain PII.
+	AttrGenAIPrompt     = "gen_ai.prompt"
+	AttrGenAICompletion = "gen_ai.completion"
+
 	// galdor.* — framework-specific dimensions.
 	AttrGaldorRunID     = "galdor.run.id"
 	AttrGaldorNode      = "galdor.node.name"

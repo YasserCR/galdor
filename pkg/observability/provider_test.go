@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -205,6 +206,121 @@ func hasAttr(attrs []attribute.KeyValue, key, value string) bool {
 		}
 	}
 	return false
+}
+
+// findAttr returns the raw attribute value as a string.
+func findAttr(attrs []attribute.KeyValue, key string) (string, bool) {
+	for _, a := range attrs {
+		if string(a.Key) == key {
+			return a.Value.AsString(), true
+		}
+	}
+	return "", false
+}
+
+func TestInstrumentProvider_CaptureContentOnGenerate(t *testing.T) {
+	t.Parallel()
+	exp, tp := newRecorder(t)
+	tr := tp.Tracer("test")
+	p := InstrumentProvider(fakeProvider{
+		resp: &provider.Response{
+			Message:    schema.AssistantMessage("the answer is 5"),
+			StopReason: schema.StopReasonEndTurn,
+			Usage:      schema.Usage{InputTokens: 30, OutputTokens: 7},
+			Model:      "model-x",
+		},
+	}, tr, WithCaptureContent(true))
+
+	req := provider.Request{
+		Model:    "req-m",
+		Messages: []schema.Message{schema.UserMessage("what is 2+3?")},
+	}
+	if _, err := p.Generate(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	_ = tp.ForceFlush(context.Background())
+
+	spans := exp.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("spans = %d", len(spans))
+	}
+	prompt, ok := findAttr(spans[0].Attributes, AttrGenAIPrompt)
+	if !ok {
+		t.Fatalf("missing prompt attribute: %+v", spans[0].Attributes)
+	}
+	if !strings.Contains(prompt, "what is 2+3?") {
+		t.Errorf("prompt missing user message: %q", prompt)
+	}
+	completion, ok := findAttr(spans[0].Attributes, AttrGenAICompletion)
+	if !ok {
+		t.Fatalf("missing completion attribute")
+	}
+	if !strings.Contains(completion, "the answer is 5") {
+		t.Errorf("completion missing assistant text: %q", completion)
+	}
+}
+
+func TestInstrumentProvider_CaptureContentOffByDefault(t *testing.T) {
+	t.Parallel()
+	exp, tp := newRecorder(t)
+	tr := tp.Tracer("test")
+	p := InstrumentProvider(fakeProvider{
+		resp: &provider.Response{Message: schema.AssistantMessage("hi")},
+	}, tr)
+	_, _ = p.Generate(context.Background(), provider.Request{
+		Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	_ = tp.ForceFlush(context.Background())
+	spans := exp.GetSpans()
+	if _, ok := findAttr(spans[0].Attributes, AttrGenAIPrompt); ok {
+		t.Error("prompt should NOT be captured by default")
+	}
+	if _, ok := findAttr(spans[0].Attributes, AttrGenAICompletion); ok {
+		t.Error("completion should NOT be captured by default")
+	}
+}
+
+func TestInstrumentProvider_CaptureContentOnStream(t *testing.T) {
+	t.Parallel()
+	exp, tp := newRecorder(t)
+	tr := tp.Tracer("test")
+	inner := &scriptedStream{events: []provider.Event{
+		{Type: provider.EventMessageStart, Model: "m"},
+		{Type: provider.EventContentDelta, ContentDelta: "hello "},
+		{Type: provider.EventContentDelta, ContentDelta: "world"},
+		{Type: provider.EventMessageStop, StopReason: schema.StopReasonEndTurn,
+			Usage: schema.Usage{InputTokens: 3, OutputTokens: 2}},
+	}}
+	p := InstrumentProvider(fakeProvider{stream: inner}, tr, WithCaptureContent(true))
+	r, err := p.Stream(context.Background(), provider.Request{
+		Model:    "m",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		_, err := r.Recv(context.Background())
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = tp.ForceFlush(context.Background())
+	spans := exp.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("spans = %d", len(spans))
+	}
+	prompt, ok := findAttr(spans[0].Attributes, AttrGenAIPrompt)
+	if !ok || !strings.Contains(prompt, "hi") {
+		t.Errorf("prompt = %q", prompt)
+	}
+	completion, ok := findAttr(spans[0].Attributes, AttrGenAICompletion)
+	if !ok || !strings.Contains(completion, "hello world") {
+		t.Errorf("completion = %q", completion)
+	}
 }
 
 func hasIntAttr(attrs []attribute.KeyValue, key string, value int) bool {

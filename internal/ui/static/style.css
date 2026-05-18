@@ -84,7 +84,10 @@ li.span .row {
   font-size: 13px;
   padding: 4px 8px;
   border-radius: 4px;
+  text-decoration: none;
+  color: inherit;
 }
+li.span .row:hover { background: #1a1d23; text-decoration: none; }
 li.span.err .row { background: #2a1014; }
 li.span .name { color: #d8d8d8; }
 li.span .dur { color: #c0c0c0; font-variant-numeric: tabular-nums; }
@@ -107,3 +110,38 @@ li.span .extra b { color: #d6e3ff; font-weight: 600; }
 }
 
 footer { padding: 16px 24px; text-align: center; font-size: 11px; }
+
+/* Span detail page. */
+h2 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; color: #ddd; text-transform: uppercase; letter-spacing: 0.5px; }
+h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: #ccc; }
+
+table.kv {
+  width: 100%;
+  border-collapse: collapse;
+  background: #14161b;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  overflow: hidden;
+}
+table.kv th, table.kv td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #1f2228; vertical-align: top; }
+table.kv th { background: #1a1d23; font-weight: 600; color: #aaa; width: 180px; font-size: 12px; }
+table.kv td.wrap { word-break: break-all; white-space: pre-wrap; }
+table.kv.attrs td, table.kv.attrs th { font-size: 12px; }
+
+.messages { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.msgcol { background: #14161b; border: 1px solid #2a2d33; border-radius: 6px; padding: 12px; }
+.msg { border-left: 3px solid #2a2d33; padding: 6px 10px; margin: 8px 0; background: #16181d; border-radius: 0 4px 4px 0; }
+.msg-system    { border-left-color: #f0c674; }
+.msg-user      { border-left-color: #8ab4ff; }
+.msg-assistant { border-left-color: #5be08a; }
+.msg-tool      { border-left-color: #ce92ff; }
+.msg-role { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #aaa; margin-bottom: 4px; }
+.msg-text { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.5; }
+.toolcall { margin-top: 8px; font-size: 12px; }
+.toolcall pre { margin: 4px 0 0 0; padding: 6px 8px; background: #1a1d23; border-radius: 4px; font-size: 11px; }
+
+ul.events { list-style: none; padding: 0; margin: 0; }
+ul.events li { padding: 6px 12px; background: #14161b; border: 1px solid #2a2d33; border-radius: 4px; margin-bottom: 4px; font-size: 12px; }
+
+@media (max-width: 800px) { .messages { grid-template-columns: 1fr; } }
+

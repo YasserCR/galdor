@@ -35,12 +35,12 @@
 
 {{ define "spanNode" }}
 <li class="span {{ if .StatusOK }}ok{{ else }}err{{ end }}">
-  <div class="row">
+  <a class="row" href="/runs/{{ .RunID }}/spans/{{ .SpanID }}">
     <span class="name">{{ .Name }}</span>
     <span class="dur">{{ .Duration }}</span>
     <span class="status">{{ .Status }}</span>
     {{ range .Extras }}<span class="extra">{{ .Key }}=<b>{{ .Value }}</b></span>{{ end }}
-  </div>
+  </a>
   {{ if .Children }}
   <ul>
     {{ range .Children }}{{ template "spanNode" . }}{{ end }}
