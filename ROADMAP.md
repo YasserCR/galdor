@@ -24,6 +24,7 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 - [x] Anthropic adapter (reference) — `providers/anthropic`
 - [x] OpenAI adapter — `providers/openai` (also targets Groq, Together, MiniMax, Mistral, ... via `BaseURL`)
 - [x] Google Gemini adapter — `providers/google` (AI Studio surface; Vertex AI via `BaseURL` + custom `HTTPClient`)
+- [x] AWS Bedrock adapter — `providers/bedrock` (Converse API; uses AWS SDK Go v2 for SigV4 and Event Stream framing; **compatibility validation against a live AWS account pending**, see README status)
 - [ ] Tool-calling normalization across providers
 - [x] Unit tests with recorded HTTP fixtures (httptest)
 - [x] Opt-in integration tests against the real API (gated by `integration` tag + per-provider env var)
