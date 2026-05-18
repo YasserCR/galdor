@@ -33,10 +33,12 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 
 ## Phase 2 — Tools + Schema
 
-- Generics-based tool system
-- JSON Schema generation from Go structs
-- Concurrent tool-call execution
-- 5–10 built-in tools (http, file read, shell, math, time, ...)
+- [x] Generics-based tool system (`pkg/tool` — `Tool[In, Out]`, `AnyTool`, `NewTool`, `MustNewTool`)
+- [x] JSON Schema generation from Go structs (`internal/jsonschema`)
+- [x] Concurrent tool-call execution (`tool.ExecuteCalls`, preserves order, propagates cancellation)
+- [x] Tool registry + `schema.ToolDef` conversion (`tool.Registry`)
+- [x] End-to-end LLM ↔ tools loop example (`examples/tools-loop`)
+- [ ] 5–10 built-in tools (http, file read, shell, math, time, ...)
 
 **Outcome:** Basic LLM ↔ tools loop working.
 

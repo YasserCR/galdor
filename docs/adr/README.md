@@ -9,6 +9,7 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-001](ADR-001-foundational-decisions.md) | Foundational decisions | Accepted (§D2 partially superseded by ADR-003) |
 | [ADR-002](ADR-002-provider-abstraction-shape.md) | Provider abstraction shape | Accepted |
 | [ADR-003](ADR-003-bump-go-floor-to-1.25.md) | Bump the Go floor from 1.22 to 1.25 | Accepted |
+| [ADR-004](ADR-004-tool-system-shape.md) | Tool system shape | Accepted |
 
 ## Conventions
 
