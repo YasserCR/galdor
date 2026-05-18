@@ -145,3 +145,46 @@ ul.events li { padding: 6px 12px; background: #14161b; border: 1px solid #2a2d33
 
 @media (max-width: 800px) { .messages { grid-template-columns: 1fr; } }
 
+/* Live indicator + row flash. */
+.live-row { display: flex; align-items: center; gap: 12px; margin: 0 0 16px 0; }
+.live-row h1 { margin: 0; }
+#live-indicator {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: #888;
+}
+#live-indicator .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #888; transition: background 0.2s;
+}
+#live-indicator[data-state="connected"] .dot {
+  background: #5be08a;
+  box-shadow: 0 0 0 0 rgba(91, 224, 138, 0.6);
+  animation: pulse 1.6s infinite;
+}
+#live-indicator[data-state="disconnected"] .dot { background: #ff7a85; animation: none; }
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(91,224,138,0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(91,224,138,0);   }
+  100% { box-shadow: 0 0 0 0   rgba(91,224,138,0);   }
+}
+
+table.runs tr.flash td { animation: rowflash 1.5s ease-out; }
+@keyframes rowflash {
+  0%   { background: #1f3a26; }
+  100% { background: transparent; }
+}
+
+/* Timeline (Gantt-style SVG). */
+.timeline { background: #14161b; border: 1px solid #2a2d33; border-radius: 6px; padding: 12px; margin: 16px 0; overflow-x: auto; }
+.timeline svg { display: block; min-width: 100%; }
+.timeline .bar { rx: 2; }
+.timeline .bar.ok  { fill: #5be08a; }
+.timeline .bar.err { fill: #ff7a85; }
+.timeline .label { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #ccc; }
+.timeline .axis  { stroke: #2a2d33; }
+.timeline .axis-label { font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #888; }
+.timeline a:hover .bar { filter: brightness(1.15); }
+.timeline a:hover .label { fill: #fff; }
+
+

@@ -15,7 +15,13 @@
   </header>
 
   <main>
-    <h1>Recent runs</h1>
+    <div class="live-row">
+      <h1>Recent runs</h1>
+      <span id="live-indicator" data-state="connecting" title="live updates">
+        <span class="dot"></span><span class="label">live</span>
+      </span>
+    </div>
+
     {{ if .Runs }}
       <table class="runs">
         <thead>
@@ -30,7 +36,7 @@
         </thead>
         <tbody>
           {{ range .Runs }}
-          <tr>
+          <tr data-run-id="{{ .RunID }}">
             <td><a href="/runs/{{ .RunID }}" class="mono">{{ .RunID }}</a></td>
             <td><span class="badge {{ if .StatusOK }}ok{{ else }}err{{ end }}">{{ .Status }}</span></td>
             <td class="num">{{ .Duration }}</td>
@@ -42,10 +48,12 @@
         </tbody>
       </table>
     {{ else }}
+      <table class="runs"><tbody></tbody></table>
       <p class="empty">No runs recorded yet. Point an OTel exporter at this store and try again.</p>
     {{ end }}
   </main>
 
   <footer><span class="dim">showing up to {{ .Limit }} runs · galdor scry web UI</span></footer>
+  <script src="/static/live.js"></script>
 </body>
 </html>{{ end }}

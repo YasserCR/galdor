@@ -66,7 +66,7 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 
 **Outcome:** First-class agent debugging from the CLI.
 
-## Phase 5 — Web UI *(in progress)*
+## Phase 5 — Web UI
 
 - [x] Embedded HTTP server (`galdor ui`, loopback by default)
 - [x] Run list page + per-run span tree (server-rendered HTML)
@@ -75,8 +75,9 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 - [x] Opt-in content capture (`observability.WithCaptureContent`)
 - [x] JSON API mirror (`/api/runs`, `/api/runs/{id}/spans`, `/api/runs/{id}/spans/{spanID}`)
 - [x] CSS + templates embedded via `embed.FS` — no external assets
-- [ ] Workflow graph visualization (DAG render — Session C)
-- [ ] Live updates via SSE (Session C)
+- [x] SVG timeline (Gantt-style) on the run detail page
+- [x] Live updates via SSE (`/api/stream/runs`) + vanilla JS row upsert
+- [ ] Workflow graph (static DAG of `Graph[S]` — needs producer support; deferred to Phase 6)
 
 **Outcome:** Self-hosted "Langsmith-local" working.
 

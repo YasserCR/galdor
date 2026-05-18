@@ -122,6 +122,39 @@ UI decodes it back into structured form for the dashboard;
 `/api/runs/{id}/spans/{spanID}` returns the raw attribute so
 external tooling can re-parse it identically.
 
+### D9. Live updates via SSE; SVG timeline server-rendered (Session C)
+
+Live updates use Server-Sent Events at `/api/stream/runs`. The
+server polls the store at a fixed cadence (default 1s, matches
+`galdor scry tail`) and emits a `run` event whenever a span
+arrives that belongs to a previously unseen trace, or updates an
+existing run's summary. A `heartbeat` event fires every tick
+even with no new data so reverse proxies and idle-detection
+timers don't drop the connection.
+
+SSE was chosen over WebSockets because the channel is one-way
+(server → client), the existing JSON shape is reused verbatim,
+and there is no upgrade handshake to special-case. The tradeoff
+— SSE caps at six concurrent connections per origin in some
+browsers — does not matter for a local-only dashboard.
+
+Client code is a single ~80-line vanilla-JS file
+(`internal/ui/static/live.js`). It is the first JS galdor
+ships, and the file is intentionally dependency-free: if it
+fails to load or `EventSource` is missing, the page works
+unchanged from a static refresh. ADR-010 D1 allowed this
+vendor-free JS escape hatch when a richer client became
+necessary; SSE made it necessary.
+
+The execution timeline is **server-rendered SVG**, not a JS
+charting library. `buildTimeline` computes absolute pixel
+coordinates from span start/end times in Go; the template emits
+`<rect>` and `<text>` elements directly. Pros: zero runtime
+overhead in the browser, identical render under printing or
+JS-disabled, trivially diffable in tests. Con: pan/zoom would
+need either JS or per-request re-render; deferred until someone
+actually traces a >100-span run and feels the need.
+
 ## Consequences
 
 **Now**
@@ -132,7 +165,7 @@ external tooling can re-parse it identically.
   rules (trace_id resolution, run status derivation).
 - External callers can hit `/api/runs` for a stable JSON shape.
 
-**Session B (this revision)**
+**Session B**
 - Per-span detail page at `/runs/{id}/spans/{spanID}` with the
   full attribute table, events list, and (when capture is on)
   the prompt + completion messages rendered side-by-side.
@@ -142,11 +175,21 @@ external tooling can re-parse it identically.
 - `observability.WithCaptureContent(bool)` option for opt-in
   prompt/completion recording.
 
+**Session C (this revision)**
+- SSE feed at `/api/stream/runs` for live run-list updates.
+- Tiny vanilla JS (`static/live.js`) drives row insert/update
+  on the runs page; page falls back to static when JS / SSE is
+  unavailable.
+- SVG timeline (Gantt-style) on the run detail page rendered
+  fully server-side; clickable bars link to the span detail.
+
 **Later (deferred)**
-- Session C: graph visualization (DAG render of the workflow,
-  not just the execution trace), live updates via SSE, polling
-  cadence options, Spellbook integration (prompt registry
-  browsing once that ships in Phase 7).
+- Workflow graph (DAG render of the static `Graph[S]`, not
+  just the execution trace) — needs the graph structure on the
+  root span; Phase 6 candidate.
+- Spellbook integration (prompt registry browsing once that
+  ships in Phase 7).
+- Pan/zoom on the timeline if span counts cross ~100.
 - Eval surface (Phase 8) and Replay scrubber (Phase 9) plug into
   the same `Server.registerRoutes` ladder.
 

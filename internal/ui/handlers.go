@@ -49,11 +49,12 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 	roots, total, errs := buildSpanTree(spans, runID)
 	data := runPageData{
-		DBPath: s.dbPath,
-		RunID:  runID,
-		Total:  total,
-		Errors: errs,
-		Roots:  roots,
+		DBPath:   s.dbPath,
+		RunID:    runID,
+		Total:    total,
+		Errors:   errs,
+		Roots:    roots,
+		Timeline: buildTimeline(spans),
 	}
 	s.renderTemplate(w, "run.html", data)
 }
@@ -193,11 +194,36 @@ type runRow struct {
 }
 
 type runPageData struct {
-	DBPath string
-	RunID  string
-	Total  int
-	Errors int
-	Roots  []*spanNode
+	DBPath   string
+	RunID    string
+	Total    int
+	Errors   int
+	Roots    []*spanNode
+	Timeline timelineView
+}
+
+// timelineView holds the SVG-ready geometry for the run's spans.
+// Coordinates are absolute pixels so the template stays declarative
+// (no math in `text/template`). Width is fixed; height grows with
+// span count so dense traces don't squish.
+type timelineView struct {
+	Width      int
+	Height     int
+	RowHeight  int
+	LabelWidth int
+	Bars       []timelineBar
+}
+
+type timelineBar struct {
+	Y       int
+	X       int
+	W       int
+	LabelX  int
+	LabelY  int
+	OK      bool
+	SpanID  string
+	Name    string
+	Tooltip string
 }
 
 // spanNode mirrors store.Span enriched with derived display strings
@@ -303,6 +329,84 @@ func buildSpanTree(spans []store.Span, runID string) (roots []*spanNode, total, 
 		sortByStart(node.Children)
 	}
 	return roots, total, errors
+}
+
+// buildTimeline projects spans onto a fixed-width Gantt chart. The
+// time axis spans from the earliest span start to the latest span
+// end; each span gets one row positioned in DFS order so parents
+// sit above their children, matching the tree view. Bars shorter
+// than 2px are widened so they remain clickable.
+func buildTimeline(spans []store.Span) timelineView {
+	const (
+		width      = 960
+		labelWidth = 320
+		rowHeight  = 20
+		minBarPx   = 2
+	)
+	tv := timelineView{
+		Width:      width,
+		LabelWidth: labelWidth,
+		RowHeight:  rowHeight,
+	}
+	if len(spans) == 0 {
+		return tv
+	}
+
+	// Compute the time window across all spans, not just roots —
+	// some adapters may emit spans whose end time exceeds the root.
+	minStart, maxEnd := spans[0].StartTimeUnixNano, spans[0].EndTimeUnixNano
+	for _, sp := range spans[1:] {
+		if sp.StartTimeUnixNano < minStart {
+			minStart = sp.StartTimeUnixNano
+		}
+		if sp.EndTimeUnixNano > maxEnd {
+			maxEnd = sp.EndTimeUnixNano
+		}
+	}
+	total := maxEnd - minStart
+	if total <= 0 {
+		total = 1
+	}
+
+	// Reuse the tree structure so visual order matches the indented
+	// tree the user sees below.
+	roots, _, _ := buildSpanTree(spans, "")
+	srcByID := make(map[string]store.Span, len(spans))
+	for _, sp := range spans {
+		srcByID[sp.SpanID] = sp
+	}
+
+	chartWidth := width - labelWidth
+	row := 0
+	var walk func(node *spanNode)
+	walk = func(node *spanNode) {
+		sp := srcByID[node.SpanID]
+		x := labelWidth + int(float64(chartWidth)*float64(sp.StartTimeUnixNano-minStart)/float64(total))
+		w := max(int(float64(chartWidth)*float64(sp.EndTimeUnixNano-sp.StartTimeUnixNano)/float64(total)), minBarPx)
+		if x+w > width {
+			w = width - x
+		}
+		tv.Bars = append(tv.Bars, timelineBar{
+			Y:       row*rowHeight + 10,
+			X:       x,
+			W:       w,
+			LabelX:  8,
+			LabelY:  row*rowHeight + 24,
+			OK:      sp.StatusCode != "error",
+			SpanID:  sp.SpanID,
+			Name:    sp.Name,
+			Tooltip: fmt.Sprintf("%s · %s", sp.Name, formatDuration(sp.Duration())),
+		})
+		row++
+		for _, child := range node.Children {
+			walk(child)
+		}
+	}
+	for _, r := range roots {
+		walk(r)
+	}
+	tv.Height = row*rowHeight + 20
+	return tv
 }
 
 // spanPageData backs the span detail page. Prompt and Completion
