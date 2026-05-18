@@ -13,6 +13,7 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-005](ADR-005-graph-runtime-shape.md) | Graph runtime shape | Accepted |
 | [ADR-006](ADR-006-checkpointing-and-interrupts.md) | Checkpointing and interrupt/resume | Accepted |
 | [ADR-007](ADR-007-agent-helpers.md) | Agent helpers (`pkg/agent`) | Accepted |
+| [ADR-008](ADR-008-observability-instrumentation.md) | Observability instrumentation | Accepted |
 
 ## Conventions
 

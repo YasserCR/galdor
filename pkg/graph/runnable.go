@@ -49,6 +49,11 @@ type RunOptions[S any] struct {
 	// human-in-the-loop workflows where a person edits the state
 	// during the pause.
 	OverrideState *S
+
+	// Hooks are the lifecycle callbacks invoked around each run
+	// and each node. They are the seam observability layers use
+	// to emit OpenTelemetry spans, metrics or audit events.
+	Hooks Hooks[S]
 }
 
 // Compile validates the graph and returns a Runnable.
@@ -273,8 +278,16 @@ func (r *Runnable[S]) runLoop(
 	startStep int,
 	opts RunOptions[S],
 	bypassInterrupt bool,
-) (S, error) {
+) (final S, retErr error) {
 	state := initial
+
+	// BeforeRun may install spans / loggers on the context;
+	// AfterRun observes the terminal state and error.
+	ctx = opts.Hooks.runBefore(ctx, opts.RunID, initial)
+	defer func() {
+		opts.Hooks.runAfter(ctx, opts.RunID, state, retErr)
+	}()
+
 	next := startNode
 	maxSteps := r.maxStepsOrDefault()
 	if opts.MaxSteps > 0 {
@@ -323,9 +336,15 @@ func (r *Runnable[S]) runLoop(
 			return state, err
 		}
 
-		out, err := node(ctx, state)
-		if err != nil {
-			return state, fmt.Errorf("node %q: %w", next, err)
+		// Node lifecycle hooks. BeforeNode may return a derived ctx
+		// (typically: one carrying a freshly-started span) — that
+		// ctx is used for the node call AND for AfterNode so the
+		// hook implementation has a single place to put its state.
+		nodeCtx := opts.Hooks.nodeBefore(ctx, opts.RunID, next, step+1, state)
+		out, nodeErr := node(nodeCtx, state)
+		opts.Hooks.nodeAfter(nodeCtx, opts.RunID, next, step+1, out, nodeErr)
+		if nodeErr != nil {
+			return state, fmt.Errorf("node %q: %w", next, nodeErr)
 		}
 		state = out
 

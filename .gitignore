@@ -35,3 +35,4 @@ vendor/
 *.db
 *.sqlite
 *.sqlite-journal
+/observability-trace
