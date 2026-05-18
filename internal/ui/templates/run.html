@@ -1,0 +1,50 @@
+{{ define "run.html" }}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>galdor scry — run {{ .RunID }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/">galdor scry</a></div>
+    <nav class="links">
+      <a href="/api/runs/{{ .RunID }}/spans">api</a>
+      <span class="db">{{ if .DBPath }}{{ .DBPath }}{{ end }}</span>
+    </nav>
+  </header>
+
+  <main>
+    <p class="crumb"><a href="/">← all runs</a></p>
+    <h1>run <code>{{ .RunID }}</code></h1>
+    <p class="summary">
+      <span class="badge {{ if eq .Errors 0 }}ok{{ else }}err{{ end }}">
+        {{ if eq .Errors 0 }}ok{{ else }}{{ .Errors }} errors{{ end }}
+      </span>
+      <span class="dim">{{ .Total }} spans</span>
+    </p>
+
+    <ul class="tree">
+      {{ range .Roots }}{{ template "spanNode" . }}{{ end }}
+    </ul>
+  </main>
+
+  <footer><span class="dim">galdor scry web UI</span></footer>
+</body>
+</html>{{ end }}
+
+{{ define "spanNode" }}
+<li class="span {{ if .StatusOK }}ok{{ else }}err{{ end }}">
+  <div class="row">
+    <span class="name">{{ .Name }}</span>
+    <span class="dur">{{ .Duration }}</span>
+    <span class="status">{{ .Status }}</span>
+    {{ range .Extras }}<span class="extra">{{ .Key }}=<b>{{ .Value }}</b></span>{{ end }}
+  </div>
+  {{ if .Children }}
+  <ul>
+    {{ range .Children }}{{ template "spanNode" . }}{{ end }}
+  </ul>
+  {{ end }}
+</li>
+{{ end }}

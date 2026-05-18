@@ -1,0 +1,21 @@
+{{ define "error.html" }}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>galdor scry — {{ .Code }} {{ .Title }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/">galdor scry</a></div>
+    <nav class="links"><span class="db">{{ if .DBPath }}{{ .DBPath }}{{ end }}</span></nav>
+  </header>
+
+  <main class="errpage">
+    <h1>{{ .Code }} · {{ .Title }}</h1>
+    <p>{{ .Msg }}</p>
+    {{ if .Detail }}<pre class="detail">{{ .Detail }}</pre>{{ end }}
+    <p><a href="/">← back to run list</a></p>
+  </main>
+</body>
+</html>{{ end }}

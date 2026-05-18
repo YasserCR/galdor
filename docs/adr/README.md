@@ -15,6 +15,7 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-007](ADR-007-agent-helpers.md) | Agent helpers (`pkg/agent`) | Accepted |
 | [ADR-008](ADR-008-observability-instrumentation.md) | Observability instrumentation | Accepted |
 | [ADR-009](ADR-009-sqlite-span-store-and-scry-cli.md) | SQLite span store and `galdor scry` CLI | Accepted |
+| [ADR-010](ADR-010-web-ui-architecture.md) | Web UI architecture (`galdor ui`) | Accepted |
 
 ## Conventions
 

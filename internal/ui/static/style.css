@@ -1,0 +1,109 @@
+/* galdor scry — minimal embedded dashboard CSS. No frameworks. */
+
+* { box-sizing: border-box; }
+
+body {
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  margin: 0;
+  background: #0f1115;
+  color: #e6e6e6;
+}
+
+a { color: #8ab4ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.mono, code { font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace; }
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: #16181d;
+  border-bottom: 1px solid #2a2d33;
+}
+.topbar .brand a { color: #f0f0f0; font-weight: 600; letter-spacing: 0.5px; }
+.topbar .links { display: flex; gap: 16px; align-items: center; }
+.topbar .db { color: #888; font-size: 12px; }
+
+main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 16px 0; }
+
+.crumb { margin: 0 0 12px 0; font-size: 12px; }
+.summary { margin: 0 0 18px 0; display: flex; gap: 12px; align-items: center; }
+
+.dim { color: #888; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge.ok  { background: #1b3a26; color: #5be08a; }
+.badge.err { background: #3a1b1f; color: #ff7a85; }
+
+/* Run list table. */
+table.runs {
+  width: 100%;
+  border-collapse: collapse;
+  background: #14161b;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  overflow: hidden;
+}
+table.runs th, table.runs td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #1f2228;
+}
+table.runs th {
+  background: #1a1d23;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #aaa;
+}
+table.runs tr:hover td { background: #1a1d23; }
+table.runs td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.empty { color: #888; padding: 24px; text-align: center; border: 1px dashed #2a2d33; border-radius: 6px; }
+
+/* Span tree. */
+ul.tree { list-style: none; padding-left: 0; margin: 0; }
+ul.tree ul { list-style: none; padding-left: 18px; border-left: 1px dashed #2a2d33; margin: 0; }
+
+li.span { padding: 4px 0; }
+li.span .row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+li.span.err .row { background: #2a1014; }
+li.span .name { color: #d8d8d8; }
+li.span .dur { color: #c0c0c0; font-variant-numeric: tabular-nums; }
+li.span .status { color: #888; }
+li.span.err .status { color: #ff7a85; }
+li.span .extra { color: #8ab4ff; font-size: 12px; }
+li.span .extra b { color: #d6e3ff; font-weight: 600; }
+
+/* Error page. */
+.errpage { text-align: center; padding-top: 64px; }
+.errpage pre.detail {
+  background: #1a1d23;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: left;
+  max-width: 720px;
+  margin: 16px auto;
+  white-space: pre-wrap;
+}
+
+footer { padding: 16px 24px; text-align: center; font-size: 11px; }

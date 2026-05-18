@@ -1,0 +1,51 @@
+{{ define "runs.html" }}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>galdor scry — runs</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/">galdor scry</a></div>
+    <nav class="links">
+      <a href="/api/runs">api</a>
+      <span class="db">{{ if .DBPath }}{{ .DBPath }}{{ end }}</span>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Recent runs</h1>
+    {{ if .Runs }}
+      <table class="runs">
+        <thead>
+          <tr>
+            <th>Run ID</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Spans</th>
+            <th>Errors</th>
+            <th>Started</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Runs }}
+          <tr>
+            <td><a href="/runs/{{ .RunID }}" class="mono">{{ .RunID }}</a></td>
+            <td><span class="badge {{ if .StatusOK }}ok{{ else }}err{{ end }}">{{ .Status }}</span></td>
+            <td class="num">{{ .Duration }}</td>
+            <td class="num">{{ .Spans }}</td>
+            <td class="num">{{ .Errors }}</td>
+            <td class="mono dim">{{ .Started }}</td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    {{ else }}
+      <p class="empty">No runs recorded yet. Point an OTel exporter at this store and try again.</p>
+    {{ end }}
+  </main>
+
+  <footer><span class="dim">showing up to {{ .Limit }} runs · galdor scry web UI</span></footer>
+</body>
+</html>{{ end }}

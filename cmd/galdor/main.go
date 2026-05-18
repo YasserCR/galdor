@@ -40,6 +40,8 @@ func main() {
 		usage(os.Stdout)
 	case "scry":
 		os.Exit(scry(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
+	case "ui":
+		os.Exit(runUI(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
 	case
 		"cast",
 		"weave",
@@ -49,7 +51,6 @@ func main() {
 		"recast",
 		"forge",
 		"serve",
-		"ui",
 		"mcp":
 		_, _ = fmt.Fprintf(os.Stderr, "galdor %s: not yet implemented (Phase 0)\n", os.Args[1])
 		os.Exit(64)
@@ -76,7 +77,7 @@ Commands:
   recast     Replay a run from a checkpoint
   forge      Bootstrap a new project
   serve      Run an agent as a service
-  ui         Open the observability UI
+  ui         Open the embedded observability dashboard (HTTP)
   mcp        Run an MCP client or server
   version    Print version information
   help       Show this help

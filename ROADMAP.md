@@ -66,12 +66,15 @@ Authoritative source for scope per phase: [`docs/PLAN.md`](docs/PLAN.md) §8.
 
 **Outcome:** First-class agent debugging from the CLI.
 
-## Phase 5 — Web UI
+## Phase 5 — Web UI *(in progress)*
 
-- Embedded HTTP server
-- Run list, span tree, input/output diff
-- Live graph visualization
-- All assets embedded into the binary
+- [x] Embedded HTTP server (`galdor ui`, loopback by default)
+- [x] Run list page + per-run span tree (server-rendered HTML)
+- [x] JSON API mirror at `/api/runs` and `/api/runs/{id}/spans`
+- [x] CSS + templates embedded via `embed.FS` — no external assets
+- [ ] Input/output diff on provider spans (Session B)
+- [ ] Graph visualization (Session B)
+- [ ] Live updates via SSE (Session C)
 
 **Outcome:** Self-hosted "Langsmith-local" working.
 
