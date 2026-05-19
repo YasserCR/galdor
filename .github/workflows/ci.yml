@@ -20,6 +20,15 @@ defaults:
 env:
   # Linted/tested modules. Whitespace-separated module roots, relative to repo root.
   GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai memory/sqlite memory/pgvector memory/qdrant"
+  # Auto-download a toolchain matching go.mod when the runner's cached
+  # Go is older than what we require. The govulncheck-driven 1.25.10
+  # floor is enforced by go.mod itself; this env lets the build pull
+  # the patched toolchain without manual setup-go pinning.
+  GOTOOLCHAIN: auto
+  # The action runner inherits its Node version from setup-go; the
+  # FORCE flag tells the new actions to use Node 24 even on runners
+  # that still default to Node 20.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   test:
@@ -28,7 +37,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ['1.25.x']
+        go: ['1.25']
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -41,7 +50,7 @@ jobs:
           cache: true
 
       - name: Verify go.mod is tidy (each module)
-        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25.x'
+        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25'
         run: |
           for mod in $GALDOR_MODULES; do
             echo "::group::tidy $mod"
@@ -64,7 +73,7 @@ jobs:
         run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
       - name: Upload coverage
-        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25.x'
+        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25'
         uses: actions/upload-artifact@v5
         with:
           name: coverage
@@ -84,7 +93,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.x'
+          go-version: '1.25'
           cache: true
 
       - name: golangci-lint (${{ matrix.module }})
@@ -108,7 +117,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.x'
+          go-version: '1.25'
           cache: true
 
       - name: Install govulncheck
@@ -133,7 +142,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.x'
+          go-version: '1.25'
           cache: true
 
       - name: Install gosec

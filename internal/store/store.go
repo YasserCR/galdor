@@ -272,7 +272,9 @@ func (s *Store) SpansForRun(ctx context.Context, runID string) ([]Span, error) {
 		       status_code, status_message, attrs_json, events_json, run_id
 		FROM spans
 		WHERE trace_id = (SELECT trace_id FROM spans WHERE run_id = ? LIMIT 1)
-		ORDER BY start_time_unix_nano ASC`, runID)
+		ORDER BY start_time_unix_nano ASC,
+		         CASE WHEN parent_span_id = '' THEN 0 ELSE 1 END ASC,
+		         end_time_unix_nano DESC`, runID)
 	if err != nil {
 		return nil, fmt.Errorf("store: spans for run: %w", err)
 	}
