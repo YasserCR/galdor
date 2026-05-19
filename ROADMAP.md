@@ -138,7 +138,11 @@ Hardening (production polish):
 
 Then:
 
-- [ ] Production examples (customer support multi-agent, MCP server over internal DB, approval-gated agent, cost-tracked agent)
+- Complete integration examples (each in `examples/integration-*` with its own README):
+  - [x] `integration-support-bot` — Supervisor + 3 specialist ReAct sub-agents with separate tool registries (billing / technical / general). Scripted Provider runs it offline; swap for Anthropic/OpenAI is a one-line change.
+  - [x] `integration-approval-gate` — `InterruptBefore` + `MemoryCheckpointer` + `Resume` with `OverrideState`. Three scenarios: low-risk auto-approve, high-risk dual signoff, over-cap rejection.
+  - [ ] `integration-mcp-server` — expose a galdor agent over MCP for Claude Desktop (Session B)
+  - [ ] `integration-cost-tracked` — token-budget enforcement via hooks (Session B)
 - [ ] Full docs (quickstart, conceptual guides per package, pattern recipes, migration guides, ops guide)
 - [ ] Benchmarks (`go test -bench`: runtime overhead, span recording, SQLite throughput, memory retrieval, concurrent tool dispatch)
 - [ ] Security audit (third-party or self review)
