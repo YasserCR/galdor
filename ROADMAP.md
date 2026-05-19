@@ -144,7 +144,7 @@ Then:
   - [x] `integration-mcp-server` — wraps a `tool.Registry` as an MCP server over stdio; four tools (time / math + custom lookup_doc / open_ticket); README ships the Claude Desktop config snippet.
   - [x] `integration-cost-tracked` — `BudgetProvider` middleware that wraps any provider with atomic token accounting, per-model pricing table, two-point check (pre-call refuse + post-call fail-on-overshoot).
 - [ ] Full docs (quickstart, conceptual guides per package, pattern recipes, migration guides, ops guide)
-- [ ] Benchmarks (`go test -bench`: runtime overhead, span recording, SQLite throughput, memory retrieval, concurrent tool dispatch)
+- [x] Benchmarks — five hot paths covered (`pkg/graph` runtime, `pkg/observability` span recording, `internal/store` throughput, `pkg/memory` retrieval, `pkg/tool` dispatch). Results + sizing guidance in [`docs/benchmarks.md`](docs/benchmarks.md). Headline: galdor's own overhead is 3-5 orders of magnitude smaller than a typical LLM call.
 - [ ] Security audit (third-party or self review)
 - [ ] Public launch (HN, r/golang, GopherCon CFP)
 

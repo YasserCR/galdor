@@ -382,6 +382,7 @@ galdor scry replay     --db ./traces.db <run-id> [-o fixture.json]
 
 * [`ARCHITECTURE.md`](ARCHITECTURE.md) — module map and design invariants
 * [`ROADMAP.md`](ROADMAP.md) — phase-by-phase delivery tracker
+* [`docs/benchmarks.md`](docs/benchmarks.md) — runtime overhead, throughput numbers, sizing guidance
 * [`GOVERNANCE.md`](GOVERNANCE.md) — how decisions get made
 * [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to send patches
 * [`docs/adr/`](docs/adr/) — architectural decision records
