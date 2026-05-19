@@ -35,6 +35,8 @@ func scry(ctx context.Context, args []string, w io.Writer, errW io.Writer) int {
 		return scryStats(ctx, rest, w, errW)
 	case "tail":
 		return scryTail(ctx, rest, w, errW)
+	case "replay":
+		return scryReplay(ctx, rest, w, errW)
 	case "-h", "--help", "help":
 		_, _ = fmt.Fprintln(w, scryUsage)
 		return 0
@@ -50,14 +52,17 @@ Usage:
   galdor scry list  [--db PATH] [--limit N] [--format text|json]
   galdor scry show  <run-id> [--db PATH] [--format tree|json]
   galdor scry stats [--db PATH] [--by overall|provider|model] [--format text|json]
-  galdor scry tail  [--db PATH] [--interval DURATION] [--format text|json]
+  galdor scry tail   [--db PATH] [--interval DURATION] [--format text|json]
+  galdor scry replay <run-id> [--db PATH] [-o FILE] [--note TEXT]
 
   --db       Path to the SQLite span store. Falls back to $GALDOR_DB
              and then to ~/.galdor/traces.db.
   --limit    Maximum number of runs to list (default 20).
   --format   Output format. See per-command list above.
   --by       Stats grouping: overall, provider, or model.
-  --interval Tail poll interval (default 1s).`
+  --interval Tail poll interval (default 1s).
+  -o FILE    Write the recording to a JSON fixture file.
+  --note     Free-form note saved on the fixture.`
 
 // scryList implements `galdor scry list`.
 func scryList(ctx context.Context, args []string, w io.Writer, errW io.Writer) int {

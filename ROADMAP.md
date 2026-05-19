@@ -116,11 +116,12 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 **Outcome:** Inline regression testing for prompts and agents.
 
-## Phase 9 — Replay + Time Travel
+## Phase 9 — Replay + Time Travel *(in progress)*
 
-- Replay engine
-- Provider mocks for deterministic tests
-- Time-travel in the UI
+- [x] Replay engine — `pkg/replay` (strict + lenient matching, prompt fingerprinting, fixture JSON round-trip, deep-copies responses)
+- [x] Provider mocks for deterministic tests — `replay.Provider` implements `provider.Provider`, plugs straight into `agent.Config.Tools` / any caller
+- [x] CLI: `galdor scry replay <run-id>` — inspects + exports recordings, refuses with a clear message when content was not captured
+- [ ] Time-travel in the UI — Session B (step-by-step run inspection, "rewind to checkpoint" view)
 
 **Outcome:** Reproducible debugging — the feature nobody in Go has done well yet.
 
