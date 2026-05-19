@@ -9,6 +9,8 @@
   <header class="topbar">
     <div class="brand"><a href="/">galdor scry</a></div>
     <nav class="links">
+      <a href="/runs/{{ .RunID }}/steps">steps view</a>
+      <a href="/graph">graph</a>
       <a href="/api/runs/{{ .RunID }}/spans">api</a>
       <span class="db">{{ if .DBPath }}{{ .DBPath }}{{ end }}</span>
     </nav>

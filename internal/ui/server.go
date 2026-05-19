@@ -106,6 +106,7 @@ func (s *Server) registerRoutes() {
 	// `{$}` anchors the path so "/" doesn't swallow everything.
 	s.mux.HandleFunc("GET /{$}", s.handleRoot)
 	s.mux.HandleFunc("GET /runs/{runID}", s.handleRun)
+	s.mux.HandleFunc("GET /runs/{runID}/steps", s.handleRunSteps)
 	s.mux.HandleFunc("GET /runs/{runID}/spans/{spanID}", s.handleSpan)
 	s.mux.HandleFunc("GET /api/runs", s.handleAPIRuns)
 	s.mux.HandleFunc("GET /api/runs/{runID}/spans", s.handleAPIRunSpans)
