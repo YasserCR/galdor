@@ -108,10 +108,11 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 ## Phase 8 — Eval Framework
 
-- LLM-as-judge primitives
-- Custom Go scorers
-- Versioned datasets
-- CI integration with exit codes
+- [x] LLM-as-judge primitives — `eval.LLMJudge` (provider-agnostic, configurable rubric, tolerant integer parsing, threshold-based pass)
+- [x] Custom Go scorers — `eval.ScorerFunc` adapter + built-ins (`ExactMatch`, `Contains`, `Regex`)
+- [x] Versioned datasets — `eval.Dataset{Name, Version, Cases}` with JSON loader/saver, dup-ID validation
+- [x] CI integration with exit codes — `eval.RunAndExit`, `Report.Meets(threshold)`, parallel runner with worker pool
+- [x] `examples/eval-suite` — end-to-end offline demo using a scripted Subject + scripted LLM judge
 
 **Outcome:** Inline regression testing for prompts and agents.
 
