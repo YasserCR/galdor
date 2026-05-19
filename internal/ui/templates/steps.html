@@ -5,27 +5,40 @@
   <title>galdor scry — run {{ .RunID }} steps</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
-    .step-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; background: #fff; }
+    /* Matches the dark theme used by the rest of the dashboard
+       (style.css sets body { background:#0f1115; color:#e6e6e6 }).
+       Cards live a touch lighter than the page background so they
+       read as elevated surfaces, never as light cards on dark. */
+    .step-card { border: 1px solid #2a2d33; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; background: #14161b; }
     .step-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
-    .step-idx { font-weight: 700; font-size: 18px; color: #0f172a; }
-    .step-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #334155; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; }
-    .step-meta { color: #64748b; font-size: 12px; margin-left: auto; }
-    .step-section { margin-top: 10px; }
-    .step-section h4 { margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; }
-    .turn { border-left: 3px solid #cbd5e1; padding: 6px 10px; margin: 4px 0; background: #f8fafc; border-radius: 0 4px 4px 0; font-size: 13px; }
-    .turn-user    { border-left-color: #2563eb; }
-    .turn-assistant { border-left-color: #16a34a; }
-    .turn-tool    { border-left-color: #d97706; }
-    .turn-system  { border-left-color: #94a3b8; }
-    .turn-role { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #475569; margin-right: 8px; }
-    .turn-text { white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
-    .tool-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 6px 8px; background: #fff7ed; border-radius: 4px; margin: 4px 0; font-size: 12px; }
-    .tool-row .tool-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
-    .replay-hint { background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+    .step-idx { font-weight: 700; font-size: 18px; color: #f0f0f0; }
+    .step-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #d8d8d8; background: #1a1d23; padding: 2px 8px; border-radius: 4px; border: 1px solid #2a2d33; }
+    .step-meta { color: #888; font-size: 12px; margin-left: auto; }
+    .step-meta a { color: #8ab4ff; }
+    .step-section { margin-top: 12px; }
+    .step-section h4 { margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; font-weight: 600; }
+
+    .turn { border-left: 3px solid #3a3d44; padding: 8px 12px; margin: 6px 0; background: #1a1d23; border-radius: 0 4px 4px 0; font-size: 13px; }
+    .turn-user      { border-left-color: #4ea1ff; }
+    .turn-assistant { border-left-color: #5be08a; }
+    .turn-tool      { border-left-color: #f5a623; background: #1f1d18; }
+    .turn-system    { border-left-color: #888; }
+    .turn-role { display: inline-block; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #c7c7c7; margin-right: 10px; padding: 1px 6px; background: #2a2d33; border-radius: 3px; vertical-align: top; }
+    .turn-text { display: inline-block; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: #e6e6e6; max-width: calc(100% - 90px); vertical-align: top; }
+
+    .tool-row { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 6px 10px; background: #1f1d18; border: 1px solid #3a352a; border-radius: 4px; margin: 4px 0; font-size: 12px; color: #d8d8d8; }
+    .tool-row .tool-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; color: #f5a623; }
+    .tool-row a { color: #8ab4ff; }
+
+    .replay-hint { padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; border: 1px solid; }
+    .replay-hint code { background: #0f1115; padding: 2px 6px; border-radius: 3px; border: 1px solid #2a2d33; color: #e6e6e6; }
+
     .toolbar { display: flex; gap: 12px; align-items: baseline; margin-bottom: 16px; }
-    .toolbar a { color: #2563eb; text-decoration: none; font-size: 13px; }
+    .toolbar h1 { color: #f0f0f0; }
+    .toolbar a { color: #8ab4ff; text-decoration: none; font-size: 13px; }
     .toolbar a:hover { text-decoration: underline; }
-    .tokens { color: #64748b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+
+    .tokens { color: #888; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -46,13 +59,13 @@
     </div>
 
     {{ if .ReplayHint }}
-      <div class="replay-hint">
+      <div class="replay-hint" style="background:#2a1d10; border-color:#5c3d1f; color:#f5a623;">
         <strong>Heads up.</strong> {{ .ReplayHint }}
       </div>
     {{ else }}
-      <div class="replay-hint" style="background:#dcfce7; border-color:#86efac; color:#166534;">
+      <div class="replay-hint" style="background:#1b3a26; border-color:#2a5b3a; color:#5be08a;">
         <strong>Replayable.</strong> This run has captured prompts and completions. From the terminal:
-        <code style="background:#f0fdf4; padding:2px 6px; border-radius:3px;">galdor scry replay {{ .RunID }} -o fixture.json</code>
+        <code>galdor scry replay --db &lt;path&gt; {{ .RunID }} -o fixture.json</code>
       </div>
     {{ end }}
 
