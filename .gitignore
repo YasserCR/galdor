@@ -6,6 +6,15 @@
 /bin/
 /dist/
 /galdor
+# Stray binaries produced by `go build .` inside an example dir.
+/integration-*
+/eval-*
+/memory-*
+/graph-*
+/tools-*
+/observability-*
+/provider-*
+/scry-*
 
 # Test
 *.test
