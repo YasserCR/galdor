@@ -380,13 +380,20 @@ galdor scry replay     --db ./traces.db <run-id> [-o fixture.json]
 
 ## Documentation
 
-* [`ARCHITECTURE.md`](ARCHITECTURE.md) — module map and design invariants
-* [`ROADMAP.md`](ROADMAP.md) — phase-by-phase delivery tracker
+Start at [`docs/`](docs/) — the index covers quickstart, one conceptual guide per package, applied patterns, migration guides from langchaingo / Eino / Genkit Go / LangChain Python, and the ops guide.
+
+* [`docs/quickstart.md`](docs/quickstart.md) — install → first ReAct agent → first tool → first traced run, in 15 minutes
+* [`docs/concepts/`](docs/concepts/) — one page per package (provider, schema, tool, graph, agent, memory, observability, council, mcp, a2a, eval, replay, spellbook)
+* [`docs/patterns/`](docs/patterns/) — RAG, multi-agent, human-in-the-loop, cost tracking, MCP server, replay-driven tests
+* [`docs/migration/`](docs/migration/) — coming from another framework? side-by-side translations
+* [`docs/ops.md`](docs/ops.md) — deployment shapes, trace store retention, exporting to your OTel pipeline
 * [`docs/benchmarks.md`](docs/benchmarks.md) — runtime overhead, throughput numbers, sizing guidance
 * [`docs/security.md`](docs/security.md) — automated tooling, accepted findings, OWASP LLM Top 10 self-assessment
+* [`docs/adr/`](docs/adr/) — architectural decision records
+* [`ARCHITECTURE.md`](ARCHITECTURE.md) — module map and design invariants
+* [`ROADMAP.md`](ROADMAP.md) — phase-by-phase delivery tracker
 * [`GOVERNANCE.md`](GOVERNANCE.md) — how decisions get made
 * [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to send patches
-* [`docs/adr/`](docs/adr/) — architectural decision records
 * [godoc reference](https://pkg.go.dev/github.com/YasserCR/galdor) — API surface
 
 ---
