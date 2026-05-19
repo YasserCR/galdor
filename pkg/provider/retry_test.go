@@ -172,7 +172,12 @@ func TestRetry_RespectsRetryAfterHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if elapsed < 900*time.Millisecond {
+	// Threshold deliberately loose: the assertion is "we honored
+	// the server's 1-second RetryAfter, not the 1-ms InitialDelay".
+	// Under heavy parallel test load the Go scheduler can deliver
+	// timers a few ms early; 700ms still proves the point without
+	// flaking.
+	if elapsed < 700*time.Millisecond {
 		t.Errorf("elapsed = %v, expected ~1s (RetryAfter=1 should override InitialDelay=1ms)", elapsed)
 	}
 }

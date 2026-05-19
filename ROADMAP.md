@@ -133,8 +133,8 @@ Hardening (production polish):
 - [x] Per-run and per-node timeouts in `graph.RunOptions{Timeout, NodeTimeout}` — parent ctx still wins when it cancels first
 - [x] Panic recovery in node bodies (`graph.PanicError` + `safeCallNode`), in hooks (each callback wrapped individually — instrumentation bugs never fail the run), and in `tool.ExecuteJSON` (`tool.PanicError`). Both packages expose an `ErrPanic` sentinel + `errors.As` shape.
 - [x] Structured logging via `slog` — `RunOptions.Logger` receives operational events (panics recovered, hook panics suppressed). nil Logger is a silent no-op.
-- [ ] Goroutine leak audit + `go.uber.org/goleak` in CI (Session C)
-- [ ] Stricter boundary validation (model exists in provider, registry uniqueness) (Session C)
+- [x] Goroutine leak audit — `go.uber.org/goleak.VerifyTestMain` wired into 5 packages with concurrent code (`pkg/graph`, `pkg/mcp`, `pkg/eval`, `pkg/tool`, `pkg/a2a`). No leaks found; gate prevents regressions.
+- [x] Stricter boundary validation — capability-aware `agent.Config.validate` (Tools on non-tooling provider, `ForceToolUse` without Tools, negative `MaxIterations`) + reusable `provider.Capabilities.ValidateRequest` for any caller wanting an early sanity check.
 
 Then:
 

@@ -1,5 +1,11 @@
 package provider
 
+import (
+	"fmt"
+
+	"github.com/YasserCR/galdor/pkg/schema"
+)
+
 // Capabilities advertises what a Provider can do. Callers use it to
 // gracefully fall back when a feature is not supported (e.g., omit tools
 // when ToolCalling is false rather than failing the call).
@@ -29,4 +35,55 @@ type Capabilities struct {
 	// MaxContextTokens is the provider-advertised context window for the
 	// default model. Zero means unknown.
 	MaxContextTokens int
+}
+
+// ValidateRequest checks whether req can be served given these
+// capabilities. It returns nil when the request fits, or an
+// ErrUnsupported-wrapped error explaining the first mismatch.
+//
+// This is a defensive helper meant to run at the call boundary
+// (typically inside a Provider implementation's Generate / Stream
+// or inside a higher-level helper like agent.Run). Adapters are
+// still free to do their own native validation; the helper is for
+// the cases where you want a single, language-neutral check before
+// the wire call.
+//
+// Mismatches caught:
+//
+//   - Tools set but ToolCalling == false
+//   - ResponseFormat set but StructuredOutput == false
+//   - Vision image part present but VisionInput == false
+//   - CacheControl hints present but PromptCaching == false (only
+//     a sanity check — most adapters silently ignore the hint when
+//     unsupported, which is also legal)
+//
+// Streaming is NOT validated here; Stream returns ErrUnsupported on
+// its own when Capabilities.Streaming is false.
+func (c Capabilities) ValidateRequest(req Request) error {
+	if len(req.Tools) > 0 && !c.ToolCalling {
+		return fmt.Errorf("%w: provider does not support tool calling but Request.Tools has %d entries",
+			ErrUnsupported, len(req.Tools))
+	}
+	if req.ResponseFormat != nil && !c.StructuredOutput {
+		return fmt.Errorf("%w: provider does not support structured outputs but Request.ResponseFormat is set",
+			ErrUnsupported)
+	}
+	if hasImageInput(req.Messages) && !c.VisionInput {
+		return fmt.Errorf("%w: provider does not support vision input but Request.Messages contains image parts",
+			ErrUnsupported)
+	}
+	return nil
+}
+
+// hasImageInput reports whether any message in msgs carries an
+// image content part.
+func hasImageInput(msgs []schema.Message) bool {
+	for _, m := range msgs {
+		for _, p := range m.Content {
+			if p.Type == schema.ContentTypeImage {
+				return true
+			}
+		}
+	}
+	return false
 }

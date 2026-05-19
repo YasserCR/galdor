@@ -74,6 +74,52 @@ func TestConfig_ValidateRejectsMissing(t *testing.T) {
 	}
 }
 
+// scriptedProviderNoTools mirrors scriptedProvider but advertises
+// ToolCalling=false, so the capability-aware validator can catch a
+// mismatched Config.Tools at construction.
+type scriptedProviderNoTools struct{ scriptedProvider }
+
+func (*scriptedProviderNoTools) Capabilities() provider.Capabilities {
+	return provider.Capabilities{ToolCalling: false}
+}
+
+func TestConfig_ValidateRejectsToolsOnNonToolingProvider(t *testing.T) {
+	t.Parallel()
+	reg := toolsRegistry(t)
+	_, err := NewReAct(Config{
+		Provider: &scriptedProviderNoTools{},
+		Model:    "x",
+		Tools:    reg,
+	})
+	if err == nil {
+		t.Fatal("expected error when Tools is set on a non-tooling provider")
+	}
+}
+
+func TestConfig_ValidateRejectsForceToolUseWithoutTools(t *testing.T) {
+	t.Parallel()
+	_, err := NewReAct(Config{
+		Provider:     &scriptedProvider{},
+		Model:        "x",
+		ForceToolUse: true,
+	})
+	if err == nil {
+		t.Fatal("expected error: ForceToolUse=true without Tools is nonsensical")
+	}
+}
+
+func TestConfig_ValidateRejectsNegativeMaxIterations(t *testing.T) {
+	t.Parallel()
+	_, err := NewReAct(Config{
+		Provider:      &scriptedProvider{},
+		Model:         "x",
+		MaxIterations: -1,
+	})
+	if err == nil {
+		t.Fatal("expected error for negative MaxIterations")
+	}
+}
+
 func TestReAct_ImmediateFinalAnswer(t *testing.T) {
 	t.Parallel()
 	p := &scriptedProvider{Plan: []schema.Message{
@@ -224,8 +270,10 @@ type recordingProvider struct {
 	lastReq provider.Request
 }
 
-func (recordingProvider) Name() string                        { return "rec" }
-func (recordingProvider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
+func (recordingProvider) Name() string { return "rec" }
+func (recordingProvider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{ToolCalling: true}
+}
 func (recordingProvider) Stream(_ context.Context, _ provider.Request) (provider.StreamReader, error) {
 	return nil, provider.ErrUnsupported
 }

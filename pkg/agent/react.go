@@ -72,6 +72,20 @@ func (cfg *Config) validate() error {
 	if cfg.Model == "" {
 		return errors.New("agent: Config.Model is required")
 	}
+	// Capability-aware validation: catch obvious mismatches at
+	// construction instead of waiting for the first provider call
+	// to fail with a less informative error.
+	caps := cfg.Provider.Capabilities()
+	if cfg.Tools != nil && !caps.ToolCalling {
+		return fmt.Errorf("agent: provider %q does not support tool calling (Capabilities.ToolCalling=false) but Config.Tools is set",
+			cfg.Provider.Name())
+	}
+	if cfg.ForceToolUse && cfg.Tools == nil {
+		return errors.New("agent: Config.ForceToolUse=true requires Config.Tools to be set")
+	}
+	if cfg.MaxIterations < 0 {
+		return fmt.Errorf("agent: Config.MaxIterations must be >= 0 (got %d); use 0 for the default", cfg.MaxIterations)
+	}
 	return nil
 }
 
