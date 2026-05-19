@@ -1,6 +1,9 @@
 package graph
 
-import "context"
+import (
+	"context"
+	"log/slog"
+)
 
 // Hooks are the lifecycle callbacks the runtime invokes around each
 // run and each node. They are the seam pkg/observability uses to
@@ -43,33 +46,69 @@ func (h Hooks[S]) IsZero() bool {
 }
 
 // runBefore invokes BeforeRun (if any) and returns the (possibly
-// updated) ctx.
-func (h Hooks[S]) runBefore(ctx context.Context, runID string, initial S) context.Context {
-	if h.BeforeRun != nil {
-		if next := h.BeforeRun(ctx, runID, initial); next != nil {
-			return next
-		}
+// updated) ctx. Panics from inside the hook are recovered: the
+// runtime keeps the original ctx, logs to logger (when non-nil) and
+// continues. The principle is that broken instrumentation must not
+// break the agent.
+func (h Hooks[S]) runBefore(ctx context.Context, logger *slog.Logger, runID string, initial S) (out context.Context) {
+	out = ctx
+	if h.BeforeRun == nil {
+		return
 	}
-	return ctx
+	defer recoverHook(logger, "BeforeRun", runID, "")
+	if next := h.BeforeRun(ctx, runID, initial); next != nil {
+		out = next
+	}
+	return
 }
 
-func (h Hooks[S]) runAfter(ctx context.Context, runID string, final S, err error) {
-	if h.AfterRun != nil {
-		h.AfterRun(ctx, runID, final, err)
+func (h Hooks[S]) runAfter(ctx context.Context, logger *slog.Logger, runID string, final S, err error) {
+	if h.AfterRun == nil {
+		return
 	}
+	defer recoverHook(logger, "AfterRun", runID, "")
+	h.AfterRun(ctx, runID, final, err)
 }
 
-func (h Hooks[S]) nodeBefore(ctx context.Context, runID, node string, step int, state S) context.Context {
-	if h.BeforeNode != nil {
-		if next := h.BeforeNode(ctx, runID, node, step, state); next != nil {
-			return next
-		}
+func (h Hooks[S]) nodeBefore(ctx context.Context, logger *slog.Logger, runID, node string, step int, state S) (out context.Context) {
+	out = ctx
+	if h.BeforeNode == nil {
+		return
 	}
-	return ctx
+	defer recoverHook(logger, "BeforeNode", runID, node)
+	if next := h.BeforeNode(ctx, runID, node, step, state); next != nil {
+		out = next
+	}
+	return
 }
 
-func (h Hooks[S]) nodeAfter(ctx context.Context, runID, node string, step int, state S, err error) {
-	if h.AfterNode != nil {
-		h.AfterNode(ctx, runID, node, step, state, err)
+func (h Hooks[S]) nodeAfter(ctx context.Context, logger *slog.Logger, runID, node string, step int, state S, err error) {
+	if h.AfterNode == nil {
+		return
 	}
+	defer recoverHook(logger, "AfterNode", runID, node)
+	h.AfterNode(ctx, runID, node, step, state, err)
+}
+
+// recoverHook turns a panic inside a hook callback into a log
+// entry. Used as `defer recoverHook(...)` inside each wrapper.
+// logger == nil silently swallows the panic.
+func recoverHook(logger *slog.Logger, hookName, runID, node string) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	if logger == nil {
+		return
+	}
+	attrs := []any{
+		slog.String("hook", hookName),
+		slog.String("run_id", runID),
+		slog.Any("panic_value", r),
+		slog.String("stack", string(captureStack())),
+	}
+	if node != "" {
+		attrs = append(attrs, slog.String("node", node))
+	}
+	logger.Warn("graph: recovered panic in hook", attrs...)
 }

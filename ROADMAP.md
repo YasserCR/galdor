@@ -131,8 +131,8 @@ Hardening (production polish):
 
 - [x] Retry + exponential backoff per provider — `provider.Retry` wrapper (respects `APIError.RetryAfter`, classifies via `IsRetryable`, never retries auth/invalid-request/unsupported)
 - [x] Per-run and per-node timeouts in `graph.RunOptions{Timeout, NodeTimeout}` — parent ctx still wins when it cancels first
-- [ ] Panic recovery in hooks + node bodies (Session B)
-- [ ] Structured logging via slog with run/node context (Session B)
+- [x] Panic recovery in node bodies (`graph.PanicError` + `safeCallNode`), in hooks (each callback wrapped individually — instrumentation bugs never fail the run), and in `tool.ExecuteJSON` (`tool.PanicError`). Both packages expose an `ErrPanic` sentinel + `errors.As` shape.
+- [x] Structured logging via `slog` — `RunOptions.Logger` receives operational events (panics recovered, hook panics suppressed). nil Logger is a silent no-op.
 - [ ] Goroutine leak audit + `go.uber.org/goleak` in CI (Session C)
 - [ ] Stricter boundary validation (model exists in provider, registry uniqueness) (Session C)
 

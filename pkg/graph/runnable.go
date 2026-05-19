@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -68,6 +69,14 @@ type RunOptions[S any] struct {
 	// the run terminates with the node's error regardless; survival
 	// requires the caller to retry.
 	NodeTimeout time.Duration
+
+	// Logger, when non-nil, receives operational events the
+	// observability layer doesn't capture — recovered panics, hook
+	// failures, deadline fires. These are warnings about runtime
+	// invariants, not normal trace data. When nil the runtime
+	// silently swallows the same events; nothing in the loop's
+	// happy path emits log lines.
+	Logger *slog.Logger
 }
 
 // Compile validates the graph and returns a Runnable.
@@ -306,9 +315,9 @@ func (r *Runnable[S]) runLoop(
 
 	// BeforeRun may install spans / loggers on the context;
 	// AfterRun observes the terminal state and error.
-	ctx = opts.Hooks.runBefore(ctx, opts.RunID, initial)
+	ctx = opts.Hooks.runBefore(ctx, opts.Logger, opts.RunID, initial)
 	defer func() {
-		opts.Hooks.runAfter(ctx, opts.RunID, state, retErr)
+		opts.Hooks.runAfter(ctx, opts.Logger, opts.RunID, state, retErr)
 	}()
 
 	next := startNode
@@ -363,7 +372,7 @@ func (r *Runnable[S]) runLoop(
 		// (typically: one carrying a freshly-started span) — that
 		// ctx is used for the node call AND for AfterNode so the
 		// hook implementation has a single place to put its state.
-		nodeCtx := opts.Hooks.nodeBefore(ctx, opts.RunID, next, step+1, state)
+		nodeCtx := opts.Hooks.nodeBefore(ctx, opts.Logger, opts.RunID, next, step+1, state)
 		// Per-node timeout, applied AFTER the BeforeNode hook so
 		// the span the hook created isn't tainted by the deadline
 		// (it's the node's work that's being bounded, not the
@@ -373,9 +382,10 @@ func (r *Runnable[S]) runLoop(
 			nodeCtx, cancel = context.WithTimeout(nodeCtx, opts.NodeTimeout)
 			defer cancel() //nolint:gocritic // intentionally fires at runLoop return; deadlines are short
 		}
-		out, nodeErr := node(nodeCtx, state)
-		opts.Hooks.nodeAfter(nodeCtx, opts.RunID, next, step+1, out, nodeErr)
+		out, nodeErr := safeCallNode(node, nodeCtx, state)
+		opts.Hooks.nodeAfter(nodeCtx, opts.Logger, opts.RunID, next, step+1, out, nodeErr)
 		if nodeErr != nil {
+			r.logPanicIfAny(opts, next, step+1, nodeErr)
 			return state, fmt.Errorf("node %q: %w", next, nodeErr)
 		}
 		state = out
@@ -386,6 +396,26 @@ func (r *Runnable[S]) runLoop(
 		}
 		next = nxt
 	}
+}
+
+// logPanicIfAny logs a recovered panic at warn level on the
+// configured Logger. No-op when Logger is nil or when err is not a
+// PanicError.
+func (r *Runnable[S]) logPanicIfAny(opts RunOptions[S], node string, step int, err error) {
+	if opts.Logger == nil || err == nil {
+		return
+	}
+	var pe *PanicError
+	if !errors.As(err, &pe) {
+		return
+	}
+	opts.Logger.Warn("graph: recovered panic in node",
+		slog.String("run_id", opts.RunID),
+		slog.String("node", node),
+		slog.Int("step", step),
+		slog.Any("panic_value", pe.Value),
+		slog.String("stack", string(pe.Stack)),
+	)
 }
 
 // saveCheckpoint forwards a checkpoint to the configured Checkpointer

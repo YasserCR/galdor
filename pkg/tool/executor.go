@@ -84,7 +84,10 @@ func ExecuteCalls(ctx context.Context, reg *Registry, calls []schema.ToolCall) [
 }
 
 // executeOne resolves the tool by name and runs it. A canceled context
-// short-circuits before the lookup.
+// short-circuits before the lookup. A panic inside the tool body is
+// recovered and surfaced as a regular error so a buggy tool can't
+// crash the host process — the model still sees a failed tool result
+// it can react to.
 func executeOne(ctx context.Context, reg *Registry, c schema.ToolCall) Result {
 	res := Result{ID: c.ID, Name: c.Name}
 	if err := ctx.Err(); err != nil {
@@ -96,11 +99,23 @@ func executeOne(ctx context.Context, reg *Registry, c schema.ToolCall) Result {
 		res.Err = fmt.Errorf("%w: %q", ErrUnknownTool, c.Name)
 		return res
 	}
-	output, err := t.ExecuteJSON(ctx, c.Arguments)
+	output, err := safeExecute(ctx, t, c.Arguments)
 	if err != nil {
 		res.Err = err
 		return res
 	}
 	res.Output = output
 	return res
+}
+
+// safeExecute wraps ExecuteJSON with a recover() guard. A panic
+// becomes a *PanicError; callers can errors.As it.
+func safeExecute(ctx context.Context, t AnyTool, args json.RawMessage) (out json.RawMessage, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out = nil
+			err = &PanicError{Tool: t.Name(), Value: r, Stack: captureStack()}
+		}
+	}()
+	return t.ExecuteJSON(ctx, args)
 }
