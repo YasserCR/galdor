@@ -81,13 +81,17 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 **Outcome:** Self-hosted "Langsmith-local" working.
 
-## Phase 6 — Memory + RAG
+## Phase 6 — Memory + RAG *(in progress)*
 
-- Memory interfaces (short-term and long-term)
-- Embedded backend (SQLite + BM25 fallback)
-- `pgvector` adapter
-- `qdrant` adapter
-- Chunking and embedding helpers
+- [x] Memory interfaces (short-term and long-term) — `pkg/memory.Store`, `Embedder`, `Retriever`, `Document`, `Chunk`, `Query`, `Result`
+- [x] Short-term `Window` with message-count and token-budget caps, optional `Summarizer` for evicted turns
+- [x] In-memory `Store` (vector cosine + lexical substring, metadata filtering) for tests and getting-started
+- [x] Chunking helpers (`pkg/memory/chunk`: `FixedSize`, `Recursive`, `Sentence`)
+- [ ] Embedded backend (SQLite + BM25) — Session B
+- [ ] Embedder reference adapter — Session B
+- [ ] End-to-end RAG example — Session B
+- [ ] `memory/pgvector` adapter — Session C
+- [ ] `memory/qdrant` adapter — Session C
 
 **Outcome:** End-to-end RAG without external services.
 
