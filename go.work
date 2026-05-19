@@ -2,6 +2,8 @@ go 1.25.0
 
 use (
 	.
+	./memory/pgvector
+	./memory/qdrant
 	./memory/sqlite
 	./providers/anthropic
 	./providers/bedrock

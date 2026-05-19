@@ -81,7 +81,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 **Outcome:** Self-hosted "Langsmith-local" working.
 
-## Phase 6 — Memory + RAG *(in progress)*
+## Phase 6 — Memory + RAG
 
 - [x] Memory interfaces (short-term and long-term) — `pkg/memory.Store`, `Embedder`, `Retriever`, `Document`, `Chunk`, `Query`, `Result`
 - [x] Short-term `Window` with message-count and token-budget caps, optional `Summarizer` for evicted turns
@@ -90,9 +90,9 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] Embedded backend (SQLite + BM25) — `memory/sqlite` module, FTS5 lexical + brute-force cosine vector, persistent across reopen
 - [x] `HashingEmbedder` (offline, deterministic) + `EmbedderFunc` adapter for wiring real provider embedders
 - [x] End-to-end RAG example (`examples/memory-rag`): chunk → embed → SQLite store → retrieve → scripted answer
-- [ ] Provider-backed embedder adapters (OpenAI, Cohere, Voyage) — follow-up
-- [ ] `memory/pgvector` adapter — Session C
-- [ ] `memory/qdrant` adapter — Session C
+- [x] `memory/pgvector` adapter (pgx/v5, cosine distance via `<=>`, JSONB metadata filtering, opt-in integration tests gated by `GALDOR_PGVECTOR_URL`)
+- [x] `memory/qdrant` adapter (HTTP REST client, idempotent collection bootstrap, opt-in integration tests gated by `GALDOR_QDRANT_URL`)
+- [ ] Provider-backed embedder adapters (OpenAI, Cohere, Voyage) — future session
 
 **Outcome:** End-to-end RAG without external services.
 
