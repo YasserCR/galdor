@@ -54,6 +54,20 @@ type RunOptions[S any] struct {
 	// and each node. They are the seam observability layers use
 	// to emit OpenTelemetry spans, metrics or audit events.
 	Hooks Hooks[S]
+
+	// Timeout, when > 0, caps the total wall time of the run. The
+	// runtime derives a deadline-bound child context at runLoop
+	// entry; nodes that respect ctx (every well-behaved one) abort
+	// when the deadline fires. The run returns context.DeadlineExceeded
+	// wrapped with the elapsed time.
+	Timeout time.Duration
+
+	// NodeTimeout, when > 0, caps the wall time of any single node
+	// call. Each node receives a derived child context with this
+	// deadline. Useful for "kill a stuck node" patterns — though
+	// the run terminates with the node's error regardless; survival
+	// requires the caller to retry.
+	NodeTimeout time.Duration
 }
 
 // Compile validates the graph and returns a Runnable.
@@ -281,6 +295,15 @@ func (r *Runnable[S]) runLoop(
 ) (final S, retErr error) {
 	state := initial
 
+	// Run-level timeout: derive a deadline-bound child context.
+	// Hooks see the bounded context too, so any spans they create
+	// inherit the cancellation when the deadline fires.
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
 	// BeforeRun may install spans / loggers on the context;
 	// AfterRun observes the terminal state and error.
 	ctx = opts.Hooks.runBefore(ctx, opts.RunID, initial)
@@ -341,6 +364,15 @@ func (r *Runnable[S]) runLoop(
 		// ctx is used for the node call AND for AfterNode so the
 		// hook implementation has a single place to put its state.
 		nodeCtx := opts.Hooks.nodeBefore(ctx, opts.RunID, next, step+1, state)
+		// Per-node timeout, applied AFTER the BeforeNode hook so
+		// the span the hook created isn't tainted by the deadline
+		// (it's the node's work that's being bounded, not the
+		// instrumentation).
+		if opts.NodeTimeout > 0 {
+			var cancel context.CancelFunc
+			nodeCtx, cancel = context.WithTimeout(nodeCtx, opts.NodeTimeout)
+			defer cancel() //nolint:gocritic // intentionally fires at runLoop return; deadlines are short
+		}
 		out, nodeErr := node(nodeCtx, state)
 		opts.Hooks.nodeAfter(nodeCtx, opts.RunID, next, step+1, out, nodeErr)
 		if nodeErr != nil {

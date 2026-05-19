@@ -125,11 +125,23 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 **Outcome:** Reproducible debugging — the feature nobody in Go has done well yet.
 
-## Phase 10 — v1.0
+## Phase 10 — v1.0 *(in progress)*
 
-- Hardening, benchmarks, full docs
-- Security audit
-- Production examples
-- Public launch (HN, r/golang, GopherCon CFP)
+Hardening (production polish):
+
+- [x] Retry + exponential backoff per provider — `provider.Retry` wrapper (respects `APIError.RetryAfter`, classifies via `IsRetryable`, never retries auth/invalid-request/unsupported)
+- [x] Per-run and per-node timeouts in `graph.RunOptions{Timeout, NodeTimeout}` — parent ctx still wins when it cancels first
+- [ ] Panic recovery in hooks + node bodies (Session B)
+- [ ] Structured logging via slog with run/node context (Session B)
+- [ ] Goroutine leak audit + `go.uber.org/goleak` in CI (Session C)
+- [ ] Stricter boundary validation (model exists in provider, registry uniqueness) (Session C)
+
+Then:
+
+- [ ] Production examples (customer support multi-agent, MCP server over internal DB, approval-gated agent, cost-tracked agent)
+- [ ] Full docs (quickstart, conceptual guides per package, pattern recipes, migration guides, ops guide)
+- [ ] Benchmarks (`go test -bench`: runtime overhead, span recording, SQLite throughput, memory retrieval, concurrent tool dispatch)
+- [ ] Security audit (third-party or self review)
+- [ ] Public launch (HN, r/golang, GopherCon CFP)
 
 **Total estimate:** ~8 months at a focused pace.
