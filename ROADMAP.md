@@ -4,7 +4,7 @@ Phases are designed so that each one delivers value on its own. If the project p
 
 Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for context and rationale.
 
-## Phase 0 — Foundations *(current)*
+## Phase 0 — Foundations
 
 - [x] Public repo, Apache 2.0 LICENSE
 - [x] OSS metadata (README, CONTRIBUTING, GOVERNANCE, CODE_OF_CONDUCT, NOTICE, DCO.txt)
@@ -12,8 +12,8 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] CI: `go test -race`, `go vet`, `golangci-lint`
 - [x] DCO enforcement workflow
 - [x] ADR-001 with foundational decisions
-- [ ] Branch protection on `main` (manual GitHub setting)
-- [ ] Landing page at `galdor.org`
+- [x] Landing page at `galdor.org` (deployed via Cloudflare Pages)
+- [ ] Branch protection on `main` (deferred — single maintainer for now)
 
 **Outcome:** `go get` works, the module is importable, the repo passes CI clean.
 
@@ -25,7 +25,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] OpenAI adapter — `providers/openai` (also targets Groq, Together, MiniMax, Mistral, ... via `BaseURL`)
 - [x] Google Gemini adapter — `providers/google` (AI Studio surface; Vertex AI via `BaseURL` + custom `HTTPClient`)
 - [x] AWS Bedrock adapter — `providers/bedrock` (Converse API; uses AWS SDK Go v2 for SigV4 and Event Stream framing; **compatibility validation against a live AWS account pending**, see README status)
-- [ ] Tool-calling normalization across providers
+- [x] Tool-calling normalization across providers (`provider.ValidateToolCalls`, documented contract in `pkg/provider/toolcalls.go`)
 - [x] Unit tests with recorded HTTP fixtures (httptest)
 - [x] Opt-in integration tests against the real API (gated by `integration` tag + per-provider env var)
 
@@ -51,7 +51,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] Checkpointer interface + `MemoryCheckpointer` (history-preserving in-process impl)
 - [x] Interrupt / resume via `InterruptBefore` + `Resume` with `OverrideState` for human-in-the-loop edits
 - [x] ReAct helper (`pkg/agent.NewReAct`, `agent.Run` one-shot wrapper) — composes provider + tools + graph
-- [ ] Plan-and-Execute helper (`pkg/agent.NewPlanAndExecute` — follow-up)
+- [x] Plan-and-Execute helper (`pkg/agent.NewPlanAndExecute` — planner → execute → replan loop with JSON-mode prompts, fence-tolerant parser, max-iter cap)
 
 **Outcome:** First real agent. Feature parity with basic LangGraph.
 

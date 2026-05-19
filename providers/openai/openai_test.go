@@ -187,6 +187,9 @@ func TestGenerate_ToolCallsInResponse(t *testing.T) {
 	if string(resp.Message.ToolCalls[0].Arguments) != `{"city":"Quito"}` {
 		t.Errorf("call_1 args = %s", resp.Message.ToolCalls[0].Arguments)
 	}
+	if err := provider.ValidateToolCalls(resp.Message); err != nil {
+		t.Fatalf("ValidateToolCalls: %v", err)
+	}
 }
 
 func TestGenerate_401NormalizedToAuth(t *testing.T) {

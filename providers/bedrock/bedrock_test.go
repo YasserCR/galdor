@@ -130,6 +130,9 @@ func TestGenerate_HappyPath(t *testing.T) {
 	if len(resp.ProviderRaw) == 0 {
 		t.Error("ProviderRaw should be populated (serialized SDK output)")
 	}
+	if resp.Model != "anthropic.claude-3-7-sonnet-20250219-v1:0" {
+		t.Errorf("Model = %q, want it echoed back from the request", resp.Model)
+	}
 }
 
 func TestGenerate_ToolCallsInResponse(t *testing.T) {
@@ -173,6 +176,9 @@ func TestGenerate_ToolCallsInResponse(t *testing.T) {
 	}
 	if resp.StopReason != schema.StopReasonToolUse {
 		t.Errorf("StopReason = %q", resp.StopReason)
+	}
+	if err := provider.ValidateToolCalls(resp.Message); err != nil {
+		t.Fatalf("ValidateToolCalls: %v", err)
 	}
 }
 

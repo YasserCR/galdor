@@ -219,6 +219,79 @@ func TestGenerate_ContextCanceled(t *testing.T) {
 	}
 }
 
+// fixtureGenerateToolUse is a real-shape Anthropic /v1/messages success body
+// where the model invoked two tools in parallel in a single assistant turn.
+const fixtureGenerateToolUse = `{
+  "id": "msg_01TU",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [
+    {"type": "text", "text": "checking..."},
+    {"type": "tool_use", "id": "tu_a", "name": "weather", "input": {"city": "Quito"}},
+    {"type": "tool_use", "id": "tu_b", "name": "time", "input": {}}
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 18, "output_tokens": 11}
+}`
+
+func TestGenerate_ToolUseRoundtrip(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body messageRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Tools) != 2 {
+			t.Errorf("expected 2 tools in request, got %d", len(body.Tools))
+		}
+		if body.ToolChoice == nil {
+			t.Error("ToolChoice must be forwarded when set on the Request")
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, fixtureGenerateToolUse)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	resp, err := p.Generate(context.Background(), provider.Request{
+		Model:    "claude-haiku-4-5",
+		Messages: []schema.Message{schema.UserMessage("weather and time in Quito?")},
+		Tools: []schema.ToolDef{
+			{Name: "weather", Description: "get weather", Schema: []byte(`{"type":"object"}`)},
+			{Name: "time", Description: "get current time", Schema: []byte(`{"type":"object"}`)},
+		},
+		ToolChoice: provider.ToolChoiceAuto,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StopReason != schema.StopReasonToolUse {
+		t.Errorf("StopReason = %q", resp.StopReason)
+	}
+	if got := resp.Message.Text(); got != "checking..." {
+		t.Errorf("Text = %q", got)
+	}
+	if len(resp.Message.ToolCalls) != 2 {
+		t.Fatalf("ToolCalls = %d, want 2 (parallel calls)", len(resp.Message.ToolCalls))
+	}
+	if err := provider.ValidateToolCalls(resp.Message); err != nil {
+		t.Fatalf("ValidateToolCalls: %v", err)
+	}
+	first := resp.Message.ToolCalls[0]
+	if first.ID != "tu_a" || first.Name != "weather" {
+		t.Errorf("first call = %+v", first)
+	}
+	if !strings.Contains(string(first.Arguments), `"Quito"`) {
+		t.Errorf("first Arguments = %s", first.Arguments)
+	}
+	second := resp.Message.ToolCalls[1]
+	if second.ID != "tu_b" || second.Name != "time" {
+		t.Errorf("second call = %+v", second)
+	}
+}
+
 func TestGenerate_RejectsEmptyModel(t *testing.T) {
 	t.Parallel()
 	p, _ := New(Config{APIKey: "x"})

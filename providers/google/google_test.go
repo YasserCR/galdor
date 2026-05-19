@@ -175,6 +175,9 @@ func TestGenerate_ToolCallsInResponse(t *testing.T) {
 	if !strings.Contains(resp.Message.ToolCalls[0].ID, "weather") {
 		t.Errorf("synthetic id should embed name: %q", resp.Message.ToolCalls[0].ID)
 	}
+	if err := provider.ValidateToolCalls(resp.Message); err != nil {
+		t.Fatalf("ValidateToolCalls: %v", err)
+	}
 }
 
 func TestGenerate_401NormalizedToAuth(t *testing.T) {

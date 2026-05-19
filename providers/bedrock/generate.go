@@ -24,5 +24,7 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 	// stable, machine-readable form.
 	raw, _ := json.Marshal(out)
 
-	return responseFromConverse(out, raw), nil
+	resp := responseFromConverse(out, raw)
+	resp.Model = req.Model
+	return resp, nil
 }
