@@ -41,3 +41,19 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 // boolPtr is a small helper for setting AdditionalProperties to a
 // non-nil pointer to false (the canonical "no extra fields" form).
 func boolPtr(b bool) *bool { return &b }
+
+// FromRaw decodes raw JSON Schema bytes into a Schema. Useful when
+// schemas arrive over the wire from an external source (MCP server,
+// remote API) rather than being reflection-derived from a Go type.
+// An empty input returns an empty Schema, matching the JSON Schema
+// convention that `{}` means "no constraint".
+func FromRaw(raw []byte) (*Schema, error) {
+	s := &Schema{}
+	if len(raw) == 0 || string(raw) == "{}" {
+		return s, nil
+	}
+	if err := json.Unmarshal(raw, s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
