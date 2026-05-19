@@ -96,13 +96,13 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 **Outcome:** End-to-end RAG without external services.
 
-## Phase 7 — Multi-Agent + MCP *(in progress)*
+## Phase 7 — Multi-Agent + MCP
 
 - [x] Supervisor pattern — `council.NewSupervisor` (router LLM + worker fns + graph-based routing loop)
 - [x] Swarm pattern — `council.NewSwarm` (per-agent ReAct + synthetic `handoff_to_<name>` tools + shared conversation)
 - [x] MCP client — `pkg/mcp.Client` (initialize + tools/list + tools/call, stdio transport, `Client.AsRegistry` adapts remote tools to galdor `tool.AnyTool`)
 - [x] MCP server — `pkg/mcp.Server` (wraps any `tool.Registry`, exposes it over MCP for Claude Desktop / IDE plugins, optional Strict mode)
-- [ ] A2A protocol — Session C (Google's spec, agent-to-agent interop)
+- [x] A2A protocol — `pkg/a2a` (Agent Card publishing + discovery, `tasks/send`, `tasks/get`, multi-turn input-required state, server is an `http.Handler` wrapping any `Handler` function)
 
 **Outcome:** Multi-agent systems and ecosystem interop.
 
