@@ -38,7 +38,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -150,7 +150,7 @@ func main() {
 // re-ingestion idempotent: the same chunk overwrites its previous
 // row instead of producing a duplicate.
 func chunkID(docID string, idx int) string {
-	h := sha1.Sum([]byte(fmt.Sprintf("%s#%d", docID, idx)))
+	h := sha256.Sum256(fmt.Appendf(nil, "%s#%d", docID, idx))
 	return hex.EncodeToString(h[:8])
 }
 

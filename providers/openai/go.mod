@@ -1,6 +1,8 @@
 module github.com/YasserCR/galdor/providers/openai
 
-go 1.25.0
+go 1.25.10
+
+toolchain go1.25.10
 
 require github.com/YasserCR/galdor v0.0.0-00010101000000-000000000000
 

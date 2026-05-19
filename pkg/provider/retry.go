@@ -226,7 +226,7 @@ func applyJitter(d time.Duration, j float64) time.Duration {
 	if j > 1 {
 		j = 1
 	}
-	factor := 1 + (rand.Float64()*2-1)*j
+	factor := 1 + (rand.Float64()*2-1)*j // #nosec G404 -- jitter for thundering-herd avoidance; not a security primitive
 	return time.Duration(float64(d) * factor)
 }
 

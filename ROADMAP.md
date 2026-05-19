@@ -145,7 +145,7 @@ Then:
   - [x] `integration-cost-tracked` — `BudgetProvider` middleware that wraps any provider with atomic token accounting, per-model pricing table, two-point check (pre-call refuse + post-call fail-on-overshoot).
 - [ ] Full docs (quickstart, conceptual guides per package, pattern recipes, migration guides, ops guide)
 - [x] Benchmarks — five hot paths covered (`pkg/graph` runtime, `pkg/observability` span recording, `internal/store` throughput, `pkg/memory` retrieval, `pkg/tool` dispatch). Results + sizing guidance in [`docs/benchmarks.md`](docs/benchmarks.md). Headline: galdor's own overhead is 3-5 orders of magnitude smaller than a typical LLM call.
-- [ ] Security audit (third-party or self review)
+- [x] Security audit (self-review) — `govulncheck` + `gosec` wired into CI across all 8 modules, toolchain pinned to `go 1.25.10` (closes 21 stdlib CVEs), pgx bumped to v5.9.2 (closes 2 module CVEs), 9 `gosec` findings triaged + suppressed with explicit `// #nosec Gxxx -- reason` annotations. Full writeup + OWASP LLM Top 10 self-assessment in [`docs/security.md`](docs/security.md). Third-party audit deferred to post-v1.0.
 - [ ] Public launch (HN, r/golang, GopherCon CFP)
 
 **Total estimate:** ~8 months at a focused pace.

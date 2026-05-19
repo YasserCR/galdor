@@ -1,6 +1,8 @@
 module github.com/YasserCR/galdor/providers/bedrock
 
-go 1.25
+go 1.25.10
+
+toolchain go1.25.10
 
 // During development the parent module is resolved from the local
 // workspace. This replace is also respected when building this module

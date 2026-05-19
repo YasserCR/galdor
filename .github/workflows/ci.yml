@@ -19,7 +19,7 @@ defaults:
 
 env:
   # Linted/tested modules. Whitespace-separated module roots, relative to repo root.
-  GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai"
+  GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai memory/sqlite memory/pgvector memory/qdrant"
 
 jobs:
   test:
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai']
+        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai']
+        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,3 +118,28 @@ jobs:
         run: |
           cd "${{ matrix.module }}"
           govulncheck ./...
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec (${{ matrix.module }})
+        run: |
+          cd "${{ matrix.module }}"
+          gosec ./...

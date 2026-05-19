@@ -25,12 +25,12 @@ func SaveToFile(rec Recording, path string) error {
 	if err != nil {
 		return fmt.Errorf("replay: marshal: %w", err)
 	}
-	return os.WriteFile(path, raw, 0o644)
+	return os.WriteFile(path, raw, 0o644) // #nosec G306 -- 0644 is correct; replay fixtures are repo-committed regression artifacts, not secrets
 }
 
 // LoadFromFile reads a Recording fixture from disk.
 func LoadFromFile(path string) (Recording, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- caller-supplied fixture path; fixtures are non-secret regression artifacts
 	if err != nil {
 		return Recording{}, fmt.Errorf("replay: read %s: %w", path, err)
 	}

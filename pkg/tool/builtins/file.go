@@ -117,7 +117,7 @@ func (c fileReadConfig) run(_ context.Context, in FileReadIn) (FileReadOut, erro
 		return FileReadOut{}, fmt.Errorf("file_read: %q is a directory", resolved)
 	}
 
-	f, err := os.Open(resolved) //nolint:gosec // path is BaseDir-confined and symlinks gated
+	f, err := os.Open(resolved) // #nosec G304 -- path is BaseDir-confined upstream + symlink-gated, see validatePath above
 	if err != nil {
 		return FileReadOut{}, fmt.Errorf("file_read: open: %w", err)
 	}

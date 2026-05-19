@@ -15,8 +15,8 @@ const (
 	// gosec G101 sees "tokens" in these identifiers and flags them as
 	// potential credentials. They are OpenTelemetry semantic-convention
 	// attribute names, not secrets.
-	AttrGenAIUsageInputTokens  = "gen_ai.usage.input_tokens"  //nolint:gosec // OTel attribute name, not a credential
-	AttrGenAIUsageOutputTokens = "gen_ai.usage.output_tokens" //nolint:gosec // OTel attribute name, not a credential
+	AttrGenAIUsageInputTokens  = "gen_ai.usage.input_tokens"  /* #nosec G101 -- OTel semconv attribute name, not a credential */
+	AttrGenAIUsageOutputTokens = "gen_ai.usage.output_tokens" /* #nosec G101 -- OTel semconv attribute name, not a credential */
 
 	// gen_ai.tool.* — emitted by InstrumentTool.
 	AttrGenAIToolName       = "gen_ai.tool.name"

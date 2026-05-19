@@ -78,7 +78,7 @@ func (h HashingEmbedder) embedOne(text string) []float32 {
 		sum := sha256.Sum256([]byte(tok))
 		// Use the first 4 bytes for the bucket index and the next 4
 		// bytes for the sign — emulates signed feature hashing.
-		bucket := binary.BigEndian.Uint32(sum[:4]) % uint32(dim)
+		bucket := binary.BigEndian.Uint32(sum[:4]) % uint32(dim) // #nosec G115 -- dim is validated > 0 in Dimensions()
 		sign := float32(1)
 		if sum[4]&1 == 0 {
 			sign = -1

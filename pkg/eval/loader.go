@@ -11,7 +11,7 @@ import (
 // exactly the Dataset struct, so a hand-edited file and a JSON-
 // marshalled Go value round-trip without conversion.
 func LoadDataset(path string) (Dataset, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- caller-supplied dataset path; datasets are non-secret fixtures by design
 	if err != nil {
 		return Dataset{}, fmt.Errorf("eval: read %s: %w", path, err)
 	}
@@ -47,7 +47,7 @@ func SaveDataset(d Dataset, path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, raw, 0o644)
+	return os.WriteFile(path, raw, 0o644) // #nosec G306 -- 0644 is correct; datasets are repo-committed fixtures, not secrets
 }
 
 func validateDataset(d Dataset) error {
