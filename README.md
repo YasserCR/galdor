@@ -13,22 +13,27 @@ Native OpenTelemetry. Embedded dashboard. One binary. No external SaaS. Apache 2
 
 ## Why galdor
 
+The table below was last verified against each project's repo, releases and official docs in May 2026. Sources are linked under the table; PRs welcome when something drifts.
+
 | | galdor | LangChain Python + LangSmith | LangChainGo | Eino | Genkit Go |
 |---|---|---|---|---|---|
-| Language / runtime | Go | Python + SaaS | Go | Go | Go |
-| Observability | Native OTel + embedded dashboard | External SaaS (Langsmith) | bring your own | OTel callbacks | OTel + Genkit UI |
-| Self-hosted by default | yes, single binary + SQLite | no, needs Langsmith | partial | partial | partial |
-| Core deps (count) | ~10 direct | n/a | 170+ | varies | varies |
-| Per-provider Go modules | yes | n/a | no, monolithic | yes | partial |
-| MCP (Anthropic spec) | client + server | yes | no | no | no |
-| A2A (Google spec) | client + server | partial | no | no | no |
-| Multi-agent built in | Supervisor + Swarm | LangGraph | via LangGraph-Go | yes | partial |
-| Replay (paid-API → fixture → free replay) | yes | no | no | no | no |
-| Eval framework | yes | Langsmith | external | no | yes |
-| License | Apache 2.0 | MIT, SaaS-locked tier | MIT | Apache 2.0 | Apache 2.0 |
-| Status | pre-alpha, v0.x | 2.x stable | 0.x stable | 1.x | 1.x |
+| Latest release | pre-alpha, v0.x | langchain-core v1.4.0 (May 2026) | v0.1.14 (Oct 2025) | v0.8.13 stable, v0.9.0-alpha active (May 2026) — pre-1.0 | mcp plugin v1.8.0 GA (May 2026) |
+| Language / runtime | Go | Python | Go | Go | Go |
+| Observability story | OTel-native, with an embedded SQLite trace store + dashboard served from the same binary | LangSmith (closed-source SaaS) | callbacks only, no OTel | callbacks; the shipped tracing target is Langfuse, not OTel | OTel-native; Genkit Monitoring (the hosted dashboard) is Google-Cloud only |
+| End-to-end self-hostable (incl. dashboard) | yes | no — self-hosted LangSmith requires the paid Enterprise plan | yes (BYO observability stack) | yes (Apache framework + self-hosted Langfuse) | partial — OTel exporters point anywhere, but the polished Genkit Monitoring dashboard is GCP-only |
+| Dependency footprint | core module pulls 6 direct + 14 indirect (the OTel + SQLite stack) | n/a | monolithic module; `go.sum` is 1,523 lines (≈200+ unique upstream modules) | core + per-component modules under `eino-ext` | per-plugin Go packages under `firebase/genkit/go/plugins/*` |
+| MCP (Anthropic spec) | client + server, stdio | client + tool-as-server, first-party | client only, via 3rd-party adapters (e.g. `i2y/langchaingo-mcp-adapter`) | client only, first-party | client + server, first-party (stdio / SSE / StreamableHTTP) |
+| A2A (Google spec) | client + server | not first-party | no | no | **no** — even though Google authored A2A, its Go support lives in the separate `a2aproject/a2a-go` SDK and in ADK Go, not in Genkit |
+| Multi-agent built in | Supervisor + Swarm in `pkg/council` | LangGraph: supervisor, hierarchy, swarm | `agents` package (ReAct, conversational); no supervisor/swarm/hierarchy | DeepAgent (supervisor + sub-agent delegation) + graph orchestration | Flows + tool-calling agents; supervisor/swarm not first-class |
+| Replay (record real run → deterministic re-run) | yes (record-to-fixture, replay anywhere) | LangSmith dataset replay (in the SaaS) | no (mock + conformance suite, not record/replay) | no | no documented offline fixture replay |
+| Eval framework | yes, in-tree | `langchain.evaluation` + LangSmith eval UI | none | none | yes, `evaluators` plugin |
+| License | Apache 2.0 | LangChain MIT; LangSmith proprietary | MIT | Apache 2.0 | Apache 2.0 |
 
-galdor is **the framework you'd want if your stack can't run Python or can't ship trace data to an external SaaS**. Banks, defense, regulated industries, anyone shipping a single binary into private infra.
+galdor's distinctive position: **OTel-native + a single-binary self-hosted dashboard + first-party MCP server + first-party A2A server**, all in Go. None of the other four projects ship all of those today.
+
+If your stack runs Python comfortably and you're happy paying for LangSmith, LangChain is the most mature option. If you need broad Go provider coverage today (more adapters than galdor's four), Eino is further along — at the cost of no OTel and no A2A. If you need Go *and* MCP server-side exposure *and* A2A interop in one place, galdor is currently the only framework that ships both first-party.
+
+Sources (verified May 2026): [langchain-ai/langchain](https://github.com/langchain-ai/langchain), [LangSmith self-host docs](https://docs.langchain.com/langsmith/architectural-overview), [tmc/langchaingo](https://github.com/tmc/langchaingo), [cloudwego/eino](https://github.com/cloudwego/eino) + [eino-ext](https://github.com/cloudwego/eino-ext), [firebase/genkit/go/plugins/mcp](https://pkg.go.dev/github.com/firebase/genkit/go/plugins/mcp), [firebase/genkit/go/plugins](https://github.com/firebase/genkit/tree/main/go/plugins), [a2aproject/a2a-go](https://github.com/a2aproject/a2a-go).
 
 ---
 
@@ -344,16 +349,17 @@ Same `memory.Store` interface across all four — swap by changing one construct
 ## Use galdor when…
 
 * You're shipping into infrastructure that can't reach an external SaaS (compliance, data residency, air-gap).
-* You want a single binary you can drop into a container without a Python runtime.
-* You care about audit trails — galdor's SQLite store + replay engine make every run reconstructable forever.
-* You're already invested in OTel — galdor's spans drop into your existing pipeline (Datadog, Honeycomb, Grafana, Tempo) with zero glue code.
+* You want a single binary you can drop into a container, no Python runtime, no GCP or LangSmith dependency.
+* You care about audit trails — the SQLite store + replay engine make every run reconstructable from disk.
+* You're already invested in OTel — galdor's spans drop into your existing pipeline (Datadog, Honeycomb, Grafana, Tempo) without glue code.
 * Your team is more comfortable in Go than in Python.
 
 ## Don't use galdor when…
 
-* You need the broadest possible ecosystem of pre-built tools — LangChain (Python) still wins on integration count.
-* You're an early-stage prototyper who needs LangSmith-style heuristics and rich GUI dashboards over your own — galdor's dashboard is intentionally lean.
-* You need very specific provider features galdor hasn't surfaced yet (file uploads, vision streaming, audio). Check the provider matrix above.
+* You need the broadest possible ecosystem of pre-built tools, vector stores, and document loaders — LangChain Python still wins on raw integration count.
+* You need broader Go provider coverage today than the four galdor ships — Eino currently has more provider components in `eino-ext`.
+* You need very specific provider features galdor hasn't surfaced yet (audio, file uploads, certain vision modes). Check the provider matrix above.
+* You're an early-stage prototyper who wants a rich hosted GUI to poke at — galdor's dashboard is intentionally lean.
 
 ---
 
