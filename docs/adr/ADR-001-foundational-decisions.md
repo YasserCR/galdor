@@ -34,7 +34,7 @@ The project is licensed under **Apache License 2.0**. Reasons:
 - Accepted by enterprise legal review without friction.
 - Compatible with the broader Go ecosystem.
 
-A first-class commitment in `README.md` declares that galdor will never gate features behind a paid edition.
+The `LICENSE` file is the legally binding artefact. The `README.md` describes the current license posture for users who read it before pulling the code.
 
 ### D4. Contributor agreement — DCO, not CLA
 

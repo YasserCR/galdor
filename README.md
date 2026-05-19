@@ -25,7 +25,7 @@ Native OpenTelemetry. Embedded dashboard. One binary. No external SaaS. Apache 2
 | Multi-agent built in | Supervisor + Swarm | LangGraph | via LangGraph-Go | yes | partial |
 | Replay (paid-API → fixture → free replay) | yes | no | no | no | no |
 | Eval framework | yes | Langsmith | external | no | yes |
-| License | Apache 2.0 (no paid tier, ever) | MIT / SaaS-locked | MIT | Apache 2.0 | Apache 2.0 |
+| License | Apache 2.0 | MIT, SaaS-locked tier | MIT | Apache 2.0 | Apache 2.0 |
 | Status | pre-alpha, v0.x | 2.x stable | 0.x stable | 1.x | 1.x |
 
 galdor is **the framework you'd want if your stack can't run Python or can't ship trace data to an external SaaS**. Banks, defense, regulated industries, anyone shipping a single binary into private infra.
@@ -403,7 +403,9 @@ galdor is currently maintained by a single BDFL with an explicit plan to transit
 
 ## License
 
-galdor is and will always be 100% open source under [Apache License 2.0](LICENSE). There will be no Enterprise edition, no paid features, and no cloud service behind a paywall. If a commercial offering ever exists, it will be support, consulting or optional hosting — never locked features.
+galdor is licensed under the [Apache License 2.0](LICENSE) — permissive, with an explicit patent grant, widely accepted by enterprise legal review.
+
+Apache 2.0 is the contract; this README is a description. The code in this repository today is published under Apache 2.0 and any version released under that license stays available under it forever — that's what Apache 2.0 means. Forks are welcome.
 
 ---
 
