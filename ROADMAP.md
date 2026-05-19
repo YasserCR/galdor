@@ -92,7 +92,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] End-to-end RAG example (`examples/memory-rag`): chunk → embed → SQLite store → retrieve → scripted answer
 - [x] `memory/pgvector` adapter (pgx/v5, cosine distance via `<=>`, JSONB metadata filtering, opt-in integration tests gated by `GALDOR_PGVECTOR_URL`)
 - [x] `memory/qdrant` adapter (HTTP REST client, idempotent collection bootstrap, opt-in integration tests gated by `GALDOR_QDRANT_URL`)
-- [ ] Provider-backed embedder adapters (OpenAI, Cohere, Voyage) — future session
+- [x] Provider-backed embedder adapters: OpenAI (`providers/openai.NewEmbedder` — also covers Mistral, MiniMax, Together, Groq via `BaseURL`) and Google (`providers/google.NewEmbedder` — text-embedding-004, Gemini embedding models; Vertex AI via custom `HTTPClient`). Cohere/Voyage need a new provider module first; tracked separately.
 
 **Outcome:** End-to-end RAG without external services.
 

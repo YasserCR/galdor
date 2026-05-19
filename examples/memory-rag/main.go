@@ -20,9 +20,20 @@
 //  5. The retrieved chunks are formatted into the system prompt of
 //     a scripted Provider, which then "answers" using that context.
 //
-// Swap memory.HashingEmbedder for a real Embedder (OpenAI, Cohere)
+// Swap memory.HashingEmbedder for a real provider-backed Embedder
 // and the scripted Provider for anthropic/openai/google/bedrock, and
-// the rest of the wiring stays exactly the same.
+// the rest of the wiring stays exactly the same. Real embedders ship
+// with each provider module — for example:
+//
+//	import openaiprov "github.com/YasserCR/galdor/providers/openai"
+//	emb, err := openaiprov.NewEmbedder(openaiprov.EmbedderConfig{
+//	    APIKey: os.Getenv("OPENAI_API_KEY"),
+//	    // Model defaults to text-embedding-3-small (1536-d).
+//	})
+//
+// The same constructor works against any OpenAI-compatible endpoint
+// (Mistral, MiniMax, Together, Groq) by setting BaseURL. For
+// Gemini embeddings, use providers/google.NewEmbedder.
 package main
 
 import (
