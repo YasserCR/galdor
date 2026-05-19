@@ -87,9 +87,10 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] Short-term `Window` with message-count and token-budget caps, optional `Summarizer` for evicted turns
 - [x] In-memory `Store` (vector cosine + lexical substring, metadata filtering) for tests and getting-started
 - [x] Chunking helpers (`pkg/memory/chunk`: `FixedSize`, `Recursive`, `Sentence`)
-- [ ] Embedded backend (SQLite + BM25) — Session B
-- [ ] Embedder reference adapter — Session B
-- [ ] End-to-end RAG example — Session B
+- [x] Embedded backend (SQLite + BM25) — `memory/sqlite` module, FTS5 lexical + brute-force cosine vector, persistent across reopen
+- [x] `HashingEmbedder` (offline, deterministic) + `EmbedderFunc` adapter for wiring real provider embedders
+- [x] End-to-end RAG example (`examples/memory-rag`): chunk → embed → SQLite store → retrieve → scripted answer
+- [ ] Provider-backed embedder adapters (OpenAI, Cohere, Voyage) — follow-up
 - [ ] `memory/pgvector` adapter — Session C
 - [ ] `memory/qdrant` adapter — Session C
 
