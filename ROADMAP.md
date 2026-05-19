@@ -141,8 +141,8 @@ Then:
 - Complete integration examples (each in `examples/integration-*` with its own README):
   - [x] `integration-support-bot` — Supervisor + 3 specialist ReAct sub-agents with separate tool registries (billing / technical / general). Scripted Provider runs it offline; swap for Anthropic/OpenAI is a one-line change.
   - [x] `integration-approval-gate` — `InterruptBefore` + `MemoryCheckpointer` + `Resume` with `OverrideState`. Three scenarios: low-risk auto-approve, high-risk dual signoff, over-cap rejection.
-  - [ ] `integration-mcp-server` — expose a galdor agent over MCP for Claude Desktop (Session B)
-  - [ ] `integration-cost-tracked` — token-budget enforcement via hooks (Session B)
+  - [x] `integration-mcp-server` — wraps a `tool.Registry` as an MCP server over stdio; four tools (time / math + custom lookup_doc / open_ticket); README ships the Claude Desktop config snippet.
+  - [x] `integration-cost-tracked` — `BudgetProvider` middleware that wraps any provider with atomic token accounting, per-model pricing table, two-point check (pre-call refuse + post-call fail-on-overshoot).
 - [ ] Full docs (quickstart, conceptual guides per package, pattern recipes, migration guides, ops guide)
 - [ ] Benchmarks (`go test -bench`: runtime overhead, span recording, SQLite throughput, memory retrieval, concurrent tool dispatch)
 - [ ] Security audit (third-party or self review)
