@@ -96,12 +96,13 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 **Outcome:** End-to-end RAG without external services.
 
-## Phase 7 — Multi-Agent + MCP
+## Phase 7 — Multi-Agent + MCP *(in progress)*
 
-- Supervisor and swarm patterns
-- A2A protocol implementation
-- MCP client
-- MCP server (expose a galdor agent as an MCP tool)
+- [x] Supervisor pattern — `council.NewSupervisor` (router LLM + worker fns + graph-based routing loop)
+- [x] Swarm pattern — `council.NewSwarm` (per-agent ReAct + synthetic `handoff_to_<name>` tools + shared conversation)
+- [ ] MCP client — Session B (`pkg/mcp/client`, consume external MCP tools)
+- [ ] MCP server — Session B (`pkg/mcp/server`, expose galdor tools/agents as MCP)
+- [ ] A2A protocol — Session C (Google's spec, agent-to-agent interop)
 
 **Outcome:** Multi-agent systems and ecosystem interop.
 
