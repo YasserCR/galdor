@@ -226,8 +226,10 @@ type capturingProvider struct {
 	seen  []string
 }
 
-func (*capturingProvider) Name() string                       { return "capturing" }
-func (*capturingProvider) Capabilities() provider.Capabilities { return provider.Capabilities{ToolCalling: true} }
+func (*capturingProvider) Name() string { return "capturing" }
+func (*capturingProvider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{ToolCalling: true}
+}
 func (*capturingProvider) Stream(_ context.Context, _ provider.Request) (provider.StreamReader, error) {
 	return nil, provider.ErrUnsupported
 }

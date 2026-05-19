@@ -25,7 +25,7 @@ type scriptedResponse struct {
 	err  error
 }
 
-func (*scriptedRetryProv) Name() string                       { return "scripted-retry" }
+func (*scriptedRetryProv) Name() string                        { return "scripted-retry" }
 func (*scriptedRetryProv) Capabilities() provider.Capabilities { return provider.Capabilities{} }
 func (*scriptedRetryProv) Stream(_ context.Context, _ provider.Request) (provider.StreamReader, error) {
 	return nil, provider.ErrUnsupported
@@ -235,17 +235,17 @@ func TestRetry_OnRetryCallbackFires(t *testing.T) {
 func TestIsRetryable(t *testing.T) {
 	t.Parallel()
 	cases := map[error]bool{
-		nil:                                                 false,
-		provider.ErrRateLimited:                             true,
-		provider.ErrServer:                                  true,
-		provider.ErrAuth:                                    false,
-		provider.ErrInvalidRequest:                          false,
-		provider.ErrUnsupported:                             false,
-		provider.ErrContextWindow:                           false,
-		&provider.APIError{Kind: provider.ErrRateLimited}:   true,
-		&provider.APIError{Kind: provider.ErrServer}:        true,
-		&provider.APIError{Kind: provider.ErrAuth}:          false,
-		errors.New("totally unrelated"):                     false,
+		nil:                        false,
+		provider.ErrRateLimited:    true,
+		provider.ErrServer:         true,
+		provider.ErrAuth:           false,
+		provider.ErrInvalidRequest: false,
+		provider.ErrUnsupported:    false,
+		provider.ErrContextWindow:  false,
+		&provider.APIError{Kind: provider.ErrRateLimited}: true,
+		&provider.APIError{Kind: provider.ErrServer}:      true,
+		&provider.APIError{Kind: provider.ErrAuth}:        false,
+		errors.New("totally unrelated"):                   false,
 	}
 	for err, want := range cases {
 		if got := provider.IsRetryable(err); got != want {

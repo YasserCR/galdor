@@ -42,11 +42,11 @@ func (s *Server) handleRunSteps(w http.ResponseWriter, r *http.Request) {
 
 // stepsPageData is the template contract for steps.html.
 type stepsPageData struct {
-	DBPath        string
-	RunID         string
-	Steps         []stepView
-	HasCaptured   bool // whether at least one provider call has captured content
-	ReplayHint    string
+	DBPath      string
+	RunID       string
+	Steps       []stepView
+	HasCaptured bool // whether at least one provider call has captured content
+	ReplayHint  string
 }
 
 // stepView is one row in the time-travel view: a graph node and
@@ -66,16 +66,16 @@ type stepView struct {
 }
 
 type providerCallView struct {
-	SpanID         string
-	Model          string
-	Duration       string
-	InputTokens    int
-	OutputTokens   int
-	Prompt         []renderedTurn
-	Completion     *renderedTurn
-	HasCaptured    bool
-	Status         string
-	StatusOK       bool
+	SpanID       string
+	Model        string
+	Duration     string
+	InputTokens  int
+	OutputTokens int
+	Prompt       []renderedTurn
+	Completion   *renderedTurn
+	HasCaptured  bool
+	Status       string
+	StatusOK     bool
 }
 
 // renderedTurn is a single conversation turn formatted for display.

@@ -181,13 +181,13 @@ func TestPersistAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s1.Add(context.Background(), []memory.Chunk{
+	if addErr := s1.Add(context.Background(), []memory.Chunk{
 		{ID: "x", DocumentID: "d", Text: "the answer is 42"},
-	}); err != nil {
-		t.Fatal(err)
+	}); addErr != nil {
+		t.Fatal(addErr)
 	}
-	if err := s1.Close(); err != nil {
-		t.Fatal(err)
+	if closeErr := s1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
 	}
 
 	// Re-open and verify the chunk is still there.

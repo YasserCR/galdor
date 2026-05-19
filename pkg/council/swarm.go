@@ -160,7 +160,7 @@ func NewSwarm(cfg SwarmConfig) (*graph.Runnable[SwarmState], error) {
 	// statically to cfg.Start; once we land on an agent node we use
 	// a router to either terminate or hop to the next agent.
 	for _, a := range cfg.Agents {
-		a := a
+		// Go 1.22+ scopes loop variables per-iteration.
 		g = g.AddNode(a.Name, makeSwarmAgentNode(a, byName, &maxHops))
 		g = g.AddConditionalEdge(a.Name, makeSwarmRouter(maxHops, byName))
 	}

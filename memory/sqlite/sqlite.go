@@ -142,7 +142,7 @@ func (s *Store) lexicalRetrieve(ctx context.Context, q memory.Query, k int) ([]m
 	if err != nil {
 		return nil, fmt.Errorf("memory/sqlite: fts query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	results := make([]memory.Result, 0, k)
 	for rows.Next() {
 		var c memory.Chunk
@@ -172,7 +172,7 @@ func (s *Store) vectorRetrieve(ctx context.Context, q memory.Query, k int) ([]me
 	if err != nil {
 		return nil, fmt.Errorf("memory/sqlite: scan query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var hits []memory.Result
 	for rows.Next() {
 		var c memory.Chunk

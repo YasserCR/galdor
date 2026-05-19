@@ -72,7 +72,7 @@ func TestInMemoryStore_MetadataFilter(t *testing.T) {
 	res, err := s.Retrieve(context.Background(), memory.Query{
 		Text:   "capital",
 		Filter: map[string]string{"lang": "es"},
-		K:     5,
+		K:      5,
 	})
 	if err != nil {
 		t.Fatal(err)

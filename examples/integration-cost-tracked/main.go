@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/YasserCR/galdor/pkg/agent"
@@ -52,7 +51,6 @@ type BudgetProvider struct {
 	inner        provider.Provider
 	budgetTokens int64
 
-	mu          sync.Mutex
 	prices      map[string]Pricing
 	priceFallbk Pricing
 

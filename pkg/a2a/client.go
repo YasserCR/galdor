@@ -71,7 +71,7 @@ func (c *Client) FetchAgentCard(ctx context.Context) (AgentCard, error) {
 	if err != nil {
 		return AgentCard{}, fmt.Errorf("a2a: fetch agent card: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		return AgentCard{}, fmt.Errorf("a2a: agent card HTTP %d: %s", resp.StatusCode, string(body))
@@ -164,7 +164,7 @@ func (c *Client) call(ctx context.Context, method string, params, out any) error
 	if err != nil {
 		return fmt.Errorf("a2a: HTTP transport: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("a2a: read response: %w", err)

@@ -18,7 +18,7 @@ import (
 // from anything the real provider would do.
 type noopProvider struct{}
 
-func (noopProvider) Name() string                       { return "noop" }
+func (noopProvider) Name() string                        { return "noop" }
 func (noopProvider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
 func (noopProvider) Stream(_ context.Context, _ provider.Request) (provider.StreamReader, error) {
 	return nil, provider.ErrUnsupported

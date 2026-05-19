@@ -252,7 +252,7 @@ func (s *Store) do(ctx context.Context, method, path string, body, out any) erro
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &httpError{Status: resp.StatusCode, Body: string(respBody)}

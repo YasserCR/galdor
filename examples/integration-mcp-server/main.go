@@ -72,7 +72,12 @@ func main() {
 	defer cancel()
 
 	if err := srv.Serve(ctx, transport); err != nil {
-		log.Fatalf("mcp server: %v", err)
+		// cancel() is invoked explicitly before exit so the signal
+		// handler goroutine gets a chance to drain; log.Fatal would
+		// skip the defer above.
+		cancel()
+		log.Printf("mcp server: %v", err)
+		os.Exit(1) //nolint:gocritic // defer cancel() was invoked explicitly above
 	}
 }
 

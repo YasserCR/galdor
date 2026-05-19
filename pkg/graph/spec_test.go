@@ -166,8 +166,9 @@ func TestRenderSVG_EscapesNodeNames(t *testing.T) {
 	if !strings.Contains(out, "a&lt;b&gt;") {
 		t.Errorf("special characters not escaped: %s", out)
 	}
-	if strings.Contains(out, "<text x=\"") && strings.Contains(out, "a<b>") {
-		// If raw "a<b>" appears inside a <text> element, the XML is broken.
-		// We check for the inverse below using a simple substring scan.
+	// Belt-and-braces: the raw "a<b>" must NOT appear unescaped anywhere
+	// in the SVG body — that would mean the escape pass missed a code path.
+	if strings.Contains(out, ">a<b>") || strings.Contains(out, "a<b><") {
+		t.Errorf("raw '<' from the node name leaked into SVG body: %s", out)
 	}
 }

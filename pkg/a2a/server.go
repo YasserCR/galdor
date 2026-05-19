@@ -88,7 +88,7 @@ func (s *Server) serveAgentCard(w http.ResponseWriter) {
 }
 
 func (s *Server) serveJSONRPC(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	var msg rpcMessage
 	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
 		writeJSONRPC(w, errorReply(nil, ErrCodeParseError, "parse error", err.Error()))

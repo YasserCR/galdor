@@ -243,13 +243,13 @@ func TestSwarm_RejectsBadConfig(t *testing.T) {
 	t.Parallel()
 	good := &SwarmAgent{Name: "a", Description: "x", Provider: &scriptedProvider{}, Model: "x"}
 	cases := map[string]SwarmConfig{
-		"no agents":              {},
-		"missing start":          {Agents: []*SwarmAgent{good}},
-		"unknown start":          {Agents: []*SwarmAgent{good}, Start: "ghost"},
-		"handoff to self":        {Agents: []*SwarmAgent{{Name: "a", Description: "x", Provider: &scriptedProvider{}, Model: "x", Handoffs: []string{"a"}}}, Start: "a"},
-		"handoff to ghost":       {Agents: []*SwarmAgent{{Name: "a", Description: "x", Provider: &scriptedProvider{}, Model: "x", Handoffs: []string{"ghost"}}}, Start: "a"},
-		"duplicate agent name":   {Agents: []*SwarmAgent{good, {Name: "a", Description: "y", Provider: &scriptedProvider{}, Model: "x"}}, Start: "a"},
-		"unsafe agent name":      {Agents: []*SwarmAgent{{Name: "bad name", Description: "x", Provider: &scriptedProvider{}, Model: "x"}}, Start: "bad name"},
+		"no agents":               {},
+		"missing start":           {Agents: []*SwarmAgent{good}},
+		"unknown start":           {Agents: []*SwarmAgent{good}, Start: "ghost"},
+		"handoff to self":         {Agents: []*SwarmAgent{{Name: "a", Description: "x", Provider: &scriptedProvider{}, Model: "x", Handoffs: []string{"a"}}}, Start: "a"},
+		"handoff to ghost":        {Agents: []*SwarmAgent{{Name: "a", Description: "x", Provider: &scriptedProvider{}, Model: "x", Handoffs: []string{"ghost"}}}, Start: "a"},
+		"duplicate agent name":    {Agents: []*SwarmAgent{good, {Name: "a", Description: "y", Provider: &scriptedProvider{}, Model: "x"}}, Start: "a"},
+		"unsafe agent name":       {Agents: []*SwarmAgent{{Name: "bad name", Description: "x", Provider: &scriptedProvider{}, Model: "x"}}, Start: "bad name"},
 		"agent with nil Provider": {Agents: []*SwarmAgent{{Name: "a", Description: "x", Model: "x"}}, Start: "a"},
 		"agent with empty Model":  {Agents: []*SwarmAgent{{Name: "a", Description: "x", Provider: &scriptedProvider{}}}, Start: "a"},
 	}

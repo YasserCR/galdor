@@ -291,8 +291,8 @@ func TestEndToEnd_RecordAndReplayThroughReAct(t *testing.T) {
 	}
 
 	// Force flush so the SQLite exporter writes everything.
-	if err := tp.ForceFlush(ctx); err != nil {
-		t.Fatal(err)
+	if flushErr := tp.ForceFlush(ctx); flushErr != nil {
+		t.Fatal(flushErr)
 	}
 	// Give the batch exporter a moment if it's deferring.
 	time.Sleep(50 * time.Millisecond)

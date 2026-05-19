@@ -56,7 +56,7 @@ func newTestRegistry(t *testing.T) *tool.Registry {
 	}
 	echo, err := tool.NewTool("echo", "Echo the input",
 		func(_ context.Context, in echoIn) (echoOut, error) {
-			return echoOut{Text: in.Text}, nil
+			return echoOut(in), nil
 		})
 	if err != nil {
 		t.Fatal(err)

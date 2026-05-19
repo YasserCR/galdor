@@ -208,7 +208,8 @@ func NewSupervisor(cfg SupervisorConfig) (*graph.Runnable[SupervisorState], erro
 		AddConditionalEdge("supervisor", router)
 
 	for _, w := range cfg.Workers {
-		w := w // capture
+		// Go 1.22+ scopes loop variables per-iteration; the previous
+		// w := w shadow is no longer needed.
 		g = g.
 			AddNode(w.Name, func(ctx context.Context, s SupervisorState) (SupervisorState, error) {
 				out, err := w.Run(ctx, s.NextTask)

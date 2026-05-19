@@ -20,7 +20,7 @@ type benchOut struct {
 // dispatcher's overhead from anything the tool body would do.
 func noOpTool(name string) tool.AnyTool {
 	return tool.MustNewTool(name, "test", func(_ context.Context, in benchIn) (benchOut, error) {
-		return benchOut{X: in.X}, nil
+		return benchOut(in), nil
 	})
 }
 

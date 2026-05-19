@@ -60,16 +60,16 @@ func TestParseVector_RejectsMalformed(t *testing.T) {
 func TestIsSafeIdent(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
-		"":               false,
-		"chunks":         true,
-		"galdor_chunks":  true,
-		"abc123":         true,
-		"_underscore":    true,
-		"Chunks":         false, // upper-case rejected to keep DDL quoting-free
-		"chunks-table":   false,
-		"chunks table":   false,
-		"chunks; DROP":   false,
-		"chunks\"quote":  false,
+		"":              false,
+		"chunks":        true,
+		"galdor_chunks": true,
+		"abc123":        true,
+		"_underscore":   true,
+		"Chunks":        false, // upper-case rejected to keep DDL quoting-free
+		"chunks-table":  false,
+		"chunks table":  false,
+		"chunks; DROP":  false,
+		"chunks\"quote": false,
 	}
 	for in, want := range cases {
 		if got := isSafeIdent(in); got != want {

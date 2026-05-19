@@ -210,4 +210,3 @@ func errorReply(id json.RawMessage, code int, message, detail string) rpcMessage
 	}
 	return rpcMessage{JSONRPC: "2.0", ID: id, Error: e}
 }
-

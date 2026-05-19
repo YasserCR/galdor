@@ -85,7 +85,7 @@ func TestRecursive_PrefersParagraphBoundaries(t *testing.T) {
 	}
 	// Each chunk should contain at least one of the three sentinel terms.
 	for i, c := range out {
-		if !(strings.Contains(c.Text, "Quito") || strings.Contains(c.Text, "Bogotá") || strings.Contains(c.Text, "Lima")) {
+		if !strings.Contains(c.Text, "Quito") && !strings.Contains(c.Text, "Bogotá") && !strings.Contains(c.Text, "Lima") {
 			t.Errorf("chunk %d does not contain any sentinel term: %q", i, c.Text)
 		}
 	}

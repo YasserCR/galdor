@@ -164,9 +164,9 @@ type mcpTool struct {
 	schema      *jsonschema.Schema
 }
 
-func (t *mcpTool) Name() string                  { return t.name }
-func (t *mcpTool) Description() string           { return t.description }
-func (t *mcpTool) Schema() *jsonschema.Schema    { return t.schema }
+func (t *mcpTool) Name() string               { return t.name }
+func (t *mcpTool) Description() string        { return t.description }
+func (t *mcpTool) Schema() *jsonschema.Schema { return t.schema }
 func (t *mcpTool) ExecuteJSON(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 	text, err := t.client.CallTool(ctx, t.name, input)
 	if err != nil {

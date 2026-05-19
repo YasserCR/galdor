@@ -82,7 +82,7 @@ func main() {
 		MaxHops: 4,
 	})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err) //nolint:gocritic // example main; OS reclaims trace exporter on exit
 	}
 
 	scenarios := []string{

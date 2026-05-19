@@ -78,31 +78,31 @@ func main() {
 	if err != nil {
 		log.Fatalf("open store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// 2. Ingest the corpus: chunk → embed → add.
 	embedder := memory.NewHashingEmbedder(256)
 	chunker := chunk.Recursive{Size: 180, Overlap: 30}
 
 	for _, doc := range corpus {
-		chunks, err := chunker.Chunk(doc)
-		if err != nil {
-			log.Fatalf("chunk %q: %v", doc.ID, err)
+		chunks, chunkErr := chunker.Chunk(doc)
+		if chunkErr != nil {
+			log.Fatalf("chunk %q: %v", doc.ID, chunkErr) //nolint:gocritic // example main; OS reclaims store on exit
 		}
 		texts := make([]string, len(chunks))
 		for i, c := range chunks {
 			texts[i] = c.Text
 		}
-		vecs, err := embedder.Embed(ctx, texts)
-		if err != nil {
-			log.Fatalf("embed: %v", err)
+		vecs, embedErr := embedder.Embed(ctx, texts)
+		if embedErr != nil {
+			log.Fatalf("embed: %v", embedErr)
 		}
 		for i := range chunks {
 			chunks[i].ID = chunkID(doc.ID, chunks[i].Index)
 			chunks[i].Embedding = vecs[i]
 		}
-		if err := store.Add(ctx, chunks); err != nil {
-			log.Fatalf("add: %v", err)
+		if addErr := store.Add(ctx, chunks); addErr != nil {
+			log.Fatalf("add: %v", addErr)
 		}
 	}
 
@@ -185,12 +185,17 @@ type scriptedProvider struct {
 	answer string
 }
 
-func (*scriptedProvider) Name() string                       { return "scripted" }
+func (*scriptedProvider) Name() string                        { return "scripted" }
 func (*scriptedProvider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
 func (*scriptedProvider) Stream(_ context.Context, _ provider.Request) (provider.StreamReader, error) {
 	return nil, provider.ErrUnsupported
 }
 
+// Generate always succeeds in this example. The (..., error) return
+// is required by provider.Provider — unparam's "always nil" warning
+// is expected for a deterministic fixture.
+//
+//nolint:unparam
 func (p *scriptedProvider) Generate(_ context.Context, _ provider.Request) (*provider.Response, error) {
 	return &provider.Response{
 		Message:    schema.AssistantMessage(p.answer),

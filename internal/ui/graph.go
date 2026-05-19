@@ -30,7 +30,7 @@ func (s *Server) handleGraphPage(w http.ResponseWriter, _ *http.Request) {
 // error message — easier to debug than a JSON envelope when the
 // caller is rendering the response into an <img> or <object>.
 func (s *Server) handleGraphSVG(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		errorSVG(w, http.StatusBadRequest, "read body: "+err.Error())

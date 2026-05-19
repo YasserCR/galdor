@@ -101,7 +101,7 @@ type scriptedProvider struct {
 	calls atomic.Int32
 }
 
-func (*scriptedProvider) Name() string                       { return "scripted-judge" }
+func (*scriptedProvider) Name() string                        { return "scripted-judge" }
 func (*scriptedProvider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
 func (*scriptedProvider) Stream(_ context.Context, _ provider.Request) (provider.StreamReader, error) {
 	return nil, provider.ErrUnsupported

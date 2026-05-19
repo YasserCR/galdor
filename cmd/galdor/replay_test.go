@@ -26,13 +26,13 @@ func seedReplayDB(t *testing.T, runID string, captureContent bool) string {
 	t.Cleanup(func() { _ = s.Close() })
 
 	attrs := map[string]any{
-		"galdor.run.id":               runID,
-		"galdor.provider.name":        "scripted",
-		"gen_ai.request.model":        "demo-1",
-		"gen_ai.response.model":       "demo-1",
+		"galdor.run.id":                  runID,
+		"galdor.provider.name":           "scripted",
+		"gen_ai.request.model":           "demo-1",
+		"gen_ai.response.model":          "demo-1",
 		"gen_ai.response.finish_reasons": "end_turn",
-		"gen_ai.usage.input_tokens":   float64(8),
-		"gen_ai.usage.output_tokens":  float64(3),
+		"gen_ai.usage.input_tokens":      float64(8),
+		"gen_ai.usage.output_tokens":     float64(3),
 	}
 	if captureContent {
 		attrs["gen_ai.prompt"] = `[{"role":"user","content":[{"type":"text","text":"hi"}]}]`

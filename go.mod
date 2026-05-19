@@ -2,14 +2,20 @@ module github.com/YasserCR/galdor
 
 go 1.25.10
 
-toolchain go1.25.10
+// Local replace: examples/memory-rag imports memory/sqlite from
+// the same repo. The go.work file handles this in workspace
+// builds, but `go mod tidy` outside the workspace needs an
+// explicit replace to resolve to the in-repo version.
+replace github.com/YasserCR/galdor/memory/sqlite => ./memory/sqlite
 
 require (
+	github.com/YasserCR/galdor/memory/sqlite v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
+	go.uber.org/goleak v1.3.0
 	modernc.org/sqlite v1.50.1
 )
 
@@ -23,7 +29,6 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
-	go.uber.org/goleak v1.3.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

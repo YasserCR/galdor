@@ -380,7 +380,7 @@ func (r *Runnable[S]) runLoop(
 		if opts.NodeTimeout > 0 {
 			var cancel context.CancelFunc
 			nodeCtx, cancel = context.WithTimeout(nodeCtx, opts.NodeTimeout)
-			defer cancel() //nolint:gocritic // intentionally fires at runLoop return; deadlines are short
+			defer cancel() // intentionally fires at runLoop return; deadlines are short
 		}
 		out, nodeErr := safeCallNode(node, nodeCtx, state)
 		opts.Hooks.nodeAfter(nodeCtx, opts.Logger, opts.RunID, next, step+1, out, nodeErr)

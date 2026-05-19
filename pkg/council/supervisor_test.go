@@ -181,13 +181,13 @@ func TestSupervisor_RejectsUnknownWorker(t *testing.T) {
 func TestSupervisor_RejectsBadConfig(t *testing.T) {
 	t.Parallel()
 	cases := map[string]SupervisorConfig{
-		"nil provider":           {Model: "x", Workers: []Worker{{Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
-		"empty model":            {Provider: &scriptedProvider{}, Workers: []Worker{{Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
-		"no workers":             {Provider: &scriptedProvider{}, Model: "x"},
-		"reserved worker name":   {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "supervisor", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
-		"unsafe worker name":     {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "bad name", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
-		"duplicate worker name":  {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}, {Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
-		"nil Run":                {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "a"}}},
+		"nil provider":          {Model: "x", Workers: []Worker{{Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
+		"empty model":           {Provider: &scriptedProvider{}, Workers: []Worker{{Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
+		"no workers":            {Provider: &scriptedProvider{}, Model: "x"},
+		"reserved worker name":  {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "supervisor", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
+		"unsafe worker name":    {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "bad name", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
+		"duplicate worker name": {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}, {Name: "a", Run: func(_ context.Context, _ string) (string, error) { return "", nil }}}},
+		"nil Run":               {Provider: &scriptedProvider{}, Model: "x", Workers: []Worker{{Name: "a"}}},
 	}
 	for name, cfg := range cases {
 		t.Run(name, func(t *testing.T) {

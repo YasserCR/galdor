@@ -177,23 +177,23 @@ func (s Spec) RenderSVG(w io.Writer) error {
 			fill = "#fef3c7"
 			stroke = "#b45309"
 		}
-		fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="6" ry="6" fill="%q" stroke="%q" stroke-width="1.5"/>`,
+		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="6" ry="6" fill="%q" stroke="%q" stroke-width="1.5"/>`,
 			p.X, p.Y, nodeW, nodeH, fill, stroke)
-		fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="#0f172a">%s</text>`,
+		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="#0f172a">%s</text>`,
 			p.X+nodeW/2, p.Y+nodeH/2+4, escapeSVG(prettyName(node.Name)))
 	}
 
 	// START / END markers (drawn as smaller pill-shaped nodes).
 	if p, ok := pos[START]; ok {
-		fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#10b981" stroke="#047857" stroke-width="1.5"/>`,
+		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#10b981" stroke="#047857" stroke-width="1.5"/>`,
 			p.X, p.Y, nodeW, nodeH)
-		fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600">START</text>`,
+		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600">START</text>`,
 			p.X+nodeW/2, p.Y+nodeH/2+4)
 	}
 	if p, ok := pos[END]; ok {
-		fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>`,
+		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>`,
 			p.X, p.Y, nodeW, nodeH)
-		fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600">END</text>`,
+		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600">END</text>`,
 			p.X+nodeW/2, p.Y+nodeH/2+4)
 	}
 
@@ -227,10 +227,10 @@ func drawEdge(w io.Writer, pos map[string]struct{ X, Y int }, from, to string, d
 		stroke = "#94a3b8"
 		marker = "url(#ad)"
 	}
-	fmt.Fprintf(w, `<path d=%q fill="none" stroke=%q stroke-width="1.5" marker-end="%s"%s/>`,
+	_, _ = fmt.Fprintf(w, `<path d=%q fill="none" stroke=%q stroke-width="1.5" marker-end="%s"%s/>`,
 		d, stroke, marker, dash)
 	if label != "" {
-		fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="#64748b">%s</text>`,
+		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="#64748b">%s</text>`,
 			midX, (y1+y2)/2-4, escapeSVG(label))
 	}
 }
@@ -244,9 +244,9 @@ func drawConditionalStub(w io.Writer, pos map[string]struct{ X, Y int }, from st
 	x1 := p.X + nodeW
 	y1 := p.Y + nodeH/2
 	x2 := x1 + 32
-	fmt.Fprintf(w, `<path d="M%d,%d L%d,%d" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ad)"/>`,
+	_, _ = fmt.Fprintf(w, `<path d="M%d,%d L%d,%d" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ad)"/>`,
 		x1, y1, x2, y1)
-	fmt.Fprintf(w, `<text x="%d" y="%d" fill="#64748b">router?</text>`,
+	_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" fill="#64748b">router?</text>`,
 		x2+4, y1+4)
 }
 
@@ -280,7 +280,8 @@ func layeredPositions(s Spec) [][]string {
 	// Any unreached nodes (e.g., orphan or reached only via routers)
 	// land in a special "limbo" layer between START and END so they
 	// at least appear. We place them in layer 1 by default.
-	allNodes := []string{START, END}
+	allNodes := make([]string, 0, 2+len(s.Nodes))
+	allNodes = append(allNodes, START, END)
 	for _, n := range s.Nodes {
 		allNodes = append(allNodes, n.Name)
 	}
