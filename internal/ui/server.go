@@ -111,6 +111,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/runs/{runID}/spans", s.handleAPIRunSpans)
 	s.mux.HandleFunc("GET /api/runs/{runID}/spans/{spanID}", s.handleAPISpan)
 	s.mux.HandleFunc("GET /api/stream/runs", s.handleStreamRuns)
+	s.mux.HandleFunc("GET /graph", s.handleGraphPage)
+	s.mux.HandleFunc("POST /api/graph/svg", s.handleGraphSVG)
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))

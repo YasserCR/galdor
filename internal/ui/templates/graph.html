@@ -1,0 +1,104 @@
+{{ define "graph.html" }}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>galdor scry — graph viewer</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .graph-layout { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
+    .graph-input textarea { width: 100%; min-height: 320px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px; box-sizing: border-box; }
+    .graph-input .actions { margin-top: 8px; display: flex; gap: 8px; }
+    .graph-output { border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; background: #fff; min-height: 320px; overflow: auto; }
+    .graph-output .placeholder { color: #94a3b8; font-style: italic; }
+    .graph-help { font-size: 12px; color: #64748b; line-height: 1.5; }
+    .graph-help pre { background: #f8fafc; padding: 8px; border-radius: 4px; overflow: auto; }
+    @media (max-width: 880px) { .graph-layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><a href="/">galdor scry</a></div>
+    <nav class="links">
+      <a href="/">runs</a>
+      <a href="/graph" aria-current="page">graph</a>
+      <span class="db">{{ if .DBPath }}{{ .DBPath }}{{ end }}</span>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Graph viewer</h1>
+    <p class="graph-help">
+      Paste the JSON output of <code>Runnable.Inspect()</code> below and the
+      server renders it as an SVG. Useful for verifying that a graph you built
+      matches the topology you intended.
+    </p>
+
+    <div class="graph-layout">
+      <section class="graph-input">
+        <label for="spec" style="font-weight: 600;">graph.Spec JSON</label>
+        <textarea id="spec" placeholder='{"entry":"model","nodes":[...],"static_edges":[...],"conditional_edges":[...]}' spellcheck="false"></textarea>
+        <div class="actions">
+          <button type="button" id="render">Render SVG</button>
+          <button type="button" id="example">Insert example</button>
+        </div>
+      </section>
+      <section class="graph-output" id="output">
+        <div class="placeholder">SVG output appears here.</div>
+      </section>
+    </div>
+
+    <details class="graph-help" style="margin-top: 16px;">
+      <summary>How to produce a Spec from your code</summary>
+<pre>import (
+    "encoding/json"
+    "os"
+    "github.com/YasserCR/galdor/pkg/agent"
+)
+
+r, _ := agent.NewReAct(agent.Config{ /* ... */ })
+_ = json.NewEncoder(os.Stdout).Encode(r.Inspect())</pre>
+      Pipe the result into the textarea above, or POST it to
+      <code>/api/graph/svg</code> to fetch the rendered SVG directly.
+    </details>
+  </main>
+
+  <script>
+    const exampleSpec = {
+      "entry": "model",
+      "nodes": [
+        {"name": "model"},
+        {"name": "tools", "interrupt": true}
+      ],
+      "static_edges": [
+        {"from": "__start__", "to": "model"},
+        {"from": "tools", "to": "model"}
+      ],
+      "conditional_edges": [
+        {"from": "model"}
+      ]
+    };
+
+    document.getElementById("example").addEventListener("click", () => {
+      document.getElementById("spec").value = JSON.stringify(exampleSpec, null, 2);
+    });
+
+    document.getElementById("render").addEventListener("click", async () => {
+      const out = document.getElementById("output");
+      const body = document.getElementById("spec").value.trim();
+      if (!body) {
+        out.innerHTML = '<div class="placeholder">Paste a graph.Spec JSON first.</div>';
+        return;
+      }
+      out.innerHTML = '<div class="placeholder">rendering…</div>';
+      try {
+        const resp = await fetch("/api/graph/svg", { method: "POST", headers: {"Content-Type": "application/json"}, body });
+        const svg = await resp.text();
+        // The server returns the SVG body either way; inline it.
+        out.innerHTML = svg;
+      } catch (e) {
+        out.innerHTML = '<div class="placeholder">error: ' + (e?.message || e) + '</div>';
+      }
+    });
+  </script>
+</body>
+</html>{{ end }}

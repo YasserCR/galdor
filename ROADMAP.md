@@ -77,7 +77,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] CSS + templates embedded via `embed.FS` — no external assets
 - [x] SVG timeline (Gantt-style) on the run detail page
 - [x] Live updates via SSE (`/api/stream/runs`) + vanilla JS row upsert
-- [ ] Workflow graph (static DAG of `Graph[S]` — needs producer support; deferred to Phase 6)
+- [x] Workflow graph (static DAG of `Graph[S]`): `Runnable.Inspect()` returns a serializable `graph.Spec`; `Spec.RenderSVG` produces a self-contained layered SVG; UI exposes `/graph` viewer + `POST /api/graph/svg`
 
 **Outcome:** Self-hosted "Langsmith-local" working.
 
