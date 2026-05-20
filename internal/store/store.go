@@ -78,8 +78,9 @@ func (r RunSummary) Duration() int64 {
 // instance; Close releases the underlying DB handle. Concurrent
 // Insert / Query calls are safe.
 type Store struct {
-	db     *sql.DB
-	closer sync.Once
+	db       *sql.DB
+	closer   sync.Once
+	inMemory bool
 }
 
 // Open opens (or creates) the SQLite database at path. The schema
@@ -95,10 +96,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	}
 	// modernc.org/sqlite uses the "sqlite" driver name.
 	dsn := path
+	inMemory := strings.HasPrefix(path, ":")
 	// PRAGMAs to tune for write-heavy span ingestion plus concurrent
 	// CLI reads. journal_mode=WAL avoids reader blocks; busy_timeout
 	// smoothes over the occasional contention.
-	if !strings.HasPrefix(path, ":") {
+	if !inMemory {
 		dsn = path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)"
 	}
 	db, err := sql.Open("sqlite", dsn)
@@ -110,7 +112,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(2)
 
-	s := &Store{db: db}
+	s := &Store{db: db, inMemory: inMemory}
 	if err := s.applySchema(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -130,6 +132,40 @@ func (s *Store) Close() error {
 // DB exposes the raw sql.DB for advanced use (custom queries, tests).
 // Callers should not mutate schema or close it.
 func (s *Store) DB() *sql.DB { return s.db }
+
+// Checkpoint runs PRAGMA wal_checkpoint(<mode>) against the store.
+// Long-lived consumers must call this periodically: SQLite only
+// folds the -wal sidecar back into the main .db file when the WAL
+// crosses the autocheckpoint threshold (~1000 pages, ~4 MB) or when
+// the last DB connection closes. A daemon that keeps the exporter's
+// connection open forever therefore writes spans the dashboard
+// never sees.
+//
+// mode is one of "PASSIVE", "FULL", "RESTART", "TRUNCATE". PASSIVE
+// is the safe periodic choice (does not block writers). TRUNCATE is
+// the right shutdown-time choice (leaves the .wal file at zero
+// bytes). Empty mode is treated as PASSIVE.
+//
+// In-memory databases have no WAL file; Checkpoint returns nil for
+// them.
+func (s *Store) Checkpoint(ctx context.Context, mode string) error {
+	if s.inMemory {
+		return nil
+	}
+	switch strings.ToUpper(mode) {
+	case "", "PASSIVE":
+		mode = "PASSIVE"
+	case "FULL", "RESTART", "TRUNCATE":
+		// ok
+	default:
+		return fmt.Errorf("store: checkpoint: unknown mode %q", mode)
+	}
+	_, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint("+mode+");")
+	if err != nil {
+		return fmt.Errorf("store: wal_checkpoint(%s): %w", mode, err)
+	}
+	return nil
+}
 
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS spans (

@@ -3,8 +3,10 @@ package observability
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -164,5 +166,96 @@ func TestAttrValueToGo_InvalidDropped(t *testing.T) {
 	t.Parallel()
 	if _, ok := attrValueToGo(attribute.Value{}); ok {
 		t.Error("invalid attribute should be dropped")
+	}
+}
+
+// emitManySpans writes a configurable number of small spans into
+// the exporter, enough to grow the -wal noticeably. Used by the
+// checkpoint tests.
+func emitManySpans(t *testing.T, exp sdktrace.SpanExporter, n int, runID string) {
+	t.Helper()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	tr := tp.Tracer("test")
+	for i := 0; i < n; i++ {
+		_, sp := tr.Start(context.Background(), "galdor.graph.node",
+			trace.WithAttributes(attribute.String(AttrGaldorRunID, runID)),
+		)
+		sp.End()
+	}
+	_ = tp.ForceFlush(context.Background())
+}
+
+// TestSQLiteExporter_PeriodicCheckpointShrinksWAL verifies the
+// background goroutine is actually folding the -wal sidecar back
+// into the main .db file. Without this, daemons that hold the
+// exporter open forever would silently accumulate spans in -wal
+// while the dashboard reads an empty .db. Retro feedback #2.
+func TestSQLiteExporter_PeriodicCheckpointShrinksWAL(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "spans.db")
+	exp, err := NewSQLiteExporter(dbPath, WithCheckpointInterval(50*time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = exp.Shutdown(context.Background()) })
+
+	emitManySpans(t, exp, 50, "wal-test")
+
+	// Give the checkpointer two ticks to fold the -wal into the
+	// main file. The empty SQLite header is ~4 KB; after the
+	// checkpoint, 50 spans should push it well past 8 KB.
+	time.Sleep(200 * time.Millisecond)
+
+	st, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Size() < 8*1024 {
+		t.Errorf("main .db size = %d, expected > 8 KB after periodic checkpoint", st.Size())
+	}
+}
+
+// TestSQLiteExporter_ShutdownTruncatesWAL verifies the final
+// TRUNCATE checkpoint in Shutdown leaves the .wal file empty
+// (or absent). Without this, deploy artifacts include a stale
+// -wal that confuses out-of-process readers.
+func TestSQLiteExporter_ShutdownTruncatesWAL(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "spans.db")
+	exp, err := NewSQLiteExporter(dbPath, WithCheckpointInterval(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	emitManySpans(t, exp, 20, "trunc-test")
+	if err := exp.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// After Shutdown the -wal should be 0 bytes (or absent — modernc
+	// keeps a 0-byte file).
+	wal, err := os.Stat(dbPath + "-wal")
+	if err == nil && wal.Size() > 0 {
+		t.Errorf(".db-wal size = %d after Shutdown, expected 0", wal.Size())
+	}
+}
+
+// TestSQLiteExporter_CheckpointDisabled verifies that passing
+// WithCheckpointInterval(0) keeps the goroutine from starting
+// (advanced opt-out for callers who run their own checkpointer).
+func TestSQLiteExporter_CheckpointDisabled(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	exp, err := NewSQLiteExporter(filepath.Join(dir, "spans.db"), WithCheckpointInterval(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exp.ckptDone != nil {
+		t.Error("checkpoint goroutine should not be started when interval is 0")
+	}
+	if err := exp.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
