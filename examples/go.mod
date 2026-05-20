@@ -3,8 +3,8 @@ module github.com/YasserCR/galdor/examples
 go 1.25.10
 
 require (
-	github.com/YasserCR/galdor v0.0.0-00010101000000-000000000000
-	github.com/YasserCR/galdor/memory/sqlite v0.0.0-00010101000000-000000000000
+	github.com/YasserCR/galdor v0.1.0
+	github.com/YasserCR/galdor/memory/sqlite v0.1.0
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
