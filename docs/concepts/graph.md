@@ -183,6 +183,7 @@ The embedded web UI uses the same mechanism to render every graph it sees.
 
 - **State is value-typed.** Nodes receive a copy; they should return a new `S` rather than mutating it in place. The runtime does not deep-copy substructures (maps, slices, pointers) — if you mutate one of those, you'll see the mutation across hops.
 - **One outgoing edge per node.** A node can have either a static edge (`AddEdge`) or a conditional edge (`AddConditionalEdge`), never both. Compile rejects double installs.
+- **Coming from LangGraph:** the method is `AddConditionalEdge` (singular) and the router returns a node name directly — not the LangGraph signature `add_conditional_edges(from, router, {label: node})` with a branch map. galdor's `AddConditionalEdges` (plural) offers that branch-map form when you want a decoupled label layer.
 - **Routers must return a real name or END.** An empty string is `ErrEmptyRouterResult`; an unknown name is `ErrUnknownNode`. Intentional dead-ends resolve to `graph.END`.
 - **`MaxSteps` is a safety net, not a budget.** The runtime aborts with `ErrMaxSteps` when the step counter exceeds the ceiling. Default is 100; override via `Runnable.MaxSteps` or `RunOptions.MaxSteps`. The `agent` package sizes this generously around its iteration cap so the soft cap (in the router) is what users actually feel.
 - **`Checkpointer` requires a `RunID`.** Setting `RunOptions.Checkpointer` without `RunID` returns `ErrCheckpointerMissingRunID` — without an ID you cannot find the saved state again.

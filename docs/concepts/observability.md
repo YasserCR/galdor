@@ -11,9 +11,20 @@ func InstrumentRegistry(r *tool.Registry, tracer trace.Tracer) (*tool.Registry, 
 func TraceHooks[S any](tracer trace.Tracer) graph.Hooks[S]
 
 func WithCaptureContent(enabled bool) InstrumentOption
+
+func WithRunID(ctx context.Context, runID string) context.Context
+func RunIDFromContext(ctx context.Context) string
 ```
 
 `InstrumentProvider` wraps `Generate` and `Stream`. `InstrumentTool` / `InstrumentRegistry` wrap `ExecuteJSON`. `TraceHooks[S]` returns hooks you drop into `graph.RunOptions[S].Hooks` — one root span per run, one child span per node hop. Provider and tool spans nest under the active node span automatically because hooks plumb the span into `ctx`.
+
+## The `galdor.run.id` contract
+
+The dashboard, `scry` CLI and SQLite store all key on the `galdor.run.id` span attribute to group spans into runs. galdor stamps it for you in three places, in order of precedence:
+
+1. **`WithRunID(ctx, runID)`** — explicit caller-supplied id. Use this when you have a meaningful external id (a BullMQ job id, an A2A task id, a request id).
+2. **`TraceHooks[S]` via `graph.RunOptions[S].RunID`** — set automatically on the run / node spans. `BeforeRun` also calls `WithRunID` so any provider or tool span nested inside picks up the same id.
+3. **Trace-id fallback** — if neither of the above is set, `InstrumentProvider` and `InstrumentTool` stamp the active trace id. That guarantees instrumented code always lands in *some* run bucket; raw spans produced outside any galdor instrumentation are the only way to end up with an empty run id, and the dashboard banners those as "orphan spans" so the silent-fail mode of older versions is no longer possible.
 
 ## Wiring it up
 
@@ -70,6 +81,8 @@ Span names: `galdor.provider.generate`, `galdor.provider.stream`, `galdor.tool.e
 ## The embedded SQLite store
 
 `NewSQLiteExporter(path)` opens (or creates) a galdor-managed SQLite database via `internal/store` and registers as an `sdktrace.SpanExporter`. The schema is intentionally small — one denormalized spans table with run id and JSON-encoded attribute blobs — because everything richer is a SQL query, not a schema problem. Users don't touch `internal/store` directly; the `galdor scry` CLI and the embedded dashboard both read from it. `Exporter.Store()` exposes the underlying store if you need to query it from your own code.
+
+The store opens SQLite in `journal_mode=WAL` for write concurrency. The exporter runs `PRAGMA wal_checkpoint(PASSIVE)` every 3 s in a background goroutine so the `.db-wal` sidecar folds back into the main file without waiting for the autocheckpoint threshold. `Shutdown` runs a final `wal_checkpoint(TRUNCATE)` so deploy artifacts ship a 0-byte WAL. Pass `WithCheckpointInterval(d)` to tune the cadence, `WithCheckpointInterval(0)` to disable when you run an external checkpointer.
 
 ## The `galdor scry` CLI
 

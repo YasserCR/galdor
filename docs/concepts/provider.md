@@ -130,11 +130,13 @@ if err := p.Capabilities().ValidateRequest(req); err != nil {
 
 ## Gotchas
 
+- **`Request.Model` is the raw provider model id.** galdor does not use LiteLLM-style prefixes; pass `"claude-haiku-4-5"`, not `"anthropic/claude-haiku-4-5"`. If you are migrating from a LiteLLM config, strip the prefix before forwarding the value to `Request.Model`.
 - **`Capabilities` is constant.** Adapters compute it once at `New` time; do not depend on it varying across requests.
 - **`Usage` zero means "not reported".** Some providers do not surface tokens on streamed responses; do not infer zero usage from zero fields.
 - **`Stream` retries only at construction.** Once the `StreamReader` is open, per-frame errors are returned to the caller verbatim — the stream is stateful, blind retries would re-deliver partial output. Wrap higher-level retry logic around your stream consumer if you need it.
 - **`APIError` carries `Kind` for `errors.Is`.** Match the sentinels (`ErrRateLimited`, `ErrAuth`, ...) rather than string-comparing the message.
 - **`ToolChoiceRequired` only works when `Tools` is set.** The adapter forwards it to the provider; the model is then forced to call at least one tool. `agent.Config.ForceToolUse` lifts this into the agent layer.
+- **Thinking models emit their reasoning inline** unless the provider strips it. Anthropic surfaces `thinking` content parts on `Message.Content`; the Google adapter filters out `thought: true` parts at the wire level; the OpenAI-compatible surface (used for MiniMax, DeepSeek, Qwen) returns `<think>...</think>` blocks in the text body. If you forward the raw response to a downstream that can't tolerate it (Telegram HTML, a JSON-only contract), strip the blocks at your boundary or wrap the provider with the `StripThinkingBlocks` middleware.
 
 ## See also
 
