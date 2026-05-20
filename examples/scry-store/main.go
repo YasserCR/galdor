@@ -15,10 +15,8 @@
 //     observability backend.
 //
 //  3. After running the demo the file path printed at the end
-//     contains the spans. You can poke at it with sqlite3 too:
-//
-//     sqlite3 -header -column /path/to/traces.db \
-//     'SELECT run_id, name, status_code FROM spans;'
+//     contains the spans. Run `galdor scry list --db <path>` (or
+//     `sqlite3 <path>`) against it.
 package main
 
 import (
@@ -32,7 +30,6 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/YasserCR/galdor/internal/store"
 	"github.com/YasserCR/galdor/pkg/agent"
 	"github.com/YasserCR/galdor/pkg/graph"
 	"github.com/YasserCR/galdor/pkg/observability"
@@ -137,22 +134,6 @@ func run() error {
 
 	fmt.Printf("agent reply: %s\n\n", final.FinalText)
 	fmt.Printf("traces stored in: %s\n", dbPath)
-	fmt.Printf("explore with:\n  galdor scry list --db %s\n  galdor scry show --db %s demo-run-1\n\n", dbPath, dbPath)
-
-	// 5. Demonstrate the read path by querying the store directly,
-	//    which is exactly what the CLI does internally.
-	s, err := store.Open(context.Background(), dbPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = s.Close() }()
-	runs, err := s.ListRuns(context.Background(), 10)
-	if err != nil {
-		return err
-	}
-	fmt.Println("ListRuns says:")
-	for _, run := range runs {
-		fmt.Printf("  %s  status=%s  spans=%d\n", run.RunID, run.Status(), run.SpanCount)
-	}
+	fmt.Printf("explore with:\n  galdor scry list --db %s\n  galdor scry show --db %s demo-run-1\n", dbPath, dbPath)
 	return nil
 }

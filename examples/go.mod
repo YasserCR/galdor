@@ -1,14 +1,13 @@
-module github.com/YasserCR/galdor
+module github.com/YasserCR/galdor/examples
 
 go 1.25.10
 
 require (
-	github.com/google/uuid v1.6.0
+	github.com/YasserCR/galdor v0.0.0-00010101000000-000000000000
+	github.com/YasserCR/galdor/memory/sqlite v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.43.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
-	go.opentelemetry.io/otel/trace v1.43.0
-	go.uber.org/goleak v1.3.0
-	modernc.org/sqlite v1.50.1
 )
 
 require (
@@ -16,13 +15,22 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
+	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
+	modernc.org/sqlite v1.50.1 // indirect
+)
+
+replace (
+	github.com/YasserCR/galdor => ..
+	github.com/YasserCR/galdor/memory/sqlite => ../memory/sqlite
+	github.com/YasserCR/galdor/providers/openai => ../providers/openai
 )
