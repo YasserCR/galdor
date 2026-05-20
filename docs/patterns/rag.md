@@ -86,6 +86,44 @@ Groq, vLLM). For Gemini use `providers/google.NewEmbedder`.
 The dimensionality you pick locks the store. Re-embed if you
 change models — vectors of different dims aren't comparable.
 
+### Swap the embedder for a self-hosted endpoint
+
+When the model runs in your own infrastructure — HuggingFace TEI,
+Infinity, vLLM-embeddings, an OpenAI-compatible sidecar — use
+`pkg/embedder.HTTPEmbedder` instead of a provider package. Same
+interface, no SDK or credentials:
+
+```go
+import "github.com/YasserCR/galdor/pkg/embedder"
+
+// HuggingFace TEI sidecar.
+emb, _ := embedder.NewHTTPEmbedder(embedder.HTTPConfig{
+    URL:   "http://tei:80",
+    Shape: embedder.ShapeTEI,
+})
+
+// vLLM or anything else serving OpenAI's /v1/embeddings shape.
+emb, _ = embedder.NewHTTPEmbedder(embedder.HTTPConfig{
+    URL:   "http://vllm:8000/v1/embeddings",
+    Model: "BAAI/bge-base-en-v1.5",
+})
+
+// Optional: probe once at startup so a slow-loading sidecar fails
+// loudly here instead of on the first user query.
+if err := emb.Ping(ctx); err != nil {
+    log.Fatal("embeddings sidecar not ready: ", err)
+}
+```
+
+`HTTPEmbedder` retries 5xx and 429 with capped exponential backoff
+(three attempts), and returns a typed `*EmbedError` carrying the
+status code on terminal failures. Inputs are batched at
+`HTTPConfig.BatchSize` (default 32) so a single `Embed` call against
+a long corpus splits into multiple HTTP requests transparently. See
+the [embedder concept page](../concepts/embedder.md) for the full
+surface, including the OpenAI vs. TEI wire-shape distinction and
+413-handling guidance.
+
 ### Swap the backend
 
 | Backend | Constructor | Use when |
