@@ -87,7 +87,8 @@ func (s *Server) renderRunGraphSVG(ctx context.Context, runID string) template.H
 	if err := spec.RenderSVG(&buf); err != nil {
 		return ""
 	}
-	return template.HTML(buf.String()) //nolint:gosec // SVG produced by trusted in-repo renderer
+	// #nosec G203 -- SVG body is produced in-process by pkg/graph.Spec.RenderSVG; no user input.
+	return template.HTML(buf.String())
 }
 
 // handleSpan serves a single span's detail at
