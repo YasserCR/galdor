@@ -39,21 +39,25 @@ Sources (verified May 2026): [langchain-ai/langchain](https://github.com/langcha
 
 ## Status
 
-**Pre-alpha — APIs are unstable until v1.0.** What works today:
+**`v0.1.0` tagged. Looking for early integrators.**
 
-Foundations · provider abstraction (Anthropic, OpenAI/MiniMax/Groq/Together, Google Gemini, AWS Bedrock) · type-safe tools with reflection-derived JSON schemas · directed graph runtime with checkpoints and interrupt/resume · ReAct and Plan-and-Execute agent helpers · native OTel observability with embedded SQLite trace store and web dashboard · short-term memory windows + long-term memory backends (in-mem, SQLite/BM25, pgvector, qdrant) · chunking and embedding helpers · Council multi-agent patterns (Supervisor, Swarm) · MCP client and server (stdio) · A2A protocol (Google) · inline eval framework with LLM-as-judge · deterministic replay with prompt fingerprinting · time-travel UI · per-provider retry/backoff · per-run / per-node timeouts · panic recovery in nodes / hooks / tools · structured logging via slog · goroutine leak gates · capability-aware boundary validation.
+The 10-phase roadmap is functionally complete: provider abstraction (Anthropic, OpenAI/MiniMax/Groq/Together/DeepSeek/vLLM/Ollama via `BaseURL` or [`providerset`](providerset/), Google Gemini, AWS Bedrock) · type-safe tools with reflection-derived JSON schemas · directed graph runtime with checkpoints, interrupt/resume and branch-map conditional edges · ReAct and Plan-and-Execute agent helpers · native OTel observability with embedded SQLite trace store, auto-WAL-checkpointing exporter, auto-stamped run ids, and an orphan-span warning banner · embedded web dashboard with live SSE, per-run DAG, time-travel · short-term memory windows + long-term memory backends (in-mem, SQLite/BM25, pgvector, qdrant) · provider-backed and HTTP/TEI embedders · Council multi-agent patterns (Supervisor, Swarm) · MCP client + server over stdio, SSE, and Streamable HTTP · A2A protocol (Google) · inline eval framework with LLM-as-judge · deterministic replay with prompt fingerprinting · per-provider retry/backoff, run/node timeouts, panic recovery, structured logging, goroutine leak gates, capability-aware validation · thinking-block strip middleware for OpenAI-compat thinking models.
 
-See [`ROADMAP.md`](ROADMAP.md) for full phase tracking.
+**What's next:** real-world integration feedback. If you're shipping agents in Go and the table at the top resonates, try galdor on your stack and open an issue — the framework has covered the surface; the remaining edges only show up in actual deployments. The [pragma-galdor](https://github.com/YasserCR/galdor/blob/main/docs/patterns/queue-worker.md) retro is one such report, and it shaped most of v0.1.0; more would be welcome.
+
+Between `v0.1.0` and `v1.0.0`, minor versions may still introduce breaking changes — pin a specific tag in your `go.mod` if you need reproducibility. See [`ROADMAP.md`](ROADMAP.md) for full phase tracking.
 
 ---
 
 ## Install
 
 ```bash
-go get github.com/YasserCR/galdor@latest
+go get github.com/YasserCR/galdor@v0.1.0
 # plus the provider(s) you need:
-go get github.com/YasserCR/galdor/providers/anthropic@latest
-go get github.com/YasserCR/galdor/providers/openai@latest
+go get github.com/YasserCR/galdor/providers/anthropic@v0.1.0
+go get github.com/YasserCR/galdor/providers/openai@v0.1.0
+# or pick a provider at runtime via env var:
+go get github.com/YasserCR/galdor/providerset@v0.1.0
 ```
 
 The core module pulls only what it needs — providers, memory backends and protocol adapters live in their own Go modules so your dependency tree stays tight.
@@ -61,7 +65,7 @@ The core module pulls only what it needs — providers, memory backends and prot
 For the CLI + dashboard:
 
 ```bash
-go install github.com/YasserCR/galdor/cmd/galdor@latest
+go install github.com/YasserCR/galdor/cmd/galdor@v0.1.0
 galdor ui --db ./traces.db   # open http://127.0.0.1:7777
 ```
 
@@ -246,6 +250,54 @@ func main() {
 
 Build the binary, point Claude Desktop's `claude_desktop_config.json` at it, restart Claude Desktop. Your tools appear in the picker. Full instructions in [`examples/integration-mcp-server`](examples/integration-mcp-server/).
 
+For long-lived daemons that many clients share, swap the transport — SSE for IDE-compatibility today, Streamable HTTP for the post-2024-11-05 spec:
+
+```go
+// pre-2024-11-05 spec (the SSE transport Cursor/Claude Desktop still default to)
+transport := mcp.NewSSETransport(":4000")
+// 2024-11-05 spec (single endpoint, session id via Mcp-Session-Id header)
+transport := mcp.NewStreamableHTTPTransport(":4000")
+```
+
+### Pick a provider at runtime
+
+```go
+import "github.com/YasserCR/galdor/providerset"
+
+// Reads LLM_PROVIDER, LLM_API_KEY, LLM_BASE_URL, LLM_HTTP_TIMEOUT.
+// Supports anthropic, openai, google, bedrock + 7 OpenAI-compatible
+// aliases: groq, together, mistral, minimax, deepseek, vllm, ollama.
+p, err := providerset.FromEnv()
+```
+
+The equivalent of LiteLLM for Go: one switch, every supported provider, no per-app boilerplate. Lives in its own module so the core stays lean. See [`docs/concepts/providerset.md`](docs/concepts/providerset.md).
+
+### Self-hosted embeddings via HTTP
+
+```go
+import "github.com/YasserCR/galdor/pkg/embedder"
+
+// Works against HuggingFace TEI, Infinity, vLLM-embeddings, or any
+// OpenAI-compatible /embeddings endpoint. Stdlib-only, no CGO.
+emb, _ := embedder.NewHTTPEmbedder(embedder.HTTPConfig{
+    URL:   "http://localhost:8080",
+    Shape: embedder.ShapeTEI,
+})
+```
+
+Plugs into `memory.Retriever` directly; satisfies `memory.Embedder`. See [`docs/concepts/embedder.md`](docs/concepts/embedder.md).
+
+### Thinking-model output, sanitized
+
+```go
+import "github.com/YasserCR/galdor/pkg/provider"
+
+// Opt-in middleware that strips <think>...</think> blocks emitted
+// inline by OpenAI-compat thinking models (MiniMax, DeepSeek, Qwen).
+// Handles closing tags split across stream deltas.
+p = provider.StripThinkingBlocks(p)
+```
+
 ### Production hardening (Phase 10)
 
 ```go
@@ -275,15 +327,15 @@ final, err := r.InvokeWith(ctx, state, graph.RunOptions[State]{
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  CLI (galdor scry/ui)    Web dashboard with SSE live feed   │
+│  CLI (galdor scry/ui)    Web dashboard with SSE + per-run DAG│
 ├─────────────────────────────────────────────────────────────┤
 │  Eval Framework  │  Replay Engine  │  Time-travel UI        │
 ├─────────────────────────────────────────────────────────────┤
 │  Agent Runtime (graph executor over goroutines + channels)  │
 ├─────────────────────────────────────────────────────────────┤
-│  Tools  │  Memory  │  Council  │  MCP  │  A2A               │
+│  Tools  │  Memory  │  Embedder  │  Council  │  MCP  │  A2A  │
 ├─────────────────────────────────────────────────────────────┤
-│  Provider Abstraction (Anthropic, OpenAI, Google, Bedrock)  │
+│  Provider Abstraction + Providerset (env-driven selection)  │
 ├─────────────────────────────────────────────────────────────┤
 │  Observability Core (OTel-native, embedded SQLite backend)  │
 └─────────────────────────────────────────────────────────────┘
@@ -329,7 +381,9 @@ Smaller, feature-focused examples live alongside:
 | Google Gemini | `providers/google` | yes | yes | yes | AI Studio surface; Vertex AI via custom `HTTPClient` |
 | AWS Bedrock | `providers/bedrock` | yes | yes | yes | Converse API; SigV4 via AWS SDK Go v2 |
 
-Embedders ship in the same provider modules: `openai.NewEmbedder` (covers OpenAI-compatible endpoints) and `google.NewEmbedder`.
+For runtime selection across all of the above plus seven OpenAI-compatible aliases (`groq`, `together`, `mistral`, `minimax`, `deepseek`, `vllm`, `ollama`), pick a provider via env var with [`providerset.FromEnv()`](providerset/) instead of importing each adapter directly.
+
+Embedders ship in the same provider modules: `openai.NewEmbedder` (covers OpenAI-compatible endpoints) and `google.NewEmbedder`. For self-hosted embeddings (TEI, Infinity, vLLM-embeddings, or any OpenAI-compatible `/embeddings` endpoint), use [`pkg/embedder.HTTPEmbedder`](pkg/embedder/).
 
 ---
 
