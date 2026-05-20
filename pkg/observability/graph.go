@@ -41,6 +41,7 @@ func TraceHooks[S any](tracer trace.Tracer) graph.Hooks[S] {
 	return graph.Hooks[S]{
 		BeforeRun: func(ctx context.Context, runID string, _ S) context.Context {
 			var zero S
+			ctx = WithRunID(ctx, runID)
 			ctx, span := tracer.Start(ctx, SpanGraphRun, trace.WithAttributes(
 				attribute.String(AttrGaldorRunID, runID),
 				attribute.String(AttrGaldorStateGo, reflect.TypeOf(zero).String()),

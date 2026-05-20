@@ -22,10 +22,16 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, http.StatusInternalServerError, "list runs", err)
 		return
 	}
+	// OrphanSpanCount catches the silent-failure case: spans landed
+	// in the DB but no trace carries galdor.run.id, so ListRuns
+	// returns empty. We surface it as a banner instead of pretending
+	// the store is empty.
+	orphans, _ := s.store.OrphanSpanCount(r.Context())
 	data := runsPageData{
-		DBPath: s.dbPath,
-		Limit:  limit,
-		Runs:   buildRunRows(runs),
+		DBPath:      s.dbPath,
+		Limit:       limit,
+		Runs:        buildRunRows(runs),
+		OrphanSpans: orphans,
 	}
 	s.renderTemplate(w, "runs.html", data)
 }
@@ -178,9 +184,10 @@ func (s *Server) renderError(w http.ResponseWriter, code int, msg string, err er
 // contracts. Keeping them in one file makes it easy to see what the
 // HTML can read.
 type runsPageData struct {
-	DBPath string
-	Limit  int
-	Runs   []runRow
+	DBPath      string
+	Limit       int
+	Runs        []runRow
+	OrphanSpans int
 }
 
 type runRow struct {

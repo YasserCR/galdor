@@ -22,6 +22,20 @@
       </span>
     </div>
 
+    {{ if gt .OrphanSpans 0 }}
+    <div class="warning" role="status">
+      <strong>{{ .OrphanSpans }} orphan span{{ if ne .OrphanSpans 1 }}s{{ end }}</strong>
+      detected — traces with no <code>galdor.run.id</code> attribute. The
+      dashboard groups spans into runs via that attribute, so these
+      are hidden from the table above. Wire your callers through
+      <code>observability.InstrumentProvider</code> /
+      <code>InstrumentTool</code> (which stamp it automatically) or set
+      it explicitly via <code>observability.WithRunID(ctx, runID)</code>
+      or <code>graph.RunOptions[S]{RunID: ...}</code> with
+      <code>TraceHooks</code>.
+    </div>
+    {{ end }}
+
     {{ if .Runs }}
       <table class="runs">
         <thead>

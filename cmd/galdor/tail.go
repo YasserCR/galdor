@@ -37,6 +37,9 @@ func scryTail(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 	}
 	s, err := store.Open(ctx, path)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return 0
+		}
 		_, _ = fmt.Fprintf(errW, "scry: open %s: %v\n", path, err)
 		return 70
 	}
@@ -44,6 +47,9 @@ func scryTail(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 
 	cursor, err := s.MaxSpanStart(ctx)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return 0
+		}
 		_, _ = fmt.Fprintf(errW, "scry tail: %v\n", err)
 		return 70
 	}

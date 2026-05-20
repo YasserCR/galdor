@@ -65,6 +65,9 @@ func (i *instrumentedTool) ExecuteJSON(ctx context.Context, raw json.RawMessage)
 		attribute.String(AttrGenAIToolName, i.inner.Name()),
 		attribute.Int(AttrGenAIToolInputSize, len(raw)),
 	))
+	if runID := resolveRunID(ctx); runID != "" {
+		span.SetAttributes(attribute.String(AttrGaldorRunID, runID))
+	}
 	defer func() {
 		if err != nil {
 			span.RecordError(err)

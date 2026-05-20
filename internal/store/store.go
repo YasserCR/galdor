@@ -289,6 +289,26 @@ func (s *Store) ListRuns(ctx context.Context, limit int) ([]RunSummary, error) {
 	return out, rows.Err()
 }
 
+// OrphanSpanCount returns the number of spans whose entire trace
+// carries no galdor.run.id attribute — i.e. spans the dashboard's
+// ListRuns query cannot surface because there is no run id to group
+// them under. A non-zero value usually means instrumentation isn't
+// going through pkg/observability or that a caller is producing
+// spans entirely outside any run context.
+//
+// The dashboard surfaces this as a warning banner so users notice
+// the silent-failure case the pragma retro flagged.
+func (s *Store) OrphanSpanCount(ctx context.Context) (int, error) {
+	const q = `
+		SELECT COUNT(*) FROM spans
+		WHERE trace_id NOT IN (SELECT trace_id FROM spans WHERE run_id <> '')`
+	var n int
+	if err := s.db.QueryRowContext(ctx, q).Scan(&n); err != nil {
+		return 0, fmt.Errorf("store: orphan span count: %w", err)
+	}
+	return n, nil
+}
+
 // SpansForRun returns every span belonging to runID, ordered by
 // start time ascending. It resolves runID -> trace_id via the
 // root span and then fetches every span sharing that trace_id, so

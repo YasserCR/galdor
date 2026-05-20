@@ -120,6 +120,48 @@ func TestRunsPage_EmptyStore(t *testing.T) {
 	}
 }
 
+// TestRunsPage_OrphanWarning verifies the dashboard surfaces a
+// warning banner when the store contains spans but none of their
+// traces carry galdor.run.id — the pragma retro failure mode.
+func TestRunsPage_OrphanWarning(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s, err := store.Open(context.Background(), filepath.Join(dir, "traces.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Insert spans with no run_id set — the silent-failure case.
+	if err := s.InsertSpans(context.Background(), []store.Span{{
+		SpanID:            "orphan-1",
+		TraceID:           "orphan-trace",
+		Name:              "raw.span",
+		StartTimeUnixNano: 1,
+		EndTimeUnixNano:   2,
+		StatusCode:        "ok",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, err := NewServer(s, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "orphan span") {
+		t.Errorf("orphan banner missing: %s", body)
+	}
+	if !strings.Contains(body, "galdor.run.id") {
+		t.Errorf("banner should reference the attribute name: %s", body)
+	}
+}
+
 func TestRunPage_RendersTree(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
