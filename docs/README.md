@@ -36,6 +36,8 @@ End-to-end workflows assembled from the concept primitives. Each maps to a runna
 - [Cost tracking](patterns/cost-tracking.md) — budget middleware, $-denominated reporting.
 - [MCP server](patterns/mcp-server.md) — expose a `tool.Registry` to Claude Desktop.
 - [Replay tests](patterns/replay-tests.md) — paid-API call once, deterministic regression forever.
+- [Queue worker](patterns/queue-worker.md) — agents behind BullMQ / NATS / Kafka with durable jobs and per-job run ids.
+- [Streaming](patterns/streaming.md) — plumb provider token deltas through the graph to a downstream consumer.
 
 ## Migration
 
