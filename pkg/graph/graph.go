@@ -41,6 +41,14 @@ type Graph[S any] struct {
 	staticEdges      map[string]string
 	conditionalEdges map[string]Router[S]
 
+	// branchMaps[from] is the label -> target-node map installed by
+	// AddConditionalEdges. The router for `from` returns a label;
+	// the runtime looks it up here to get the actual next node.
+	// Stored separately from conditionalEdges so Compile can
+	// validate every label resolves to a real node and Spec can
+	// surface the labels for visualization.
+	branchMaps map[string]map[string]string
+
 	// interruptBefore is the set of node names whose execution must
 	// be preceded by a pause. When the runtime reaches one of these
 	// it saves a checkpoint and returns ErrInterrupted instead of
@@ -59,6 +67,7 @@ func New[S any]() *Graph[S] {
 		nodes:            map[string]NodeFunc[S]{},
 		staticEdges:      map[string]string{},
 		conditionalEdges: map[string]Router[S]{},
+		branchMaps:       map[string]map[string]string{},
 		interruptBefore:  map[string]struct{}{},
 	}
 }
@@ -168,5 +177,55 @@ func (g *Graph[S]) AddConditionalEdge(from string, router Router[S]) *Graph[S] {
 		return g
 	}
 	g.conditionalEdges[from] = router
+	return g
+}
+
+// AddConditionalEdges installs a router-driven transition from `from`
+// where the router returns a semantic label and `branchMap` resolves
+// that label to the actual next node name. Use this when the router's
+// decision domain (e.g. "approve" / "reject" / "needs_human") should
+// be decoupled from the node names — matching LangGraph's
+// add_conditional_edges shape.
+//
+// branchMap values may be node names previously registered with
+// AddNode or the reserved END sentinel. An empty or nil branchMap is
+// rejected at Compile time. At runtime, a label that isn't present in
+// branchMap surfaces as ErrUnknownBranchLabel.
+//
+// Like AddConditionalEdge, only one outgoing edge (static or any
+// flavor of conditional) is allowed per from-node.
+func (g *Graph[S]) AddConditionalEdges(from string, router Router[S], branchMap map[string]string) *Graph[S] {
+	if from == "" {
+		g.errs = append(g.errs, errors.New("graph: AddConditionalEdges: empty from"))
+		return g
+	}
+	if from == END {
+		g.errs = append(g.errs, errors.New("graph: AddConditionalEdges: cannot install router on END"))
+		return g
+	}
+	if router == nil {
+		g.errs = append(g.errs, fmt.Errorf("graph: AddConditionalEdges(%q): router is nil", from))
+		return g
+	}
+	if len(branchMap) == 0 {
+		g.errs = append(g.errs, fmt.Errorf("graph: AddConditionalEdges(%q): branchMap is empty", from))
+		return g
+	}
+	if existing, ok := g.staticEdges[from]; ok {
+		g.errs = append(g.errs, fmt.Errorf("graph: AddConditionalEdges: %q already has static edge -> %q", from, existing))
+		return g
+	}
+	if _, ok := g.conditionalEdges[from]; ok {
+		g.errs = append(g.errs, fmt.Errorf("graph: AddConditionalEdges: %q already has a router", from))
+		return g
+	}
+	// Defensive copy so post-hoc mutation by the caller can't change
+	// the compiled graph's behavior.
+	bm := make(map[string]string, len(branchMap))
+	for k, v := range branchMap {
+		bm[k] = v
+	}
+	g.conditionalEdges[from] = router
+	g.branchMaps[from] = bm
 	return g
 }

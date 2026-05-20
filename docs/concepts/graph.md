@@ -14,6 +14,7 @@ func New[S any]() *Graph[S]
 func (g *Graph[S]) AddNode(name string, fn NodeFunc[S]) *Graph[S]
 func (g *Graph[S]) AddEdge(from, to string) *Graph[S]
 func (g *Graph[S]) AddConditionalEdge(from string, router Router[S]) *Graph[S]
+func (g *Graph[S]) AddConditionalEdges(from string, router Router[S], branchMap map[string]string) *Graph[S]
 func (g *Graph[S]) InterruptBefore(names ...string) *Graph[S]
 func (g *Graph[S]) Compile() (*Runnable[S], error)
 ```
@@ -78,6 +79,36 @@ final, _ := r.Invoke(ctx, state{Limit: 5})
 ```
 
 `Compile` validates the topology and returns an `*Runnable[S]` or a `*CompileError` whose `Problems` field aggregates every issue the builder found. Errors are accumulated by the chainable builder and surfaced once at `Compile` so the call sites stay readable. The full runnable example: [`examples/graph-counter`](../../examples/graph-counter/).
+
+When the router's decision domain should be decoupled from node names — semantic labels like `"approve"` / `"reject"` / `"needs_human"` rather than the names of the nodes that handle each outcome — use `AddConditionalEdges` (plural) and pass a branch map. Matches LangGraph's `add_conditional_edges` shape.
+
+```go
+r, err := graph.New[review]().
+    AddNode("draft",   draft).
+    AddNode("publish", publish).
+    AddNode("revise",  revise).
+    AddNode("escalate", escalate).
+    AddEdge(graph.START, "draft").
+    AddEdge("revise",    "draft").
+    AddEdge("publish",   graph.END).
+    AddEdge("escalate",  graph.END).
+    AddConditionalEdges("draft",
+        func(s review) string {
+            switch {
+            case s.Score >= 0.9:           return "approve"
+            case s.Score >= 0.5:           return "revise"
+            default:                       return "escalate"
+            }
+        },
+        map[string]string{
+            "approve":  "publish",
+            "revise":   "revise",
+            "escalate": "escalate",
+        }).
+    Compile()
+```
+
+Compile validates that every branch-map target is a registered node (or `graph.END`); a typo fails at build time, not on the first run that happens to hit that branch. At runtime, a router returning a label that isn't in the map surfaces as `graph.ErrUnknownBranchLabel`.
 
 ### 2. Stream events instead of waiting for the final state
 
@@ -182,9 +213,9 @@ The embedded web UI uses the same mechanism to render every graph it sees.
 ## Gotchas
 
 - **State is value-typed.** Nodes receive a copy; they should return a new `S` rather than mutating it in place. The runtime does not deep-copy substructures (maps, slices, pointers) — if you mutate one of those, you'll see the mutation across hops.
-- **One outgoing edge per node.** A node can have either a static edge (`AddEdge`) or a conditional edge (`AddConditionalEdge`), never both. Compile rejects double installs.
-- **Coming from LangGraph:** the method is `AddConditionalEdge` (singular) and the router returns a node name directly — not the LangGraph signature `add_conditional_edges(from, router, {label: node})` with a branch map. galdor's `AddConditionalEdges` (plural) offers that branch-map form when you want a decoupled label layer.
-- **Routers must return a real name or END.** An empty string is `ErrEmptyRouterResult`; an unknown name is `ErrUnknownNode`. Intentional dead-ends resolve to `graph.END`.
+- **One outgoing edge per node.** A node can have either a static edge (`AddEdge`), a conditional edge (`AddConditionalEdge`), or a labeled conditional edge set (`AddConditionalEdges`) — never more than one flavor per source. Compile rejects double installs.
+- **Two router shapes.** `AddConditionalEdge` expects the router to return a node name directly (or `graph.END`). `AddConditionalEdges` expects the router to return a semantic label that the branch map resolves to a node name — matching LangGraph's `add_conditional_edges(from, router, {label: node})` form.
+- **Routers must return a real name or END.** For `AddConditionalEdge`: an empty string is `ErrEmptyRouterResult`; an unknown name is `ErrUnknownNode`. For `AddConditionalEdges`: an empty string is `ErrEmptyRouterResult`; a label not in the branch map is `ErrUnknownBranchLabel`. Intentional dead-ends resolve to `graph.END` (directly or via a branch-map entry).
 - **`MaxSteps` is a safety net, not a budget.** The runtime aborts with `ErrMaxSteps` when the step counter exceeds the ceiling. Default is 100; override via `Runnable.MaxSteps` or `RunOptions.MaxSteps`. The `agent` package sizes this generously around its iteration cap so the soft cap (in the router) is what users actually feel.
 - **`Checkpointer` requires a `RunID`.** Setting `RunOptions.Checkpointer` without `RunID` returns `ErrCheckpointerMissingRunID` — without an ID you cannot find the saved state again.
 - **`Stream` is one-shot.** The channel closes after the first terminal event. Consumers must drain it; the runtime's writer goroutine blocks on backpressure until the consumer reads.

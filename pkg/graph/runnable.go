@@ -20,6 +20,7 @@ type Runnable[S any] struct {
 	nodes            map[string]NodeFunc[S]
 	staticEdges      map[string]string
 	conditionalEdges map[string]Router[S]
+	branchMaps       map[string]map[string]string
 	interruptBefore  map[string]struct{}
 	entry            string
 
@@ -129,6 +130,25 @@ func (g *Graph[S]) Compile() (*Runnable[S], error) {
 		}
 	}
 
+	// Branch-map targets must reference known nodes (or END). The
+	// labels themselves are opaque; their resolution is enforced at
+	// build time so a typo in the map fails at Compile, not on the
+	// first run that happens to hit that branch.
+	for from, bm := range g.branchMaps {
+		for label, target := range bm {
+			if target == "" {
+				problems = append(problems, fmt.Errorf("graph: AddConditionalEdges(%q): label %q has empty target", from, label))
+				continue
+			}
+			if target == END {
+				continue
+			}
+			if _, ok := g.nodes[target]; !ok {
+				problems = append(problems, fmt.Errorf("graph: AddConditionalEdges(%q): label %q -> unknown node %q", from, label, target))
+			}
+		}
+	}
+
 	// Every node must have exactly one outgoing transition.
 	for name := range g.nodes {
 		_, hasStatic := g.staticEdges[name]
@@ -165,9 +185,18 @@ func (g *Graph[S]) Compile() (*Runnable[S], error) {
 		nodes:            cloneNodes(g.nodes),
 		staticEdges:      cloneStrMap(g.staticEdges),
 		conditionalEdges: cloneRouters(g.conditionalEdges),
+		branchMaps:       cloneBranchMaps(g.branchMaps),
 		interruptBefore:  cloneSet(g.interruptBefore),
 		entry:            entry,
 	}, nil
+}
+
+func cloneBranchMaps(in map[string]map[string]string) map[string]map[string]string {
+	out := make(map[string]map[string]string, len(in))
+	for k, v := range in {
+		out[k] = cloneStrMap(v)
+	}
+	return out
 }
 
 func cloneSet(in map[string]struct{}) map[string]struct{} {
@@ -218,16 +247,26 @@ func (r *Runnable[S]) resolveNext(current string, state S) (string, error) {
 		return next, nil
 	}
 	if router, ok := r.conditionalEdges[current]; ok {
-		next := router(state)
-		if next == "" {
+		out := router(state)
+		if out == "" {
 			return "", fmt.Errorf("%w: from %q", ErrEmptyRouterResult, current)
 		}
-		if next != END {
-			if _, known := r.nodes[next]; !known {
-				return "", fmt.Errorf("%w: router from %q returned %q", ErrUnknownNode, current, next)
+		// Branch-map flavor: the router returned a label; resolve it
+		// to the actual next node via the per-source map.
+		if bm, hasMap := r.branchMaps[current]; hasMap {
+			next, found := bm[out]
+			if !found {
+				return "", fmt.Errorf("%w: from %q label %q", ErrUnknownBranchLabel, current, out)
+			}
+			return next, nil
+		}
+		// Plain conditional edge: the router returned a node name.
+		if out != END {
+			if _, known := r.nodes[out]; !known {
+				return "", fmt.Errorf("%w: router from %q returned %q", ErrUnknownNode, current, out)
 			}
 		}
-		return next, nil
+		return out, nil
 	}
 	return "", fmt.Errorf("%w: %q", ErrNoOutgoingEdge, current)
 }

@@ -131,3 +131,161 @@ func TestCompileError_Format(t *testing.T) {
 
 // noop is a do-nothing node used in builder tests.
 func noop(_ context.Context, c counter) (counter, error) { return c, nil }
+
+func TestAddConditionalEdges_HappyPath(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("inc", func(_ context.Context, c counter) (counter, error) {
+			c.N++
+			return c, nil
+		}).
+		AddEdge(START, "inc").
+		AddConditionalEdges("inc",
+			func(c counter) string {
+				if c.N >= c.Limit {
+					return "done"
+				}
+				return "again"
+			},
+			map[string]string{
+				"again": "inc",
+				"done":  END,
+			})
+	r, err := g.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	final, err := r.Invoke(context.Background(), counter{Limit: 3})
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if final.N != 3 {
+		t.Errorf("final.N = %d, want 3", final.N)
+	}
+}
+
+func TestAddConditionalEdges_LabelToEND(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddConditionalEdges("x",
+			func(_ counter) string { return "stop" },
+			map[string]string{"stop": END})
+	r, err := g.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := r.Invoke(context.Background(), counter{}); err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+}
+
+func TestAddConditionalEdges_UnknownLabelAtRuntime(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddConditionalEdges("x",
+			func(_ counter) string { return "ghost" },
+			map[string]string{"ok": END})
+	r, err := g.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	_, err = r.Invoke(context.Background(), counter{})
+	if !errors.Is(err, ErrUnknownBranchLabel) {
+		t.Fatalf("err = %v, want ErrUnknownBranchLabel", err)
+	}
+}
+
+func TestAddConditionalEdges_EmptyBranchMapRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddConditionalEdges("x",
+			func(_ counter) string { return "ok" },
+			map[string]string{})
+	_, err := g.Compile()
+	if !errors.Is(err, ErrCompile) {
+		t.Fatalf("err = %v, want ErrCompile", err)
+	}
+}
+
+func TestAddConditionalEdges_NilBranchMapRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddConditionalEdges("x",
+			func(_ counter) string { return "ok" },
+			nil)
+	_, err := g.Compile()
+	if !errors.Is(err, ErrCompile) {
+		t.Fatalf("err = %v, want ErrCompile", err)
+	}
+}
+
+func TestAddConditionalEdges_UnknownTargetRejectedAtCompile(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddConditionalEdges("x",
+			func(_ counter) string { return "ok" },
+			map[string]string{"ok": "ghost"})
+	_, err := g.Compile()
+	if !errors.Is(err, ErrCompile) {
+		t.Fatal("expected compile error for unknown branch target")
+	}
+}
+
+func TestAddConditionalEdges_ConflictsWithAddConditionalEdge(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddConditionalEdge("x", func(_ counter) string { return END }).
+		AddConditionalEdges("x",
+			func(_ counter) string { return "ok" },
+			map[string]string{"ok": END})
+	_, err := g.Compile()
+	if !errors.Is(err, ErrCompile) {
+		t.Fatalf("err = %v, want ErrCompile", err)
+	}
+}
+
+func TestAddConditionalEdges_ConflictsWithAddEdge(t *testing.T) {
+	t.Parallel()
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddEdge("x", END).
+		AddConditionalEdges("x",
+			func(_ counter) string { return "ok" },
+			map[string]string{"ok": END})
+	_, err := g.Compile()
+	if !errors.Is(err, ErrCompile) {
+		t.Fatalf("err = %v, want ErrCompile", err)
+	}
+}
+
+func TestAddConditionalEdges_BranchMapCopiedDefensively(t *testing.T) {
+	t.Parallel()
+	bm := map[string]string{"go": END}
+	g := New[counter]().
+		AddNode("x", noop).
+		AddEdge(START, "x").
+		AddConditionalEdges("x",
+			func(_ counter) string { return "go" }, bm)
+	// Mutate caller's map after install — must not affect the graph.
+	bm["go"] = "ghost"
+	r, err := g.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := r.Invoke(context.Background(), counter{}); err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+}

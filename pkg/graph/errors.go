@@ -27,6 +27,10 @@ var (
 	// router returns "" (intentional dead-ends should resolve to END).
 	ErrEmptyRouterResult = errors.New("graph: router returned empty next-node name")
 
+	// ErrUnknownBranchLabel is returned when an AddConditionalEdges
+	// router returns a label that isn't present in the branchMap.
+	ErrUnknownBranchLabel = errors.New("graph: router returned unknown branch label")
+
 	// ErrInterrupted is returned by Invoke / Resume when execution
 	// paused at an interrupt-gated node. The associated Checkpointer
 	// holds the checkpoint that should be passed to Resume to

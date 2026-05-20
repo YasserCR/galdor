@@ -45,10 +45,24 @@ type NodeSpec struct {
 }
 
 // EdgeSpec is one transition. For static edges both From and To are
-// set; for conditional edges only From is set.
+// set; for conditional edges only From is set unless the edge was
+// installed with AddConditionalEdges, in which case Branches lists
+// the label -> target mappings the router can resolve to.
 type EdgeSpec struct {
 	From string `json:"from"`
 	To   string `json:"to,omitempty"`
+
+	// Branches is set only for AddConditionalEdges sources: each
+	// entry is one (label, target) pair the router can produce.
+	// Sorted alphabetically by label for stable output.
+	Branches []BranchSpec `json:"branches,omitempty"`
+}
+
+// BranchSpec is one entry in an AddConditionalEdges branch map:
+// the semantic label the router returns and the node it resolves to.
+type BranchSpec struct {
+	Label string `json:"label"`
+	To    string `json:"to"`
 }
 
 // Inspect returns a Spec describing this Runnable's topology. The
@@ -88,7 +102,19 @@ func (r *Runnable[S]) Inspect() Spec {
 	sort.Strings(condSources)
 	spec.ConditionalEdges = make([]EdgeSpec, 0, len(condSources))
 	for _, from := range condSources {
-		spec.ConditionalEdges = append(spec.ConditionalEdges, EdgeSpec{From: from})
+		edge := EdgeSpec{From: from}
+		if bm, ok := r.branchMaps[from]; ok {
+			labels := make([]string, 0, len(bm))
+			for l := range bm {
+				labels = append(labels, l)
+			}
+			sort.Strings(labels)
+			edge.Branches = make([]BranchSpec, 0, len(labels))
+			for _, l := range labels {
+				edge.Branches = append(edge.Branches, BranchSpec{Label: l, To: bm[l]})
+			}
+		}
+		spec.ConditionalEdges = append(spec.ConditionalEdges, edge)
 	}
 
 	return spec
@@ -160,7 +186,15 @@ func (s Spec) RenderSVG(w io.Writer) error {
 		drawEdge(w, pos, e.From, e.To, false, "")
 	}
 	for _, e := range s.ConditionalEdges {
-		// Conditional edges have no static target; draw a short
+		if len(e.Branches) > 0 {
+			// AddConditionalEdges form: draw one dashed labeled edge
+			// per branch to the resolved target.
+			for _, b := range e.Branches {
+				drawEdge(w, pos, e.From, b.To, true, b.Label)
+			}
+			continue
+		}
+		// Plain AddConditionalEdge: target is dynamic; draw a short
 		// dashed stub to the right of the source labeled "router".
 		drawConditionalStub(w, pos, e.From)
 	}
