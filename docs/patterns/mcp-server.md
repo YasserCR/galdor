@@ -158,6 +158,105 @@ tools, return progress in the response body and run the work
 behind a job-id pattern; or implement a custom `Transport` over
 SSE / WebSocket if your client supports it.
 
+## Exposing over HTTP
+
+Instead of having every IDE spawn a fresh subprocess, run the
+server once as a long-lived daemon and let clients connect over
+HTTP. `pkg/mcp` ships two HTTP transports; both satisfy the same
+`Transport` interface so `srv.Serve` doesn't need to change.
+
+### SSE — works with every MCP client today
+
+`mcp.NewSSETransport(addr)` mounts `GET /sse` (the event stream)
+and `POST /messages` (request inbox). Cursor, Claude Desktop
+pre-2024-11, and the original TypeScript SDK all speak it. Use
+this for maximum compatibility:
+
+```go
+srv := mcp.NewServer(reg, mcp.ServerInfo{Name: "my-tools", Version: "0.1"})
+srv.Strict = true
+
+ctx, cancel := signal.NotifyContext(context.Background(),
+    os.Interrupt, syscall.SIGTERM)
+defer cancel()
+
+_ = srv.Serve(ctx, mcp.NewSSETransport(":8080"))
+```
+
+Client wiring (Cursor `~/.cursor/mcp.json` style):
+
+```json
+{
+  "mcpServers": {
+    "my-tools": {
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
+```
+
+The transport demuxes a single active session at a time. If a
+second client connects, the older session's stream is closed and
+its stale POSTs return 404 — in practice every MCP client opens
+exactly one session, so this is invisible.
+
+### Streamable HTTP — the future default
+
+`mcp.NewStreamableHTTPTransport(addr)` mounts a single `POST /`
+endpoint. Session id is carried on the `Mcp-Session-Id` header.
+This is the post-2024-11-05 spec direction and what the modern
+TypeScript SDK now ships:
+
+```go
+srv := mcp.NewServer(reg, mcp.ServerInfo{Name: "my-tools", Version: "0.1"})
+_ = srv.Serve(ctx, mcp.NewStreamableHTTPTransport(":8080"))
+```
+
+Client config:
+
+```json
+{
+  "mcpServers": {
+    "my-tools": {
+      "url": "http://localhost:8080/"
+    }
+  }
+}
+```
+
+`POST /` returns `application/json` for synchronous replies and
+`202 Accepted` (no body) for notifications. `DELETE /` with the
+session header terminates a session. Clients must send
+`Accept: application/json, text/event-stream` so the transport can
+upgrade to a streamed response in future revisions (progress
+events, server-initiated notifications).
+
+### Running both side-by-side
+
+`*Server` is transport-agnostic; bind whichever transports your
+clients need. The simplest approach is to start one process per
+transport — they're independent listeners with their own ports:
+
+```go
+go func() { _ = srv.Serve(ctx, mcp.NewSSETransport(":8080")) }()
+go func() { _ = srv.Serve(ctx, mcp.NewStreamableHTTPTransport(":8081")) }()
+<-ctx.Done()
+```
+
+Use SSE for compat with shipping clients today; route new clients
+at the Streamable HTTP port.
+
+### When to pick HTTP over stdio
+
+- You want one process to serve many users / IDE sessions.
+- You want the server to live across IDE restarts (warm caches,
+  persistent connections to internal APIs).
+- The server needs to run on a different host from the IDE.
+- You want web clients (browser, hosted UIs) — only HTTP works.
+
+Otherwise stdio is simpler: no port to allocate, no auth story,
+and IDEs already manage the process lifecycle.
+
 ### Limiting what gets exposed
 
 Build a *subset* registry for MCP. The tools you give your own

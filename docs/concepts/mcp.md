@@ -1,6 +1,6 @@
 # mcp
 
-`pkg/mcp` is galdor's implementation of Anthropic's Model Context Protocol — the spec for connecting LLM applications to external tools and data sources over JSON-RPC 2.0. Two sides are supported in one package: a **Client** that consumes a remote MCP server's tools (and exposes them as a galdor `tool.Registry`), and a **Server** that wraps any galdor `tool.Registry` and serves it to MCP clients like Claude Desktop. Stdio transport ships today; HTTP+SSE is planned.
+`pkg/mcp` is galdor's implementation of Anthropic's Model Context Protocol — the spec for connecting LLM applications to external tools and data sources over JSON-RPC 2.0. Two sides are supported in one package: a **Client** that consumes a remote MCP server's tools (and exposes them as a galdor `tool.Registry`), and a **Server** that wraps any galdor `tool.Registry` and serves it to MCP clients like Claude Desktop. Three transports ship today: **stdio** (child-process), **SSE** (HTTP+SSE, the pre-2024-11-05 default), and **Streamable HTTP** (the post-2024-11-05 default).
 
 What's in scope: JSON-RPC framing, the `initialize` handshake plus `notifications/initialized`, `tools/list`, and `tools/call`. Out of scope for now: resources, prompts, sampling.
 
@@ -14,6 +14,8 @@ type Transport interface {
 }
 
 func NewStdioTransport(r io.Reader, w io.Writer) Transport
+func NewSSETransport(addr string) Transport
+func NewStreamableHTTPTransport(addr string) Transport
 
 type Client struct { /* unexported */ }
 func NewClient(t Transport, opts ...ClientOption) *Client
@@ -101,6 +103,48 @@ Point Claude Desktop's `claude_desktop_config.json` at the compiled binary and r
 ## Stdio framing
 
 `NewStdioTransport` reads and writes one JSON object per line. Trailing `\r` is stripped (Windows pipes). Empty lines are skipped for the benefit of servers that emit them for human readability. Concurrent `Send` calls are safe — a mutex serializes writes so frames stay intact. `Recv` blocks on the underlying reader; ctx cancellation is best-effort because `os.Stdin` doesn't honor deadlines.
+
+## SSE transport (pre-2024-11-05)
+
+`NewSSETransport(addr)` binds an HTTP server to `addr` and mounts two routes:
+
+- `GET /sse` — the client opens a Server-Sent Events stream. The first event is `event: endpoint`, with the URL the client must POST requests to (e.g. `/messages?sessionId=xxx`). Subsequent events are `event: message` carrying JSON-RPC reply frames.
+- `POST /messages?sessionId=...` — the client POSTs JSON-RPC requests. The server returns `202 Accepted` and pushes the matching response down the SSE stream.
+
+```go
+srv := mcp.NewServer(reg, mcp.ServerInfo{Name: "my-tools", Version: "0.1"})
+_ = srv.Serve(ctx, mcp.NewSSETransport(":8080"))
+```
+
+`Close()` shuts the listener down with `http.Server.Close` (not `Shutdown`), because an SSE GET handler never returns on its own — the spec intends the stream to live as long as the server. Sessions are demuxed on the server side: at most one SSE stream is active at a time. If a second client connects the first session's stream is torn down (its stale `POST /messages?sessionId=...` returns 404). In normal MCP usage one client owns one server, so this is invisible.
+
+This is the transport Cursor, Claude Desktop pre-2024-11, and the original `@modelcontextprotocol/sdk` still speak today. Keep it on for compatibility.
+
+## Streamable HTTP transport (2024-11-05+)
+
+`NewStreamableHTTPTransport(addr)` binds an HTTP server with a single endpoint:
+
+- `POST /` — request body is one JSON-RPC frame. The response is the matching reply frame as `application/json`. Notifications (no `id` field) return `202 Accepted` with an empty body.
+- `DELETE /` (optional) — terminate a session.
+
+Session id rides on the `Mcp-Session-Id` HTTP header. The server assigns one on the response to `initialize`; the client echoes it back on every subsequent request. Requests with a wrong session id get `404 Not Found`.
+
+```go
+srv := mcp.NewServer(reg, mcp.ServerInfo{Name: "my-tools", Version: "0.1"})
+_ = srv.Serve(ctx, mcp.NewStreamableHTTPTransport(":8080"))
+```
+
+Clients must send `Accept: application/json, text/event-stream` because future replies may stream multiple frames as SSE before closing (long-running tools, progress notifications). The current implementation only emits single JSON replies; the SSE-response path will land alongside notifications support.
+
+Streamable HTTP is the post-2024-11-05 default and what the official TypeScript SDK now ships. Prefer it for new deployments; keep SSE on alongside for older clients.
+
+## Choosing a transport
+
+- **stdio** — your binary is spawned as a subprocess by the IDE. Single client per process, no networking. The default for Claude Desktop, Cursor, Zed, Antigravity.
+- **SSE** — your server is a long-lived daemon and the client predates the 2024-11-05 spec revision. Browser-friendly because SSE is a standard reconnecting stream.
+- **Streamable HTTP** — same daemon model, modern clients. Cheaper to operate (no long-lived GET stream when there are no server-initiated frames to push) and the spec's future direction.
+
+Bind both HTTP transports if you need maximum compatibility — they're independent listeners and the same `*Server` can `Serve` either.
 
 ## Gotchas
 
