@@ -75,6 +75,12 @@ table.runs td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .warning strong { color: #fde68a; font-weight: 600; }
 .warning code { background: rgba(0,0,0,.35); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
 
+.graph-panel { margin: 0 0 16px; padding: 12px 16px; border: 1px solid #2a2d33; border-radius: 6px; background: #15171a; }
+.graph-panel > summary { cursor: pointer; color: #aab; font-size: 13px; user-select: none; }
+.graph-panel > summary:hover { color: #ddd; }
+.graph-svg { margin-top: 12px; overflow-x: auto; }
+.graph-svg svg { display: block; max-width: 100%; height: auto; }
+
 /* Span tree. */
 ul.tree { list-style: none; padding-left: 0; margin: 0; }
 ul.tree ul { list-style: none; padding-left: 18px; border-left: 1px dashed #2a2d33; margin: 0; }

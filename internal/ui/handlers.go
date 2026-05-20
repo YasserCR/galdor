@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/YasserCR/galdor/internal/store"
+	"github.com/YasserCR/galdor/pkg/graph"
 	"github.com/YasserCR/galdor/pkg/observability"
 	"github.com/YasserCR/galdor/pkg/schema"
 )
@@ -54,6 +57,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots, total, errs := buildSpanTree(spans, runID)
+	graphSVG := s.renderRunGraphSVG(r.Context(), runID)
 	data := runPageData{
 		DBPath:   s.dbPath,
 		RunID:    runID,
@@ -61,8 +65,29 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		Errors:   errs,
 		Roots:    roots,
 		Timeline: buildTimeline(spans),
+		GraphSVG: graphSVG,
 	}
 	s.renderTemplate(w, "run.html", data)
+}
+
+// renderRunGraphSVG returns an inline SVG of the graph topology
+// recorded for runID, or "" when no spec was recorded for the run.
+// Errors are swallowed: a broken or absent spec is shown as the
+// absence of the graph panel, not as a 500 on the run page.
+func (s *Server) renderRunGraphSVG(ctx context.Context, runID string) template.HTML {
+	specJSON, err := s.store.GetGraphSpec(ctx, runID)
+	if err != nil || specJSON == "" {
+		return ""
+	}
+	var spec graph.Spec
+	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := spec.RenderSVG(&buf); err != nil {
+		return ""
+	}
+	return template.HTML(buf.String()) //nolint:gosec // SVG produced by trusted in-repo renderer
 }
 
 // handleSpan serves a single span's detail at
@@ -207,6 +232,7 @@ type runPageData struct {
 	Errors   int
 	Roots    []*spanNode
 	Timeline timelineView
+	GraphSVG template.HTML
 }
 
 // timelineView holds the SVG-ready geometry for the run's spans.

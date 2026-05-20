@@ -90,6 +90,64 @@ func (h Hooks[S]) nodeAfter(ctx context.Context, logger *slog.Logger, runID, nod
 	h.AfterNode(ctx, runID, node, step, state, err)
 }
 
+// MergeHooks composes multiple Hooks[S] into one: each callback
+// fires every component's matching callback in the order they were
+// passed. BeforeRun / BeforeNode chain their ctx returns so each
+// hook sees the ctx updated by the previous one. Nil-callback fields
+// are skipped. Useful when wiring observability + spec recording +
+// custom logging without writing a manual fan-out.
+func MergeHooks[S any](hs ...Hooks[S]) Hooks[S] {
+	hs = nonEmptyHooks(hs)
+	if len(hs) == 0 {
+		return Hooks[S]{}
+	}
+	if len(hs) == 1 {
+		return hs[0]
+	}
+	return Hooks[S]{
+		BeforeRun: func(ctx context.Context, runID string, initial S) context.Context {
+			for _, h := range hs {
+				if h.BeforeRun != nil {
+					ctx = h.BeforeRun(ctx, runID, initial)
+				}
+			}
+			return ctx
+		},
+		AfterRun: func(ctx context.Context, runID string, final S, err error) {
+			for _, h := range hs {
+				if h.AfterRun != nil {
+					h.AfterRun(ctx, runID, final, err)
+				}
+			}
+		},
+		BeforeNode: func(ctx context.Context, runID, node string, step int, state S) context.Context {
+			for _, h := range hs {
+				if h.BeforeNode != nil {
+					ctx = h.BeforeNode(ctx, runID, node, step, state)
+				}
+			}
+			return ctx
+		},
+		AfterNode: func(ctx context.Context, runID, node string, step int, state S, err error) {
+			for _, h := range hs {
+				if h.AfterNode != nil {
+					h.AfterNode(ctx, runID, node, step, state, err)
+				}
+			}
+		},
+	}
+}
+
+func nonEmptyHooks[S any](hs []Hooks[S]) []Hooks[S] {
+	out := hs[:0]
+	for _, h := range hs {
+		if !h.IsZero() {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
 // recoverHook turns a panic inside a hook callback into a log
 // entry. Used as `defer recoverHook(...)` inside each wrapper.
 // logger == nil silently swallows the panic.

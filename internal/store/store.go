@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	_ "modernc.org/sqlite" // sqlite driver registration (pure Go)
 )
@@ -186,6 +187,12 @@ CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);
 CREATE INDEX IF NOT EXISTS idx_spans_run_id   ON spans(run_id);
 CREATE INDEX IF NOT EXISTS idx_spans_parent   ON spans(parent_span_id);
 CREATE INDEX IF NOT EXISTS idx_spans_start    ON spans(start_time_unix_nano);
+
+CREATE TABLE IF NOT EXISTS graph_specs (
+	run_id     TEXT PRIMARY KEY,
+	spec_json  TEXT NOT NULL,
+	created_at INTEGER NOT NULL
+);
 `
 
 func (s *Store) applySchema(ctx context.Context) error {
@@ -287,6 +294,48 @@ func (s *Store) ListRuns(ctx context.Context, limit int) ([]RunSummary, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// SetGraphSpec persists the JSON-encoded graph topology for runID.
+// Stable across re-saves of the same runID — the row is INSERT OR
+// REPLACE so callers can record the spec on every BeforeRun without
+// caring whether this run has been seen before.
+func (s *Store) SetGraphSpec(ctx context.Context, runID string, specJSON []byte) error {
+	if runID == "" {
+		return errors.New("store: empty runID")
+	}
+	if len(specJSON) == 0 {
+		return errors.New("store: empty spec")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO graph_specs (run_id, spec_json, created_at)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(run_id) DO UPDATE SET spec_json = excluded.spec_json`,
+		runID, string(specJSON), time.Now().UnixNano())
+	if err != nil {
+		return fmt.Errorf("store: set graph spec: %w", err)
+	}
+	return nil
+}
+
+// GetGraphSpec returns the JSON-encoded graph topology recorded for
+// runID, or "" + nil when no spec is registered. The decoder lives
+// in the caller's package (pkg/graph) to keep this store
+// transport-only.
+func (s *Store) GetGraphSpec(ctx context.Context, runID string) (string, error) {
+	if runID == "" {
+		return "", errors.New("store: empty runID")
+	}
+	var specJSON string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT spec_json FROM graph_specs WHERE run_id = ?`, runID).Scan(&specJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("store: get graph spec: %w", err)
+	}
+	return specJSON, nil
 }
 
 // OrphanSpanCount returns the number of spans whose entire trace

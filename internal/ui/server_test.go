@@ -187,6 +187,48 @@ func TestRunPage_RendersTree(t *testing.T) {
 	}
 }
 
+// TestRunPage_RendersGraphSVG verifies that when a graph spec has
+// been recorded for a run (via observability.RecordGraphSpec), the
+// run-detail page inlines the rendered DAG SVG inside the
+// "graph topology" panel.
+func TestRunPage_RendersGraphSVG(t *testing.T) {
+	t.Parallel()
+	s := openTestStore(t)
+	specJSON := `{"entry":"inc","nodes":[{"name":"inc"}],"static_edges":[{"from":"__START__","to":"inc"},{"from":"inc","to":"__END__"}],"conditional_edges":[]}`
+	if err := s.SetGraphSpec(context.Background(), "run-happy", []byte(specJSON)); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := NewServer(s, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "graph topology") {
+		t.Errorf("graph-panel summary missing")
+	}
+	if !strings.Contains(body, "<svg") {
+		t.Errorf("rendered SVG missing: %s", body)
+	}
+}
+
+// TestRunPage_NoGraphSVGWhenSpecAbsent verifies the panel is hidden
+// when no spec is recorded — backwards-compatible for runs created
+// before RecordGraphSpec was wired in.
+func TestRunPage_NoGraphSVGWhenSpecAbsent(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	if strings.Contains(rec.Body.String(), "graph topology") {
+		t.Errorf("graph-panel should be hidden when spec absent")
+	}
+}
+
 func TestRunPage_NotFound(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)

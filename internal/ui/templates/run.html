@@ -26,6 +26,13 @@
       <span class="dim">{{ .Total }} spans</span>
     </p>
 
+    {{ if .GraphSVG }}
+    <details class="graph-panel" open>
+      <summary>graph topology</summary>
+      <div class="graph-svg">{{ .GraphSVG }}</div>
+    </details>
+    {{ end }}
+
     {{ if .Timeline.Bars }}
     <div class="timeline">
       <svg viewBox="0 0 {{ .Timeline.Width }} {{ .Timeline.Height }}" width="100%" height="{{ .Timeline.Height }}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">

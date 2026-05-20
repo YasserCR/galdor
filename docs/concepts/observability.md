@@ -26,6 +26,24 @@ The dashboard, `scry` CLI and SQLite store all key on the `galdor.run.id` span a
 2. **`TraceHooks[S]` via `graph.RunOptions[S].RunID`** — set automatically on the run / node spans. `BeforeRun` also calls `WithRunID` so any provider or tool span nested inside picks up the same id.
 3. **Trace-id fallback** — if neither of the above is set, `InstrumentProvider` and `InstrumentTool` stamp the active trace id. That guarantees instrumented code always lands in *some* run bucket; raw spans produced outside any galdor instrumentation are the only way to end up with an empty run id, and the dashboard banners those as "orphan spans" so the silent-fail mode of older versions is no longer possible.
 
+## Recording the graph topology
+
+The dashboard's run-detail page renders the DAG of the graph that produced the spans, if one is recorded for the run. Wire it in by composing `RecordGraphSpec` with `TraceHooks` via `graph.MergeHooks`:
+
+```go
+hooks := graph.MergeHooks(
+    observability.TraceHooks[State](tracer),
+    observability.RecordGraphSpec[State](exporter, r),
+)
+
+final, _ := r.InvokeWith(ctx, state, graph.RunOptions[State]{
+    RunID: runID,
+    Hooks: hooks,
+})
+```
+
+`RecordGraphSpec` calls `r.Inspect()` once at construction (topology is fixed after `Compile`) and persists the JSON-encoded spec to the SQLite store on `BeforeRun`. The dashboard's `/runs/{id}` page inlines the spec's rendered SVG above the timeline; runs without a recorded spec hide the panel.
+
 ## Wiring it up
 
 ```go
