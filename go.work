@@ -10,4 +10,5 @@ use (
 	./providers/bedrock
 	./providers/google
 	./providers/openai
+	./providerset
 )

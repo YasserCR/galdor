@@ -22,7 +22,7 @@ env:
   # examples/ is its own module so it can carry local replace directives
   # without polluting the root go.mod (root must stay replace-free so
   # `go install github.com/YasserCR/galdor/cmd/galdor@<tag>` keeps working).
-  GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai memory/sqlite memory/pgvector memory/qdrant examples"
+  GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai providerset memory/sqlite memory/pgvector memory/qdrant examples"
   # Auto-download a toolchain matching go.mod when the runner's cached
   # Go is older than what we require. The govulncheck-driven 1.25.10
   # floor is enforced by go.mod itself; this env lets the build pull
@@ -88,7 +88,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -112,7 +112,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -137,7 +137,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v5

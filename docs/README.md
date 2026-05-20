@@ -13,11 +13,13 @@ If you have 15 minutes, start with the [quickstart](quickstart.md). After that, 
 One page per package. Each follows the same shape: what it's for, the core types, the things you do with it, gotchas, and links to ADRs and examples.
 
 - [Provider](concepts/provider.md) — `pkg/provider`: the LLM abstraction, retries, capabilities, streaming.
+- [Providerset](concepts/providerset.md) — `providerset`: pick a provider at runtime via env or `Config`, OpenAI-compatible aliases.
 - [Schema](concepts/schema.md) — `pkg/schema`: `Message`, `ToolCall`, `ToolDef`, `StopReason`, the data model that flows between every layer.
 - [Tool](concepts/tool.md) — `pkg/tool`: generic `Tool[In, Out]`, `Registry`, `ExecuteCalls`, builtins.
 - [Graph](concepts/graph.md) — `pkg/graph`: `Graph[S]`, nodes, routers, checkpoints, interrupt/resume, hooks.
 - [Agent](concepts/agent.md) — `pkg/agent`: `agent.Run`, `NewReAct`, `NewPlanAndExecute`.
 - [Memory](concepts/memory.md) — `pkg/memory`: short-term windows, long-term stores, chunkers, retrievers.
+- [Embedder](concepts/embedder.md) — `pkg/embedder`: generic HTTP client for self-hosted embedding servers (TEI, Infinity, vLLM-embeddings).
 - [Observability](concepts/observability.md) — `pkg/observability`: OTel-native spans, SQLite store, `galdor ui`.
 - [Council](concepts/council.md) — `pkg/council`: Supervisor and Swarm multi-agent patterns.
 - [MCP](concepts/mcp.md) — `pkg/mcp`: Anthropic Model Context Protocol client and server.

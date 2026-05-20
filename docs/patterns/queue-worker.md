@@ -36,7 +36,7 @@ import (
 
 	"github.com/YasserCR/galdor/pkg/agent"
 	"github.com/YasserCR/galdor/pkg/observability"
-	"github.com/YasserCR/galdor/pkg/providerset"
+	"github.com/YasserCR/galdor/providerset"
 )
 
 func main() {
