@@ -46,7 +46,9 @@ func newSSEClient(t *testing.T, baseURL string) *sseClient {
 		t.Fatal(err)
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	resp, err := http.DefaultClient.Do(req)
+	// Body is held open intentionally — this is the SSE stream the
+	// test reads frame-by-frame; closed by sseClient.close() below.
+	resp, err := http.DefaultClient.Do(req) //nolint:bodyclose
 	if err != nil {
 		t.Fatalf("GET /sse: %v", err)
 	}

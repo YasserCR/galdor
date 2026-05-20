@@ -61,7 +61,6 @@ func TestStripThinkingBlocks_Generate(t *testing.T) {
 		{"leading whitespace stripped", "<think>x</think>\n\nhello", "hello"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			p := provider.StripThinkingBlocks(&stubProv{

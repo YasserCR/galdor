@@ -74,7 +74,6 @@ func TestNew_OpenAICompatAliases(t *testing.T) {
 	// a key. The Provider always reports "openai" because the OpenAI
 	// adapter drives all of them.
 	for alias := range openAICompatBaseURLs {
-		alias := alias
 		t.Run(alias, func(t *testing.T) {
 			t.Parallel()
 			p, err := New(Config{Provider: alias, APIKey: "sk-test"})
@@ -92,7 +91,6 @@ func TestNew_VLLMAndOllamaSkipAPIKey(t *testing.T) {
 	t.Parallel()
 
 	for _, alias := range []string{"vllm", "ollama"} {
-		alias := alias
 		t.Run(alias, func(t *testing.T) {
 			t.Parallel()
 			// No key supplied. Self-hosted aliases must still
@@ -159,7 +157,6 @@ func TestNew_HTTPClientThreaded(t *testing.T) {
 	// for any non-bedrock branch.
 	hc := &http.Client{Timeout: 5 * time.Second}
 	for _, prov := range []string{"anthropic", "openai", "google", "groq", "vllm"} {
-		prov := prov
 		t.Run(prov, func(t *testing.T) {
 			t.Parallel()
 			key := "sk-test"

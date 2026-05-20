@@ -146,7 +146,7 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	// Peek the body to know whether the client expects a reply (request)
 	// or this is a notification (no id field).

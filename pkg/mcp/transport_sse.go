@@ -222,7 +222,7 @@ func (t *sseTransport) handlePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	// Hand the body to Recv. If Recv is not consuming fast enough we
 	// block the POST until it does — back-pressure.
 	select {

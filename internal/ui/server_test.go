@@ -133,15 +133,15 @@ func TestRunsPage_OrphanWarning(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	// Insert spans with no run_id set — the silent-failure case.
-	if err := s.InsertSpans(context.Background(), []store.Span{{
+	if insertErr := s.InsertSpans(context.Background(), []store.Span{{
 		SpanID:            "orphan-1",
 		TraceID:           "orphan-trace",
 		Name:              "raw.span",
 		StartTimeUnixNano: 1,
 		EndTimeUnixNano:   2,
 		StatusCode:        "ok",
-	}}); err != nil {
-		t.Fatal(err)
+	}}); insertErr != nil {
+		t.Fatal(insertErr)
 	}
 
 	srv, err := NewServer(s, Options{})

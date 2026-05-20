@@ -230,8 +230,8 @@ func TestSQLiteExporter_ShutdownTruncatesWAL(t *testing.T) {
 	}
 
 	emitManySpans(t, exp, 20, "trunc-test")
-	if err := exp.Shutdown(context.Background()); err != nil {
-		t.Fatal(err)
+	if shutErr := exp.Shutdown(context.Background()); shutErr != nil {
+		t.Fatal(shutErr)
 	}
 
 	// After Shutdown the -wal should be 0 bytes (or absent — modernc
