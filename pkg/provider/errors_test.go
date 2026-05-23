@@ -178,21 +178,30 @@ func TestClassify_NilReturnsNil(t *testing.T) {
 
 func TestClassify_UnknownKindPassThrough(t *testing.T) {
 	t.Parallel()
-	// We assert pointer identity here, not error equality:
-	// Classify must return the input *APIError unchanged (same
-	// pointer) when Kind is nil or not in the known sentinel set.
-	// Type-asserting to *APIError first keeps errorlint quiet.
+	// Contract: Classify returns the input *APIError unchanged (same
+	// pointer) when Kind is nil or not in the known sentinel set. We
+	// use errors.As to extract the *APIError (lint-clean traversal of
+	// the unwrap chain) and then compare the resulting *APIError
+	// pointers — that comparison is pointer identity between two
+	// concrete types, which errorlint accepts.
+
 	in := &APIError{Provider: "anthropic"} // Kind is nil
-	out, ok := Classify(in).(*APIError)
-	if !ok || out != in {
-		t.Errorf("Classify with nil Kind should return input pointer unchanged; got %T", out)
+	var apiOut *APIError
+	if !errors.As(Classify(in), &apiOut) {
+		t.Fatal("Classify(input with nil Kind) should be reachable as *APIError")
+	}
+	if apiOut != in {
+		t.Errorf("Classify with nil Kind should return input pointer unchanged")
 	}
 
 	unknown := errors.New("custom sentinel not in galdor")
 	in2 := &APIError{Kind: unknown, Provider: "openai"}
-	out2, ok := Classify(in2).(*APIError)
-	if !ok || out2 != in2 {
-		t.Errorf("Classify with unknown Kind should return input pointer unchanged; got %T", out2)
+	var apiOut2 *APIError
+	if !errors.As(Classify(in2), &apiOut2) {
+		t.Fatal("Classify(input with unknown Kind) should be reachable as *APIError")
+	}
+	if apiOut2 != in2 {
+		t.Errorf("Classify with unknown Kind should return input pointer unchanged")
 	}
 }
 

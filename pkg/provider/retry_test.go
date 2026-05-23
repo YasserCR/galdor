@@ -283,8 +283,13 @@ func TestRetry_PanicOnNilProvider(t *testing.T) {
 func TestRetryPolicyAlias(t *testing.T) {
 	t.Parallel()
 	// RetryPolicy is an alias for RetryConfig; values must be
-	// interchangeable in every position that takes the other.
-	var cfg provider.RetryConfig = provider.RetryPolicy{MaxAttempts: 5, Multiplier: 1.5}
+	// interchangeable in every position that takes the other. The
+	// implicit compile-time check below — passing a RetryPolicy value
+	// to provider.Retry, which is typed as RetryConfig — would fail
+	// to compile if the alias relationship were ever broken. That is
+	// the canonical lint-clean way to assert the property; an explicit
+	// `var _ T = v` form trips staticcheck QF1011 in this position.
+	cfg := provider.RetryPolicy{MaxAttempts: 5, Multiplier: 1.5}
 	if cfg.MaxAttempts != 5 {
 		t.Errorf("MaxAttempts via alias = %d", cfg.MaxAttempts)
 	}
