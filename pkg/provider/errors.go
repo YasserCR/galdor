@@ -77,3 +77,140 @@ func (e *APIError) Error() string {
 
 // Unwrap exposes the Kind so errors.Is matches the sentinels.
 func (e *APIError) Unwrap() error { return e.Kind }
+
+// Typed error wrappers. Each embeds *APIError so callers can use the
+// idiomatic errors.As pattern instead of manually inspecting Kind:
+//
+//	var rl *provider.RateLimitError
+//	if errors.As(err, &rl) {
+//	    time.Sleep(time.Duration(rl.RetryAfter) * time.Second)
+//	    return retry()
+//	}
+//
+// The embedded *APIError makes errors.As(err, &apiErr) and
+// errors.Is(err, sentinel) keep working without changes. Adapters build
+// the typed wrapper via Classify; see ADR-012.
+
+// RateLimitError signals the provider throttled the request. RetryAfter
+// (inherited from APIError) carries the server-suggested backoff in
+// seconds when known; zero means no hint.
+type RateLimitError struct{ *APIError }
+
+// Unwrap returns the embedded *APIError so chained errors.As / errors.Is
+// continue to traverse into Kind.
+func (e *RateLimitError) Unwrap() error { return e.APIError }
+
+// AuthError signals an authentication or authorization failure. Not
+// retryable; callers should surface this to operators.
+type AuthError struct{ *APIError }
+
+// Unwrap returns the embedded *APIError.
+func (e *AuthError) Unwrap() error { return e.APIError }
+
+// InvalidRequestError signals a 4xx-class failure caused by malformed
+// or contradictory request fields (unknown model, bad schema, ...).
+// Not retryable as-is.
+type InvalidRequestError struct{ *APIError }
+
+// Unwrap returns the embedded *APIError.
+func (e *InvalidRequestError) Unwrap() error { return e.APIError }
+
+// TransientError signals a 5xx-class provider failure that may succeed
+// on retry. Distinct from RateLimitError so callers can apply different
+// backoff policies per kind.
+type TransientError struct{ *APIError }
+
+// Unwrap returns the embedded *APIError.
+func (e *TransientError) Unwrap() error { return e.APIError }
+
+// ContextLengthError signals the assembled request exceeded the
+// provider's context window. Retrying without changing the request will
+// fail the same way.
+type ContextLengthError struct{ *APIError }
+
+// Unwrap returns the embedded *APIError.
+func (e *ContextLengthError) Unwrap() error { return e.APIError }
+
+// UnsupportedError signals the request asked for a capability the
+// provider does not implement (e.g. tool calls on a model that lacks
+// them). Callers should gate via Capabilities() to avoid this; the
+// error is the fallback when the gate is missed.
+type UnsupportedError struct{ *APIError }
+
+// Unwrap returns the embedded *APIError.
+func (e *UnsupportedError) Unwrap() error { return e.APIError }
+
+// Classify wraps an *APIError in the typed struct corresponding to its
+// Kind. Adapters call this at the failure boundary instead of returning
+// a raw *APIError so callers get the ergonomic errors.As shape.
+//
+// When apiErr is nil, Classify returns nil. When Kind is nil or does
+// not match a known sentinel, the *APIError is returned unchanged —
+// this is intentionally defensive: an adapter that forgets to set Kind
+// still produces a usable error.
+func Classify(apiErr *APIError) error {
+	if apiErr == nil {
+		return nil
+	}
+	switch apiErr.Kind {
+	case ErrRateLimited:
+		return &RateLimitError{APIError: apiErr}
+	case ErrAuth:
+		return &AuthError{APIError: apiErr}
+	case ErrInvalidRequest:
+		return &InvalidRequestError{APIError: apiErr}
+	case ErrServer:
+		return &TransientError{APIError: apiErr}
+	case ErrContextWindow:
+		return &ContextLengthError{APIError: apiErr}
+	case ErrUnsupported:
+		return &UnsupportedError{APIError: apiErr}
+	default:
+		return apiErr
+	}
+}
+
+// BadOutputError signals that the provider returned successfully but
+// the response body could not be parsed into the expected shape.
+// Distinct from APIError because it has no HTTP/transport context — it
+// describes a *content* failure, not a provider-side failure.
+//
+// Returned by schema.ParseJSON[T] and by future schema-bound
+// JSONOf[T] paths when the provider claims schema support but emits
+// non-conforming output.
+type BadOutputError struct {
+	// Provider is the adapter name that produced the bad output, or
+	// "schema" when the failure originated in a parser called directly
+	// by the user.
+	Provider string
+
+	// Raw is the original bytes/text that failed to parse. Capped to a
+	// sane size by the producer to avoid huge error strings.
+	Raw string
+
+	// Reason is a short human-readable description of what went wrong
+	// ("invalid JSON", "missing required field 'name'", ...).
+	Reason string
+
+	// Cause is the wrapped underlying error, when one exists
+	// (json.SyntaxError, schema validation error). May be nil.
+	Cause error
+}
+
+// Error implements the error interface.
+func (e *BadOutputError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	prefix := e.Provider
+	if prefix == "" {
+		prefix = "schema"
+	}
+	if e.Reason != "" {
+		return prefix + ": bad output: " + e.Reason
+	}
+	return prefix + ": bad output"
+}
+
+// Unwrap exposes the underlying cause for errors.Is / errors.As.
+func (e *BadOutputError) Unwrap() error { return e.Cause }
