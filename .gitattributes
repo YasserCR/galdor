@@ -1,0 +1,30 @@
+# Normalize text files to LF line endings regardless of platform.
+# Go's tooling (gofmt, golangci-lint) expects LF; without this, files
+# checked out on Windows via autocrlf=true end up with CRLF and trip
+# gofmt locally even though they are stored as LF in the repo.
+
+*               text=auto eol=lf
+
+# Explicit list for the formats most likely to break on CRLF.
+*.go            text eol=lf
+*.mod           text eol=lf
+*.sum           text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.json          text eol=lf
+*.md            text eol=lf
+*.toml          text eol=lf
+*.sh            text eol=lf
+Makefile        text eol=lf
+
+# Shell scripts must end with LF or they fail on Linux/macOS.
+*.ps1           text eol=crlf
+
+# Binary files — don't normalize.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.zip           binary
+*.tar.gz        binary

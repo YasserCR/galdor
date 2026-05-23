@@ -46,7 +46,8 @@ $GovulncheckVersion  = "latest"
 $GosecVersion        = "latest"
 
 # Resolve the Go install. Windows users often don't have it on PATH.
-$GoExe = (Get-Command go -ErrorAction SilentlyContinue)?.Source
+$goCmd = Get-Command go -ErrorAction SilentlyContinue
+$GoExe = if ($goCmd) { $goCmd.Source } else { $null }
 if (-not $GoExe) {
     foreach ($p in @(
         "$env:ProgramFiles\Go\bin\go.exe",
@@ -65,6 +66,16 @@ $GoBin = (& $GoExe env GOBIN).Trim()
 if (-not $GoBin) {
     $GoPath = (& $GoExe env GOPATH).Trim()
     $GoBin = Join-Path $GoPath "bin"
+}
+
+# golangci-lint shells out to `go env`; child processes must find go
+# on PATH even when the user invokes us with a raw `go.exe` path.
+$GoDir = Split-Path -Parent $GoExe
+if (($env:PATH -split ';') -notcontains $GoDir) {
+    $env:PATH = "$GoDir;$env:PATH"
+}
+if (($env:PATH -split ';') -notcontains $GoBin) {
+    $env:PATH = "$GoBin;$env:PATH"
 }
 
 function Require-Tool {
@@ -107,10 +118,12 @@ foreach ($m in $ModulesWithExamples) {
     Write-Host "  $m" -ForegroundColor DarkGray
     Run-In-Module $m {
         & $GoExe mod tidy
-        $changed = git status --porcelain go.mod go.sum 2>$null
-        if ($changed) {
+        # Use git diff with CR-at-EOL ignored so Windows line-ending
+        # churn (autocrlf) does not falsely report dirty go.mod/sum.
+        git diff --ignore-cr-at-eol --quiet -- go.mod go.sum
+        if ($LASTEXITCODE -ne 0) {
             $script:Failures += "[$m] go.mod or go.sum is dirty after 'go mod tidy'"
-            Write-Host "    DIRTY: $changed" -ForegroundColor Red
+            git --no-pager diff --ignore-cr-at-eol -- go.mod go.sum | Out-Host
         }
     }
 }
