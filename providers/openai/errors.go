@@ -34,7 +34,7 @@ func normalizeHTTPError(resp *http.Response) error {
 			apiErr.RetryAfter = v
 		}
 	}
-	return apiErr
+	return provider.Classify(apiErr)
 }
 
 func kindForStatus(code int) error {

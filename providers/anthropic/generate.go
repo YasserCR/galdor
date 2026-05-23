@@ -41,11 +41,11 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 	}
 	var msg messageResponse
 	if err := json.Unmarshal(raw, &msg); err != nil {
-		return nil, &provider.APIError{
+		return nil, provider.Classify(&provider.APIError{
 			Provider: providerName,
 			Kind:     provider.ErrServer,
 			Message:  "decode response: " + err.Error(),
-		}
+		})
 	}
 	return responseFromWire(&msg, raw), nil
 }

@@ -255,11 +255,11 @@ func (r *streamReader) handleEvent(ev sseEvent) (provider.Event, bool, error) {
 		if kind == nil {
 			kind = provider.ErrServer
 		}
-		return provider.Event{}, false, &provider.APIError{
+		return provider.Event{}, false, provider.Classify(&provider.APIError{
 			Provider: providerName,
 			Kind:     kind,
 			Message:  p.Error.Message,
-		}
+		})
 
 	default:
 		// Unknown events are ignored to stay forward-compatible.

@@ -87,7 +87,7 @@ func normalizeAWSError(err error) error {
 		apiErr.StatusCode = statusErr.HTTPStatusCode()
 	}
 
-	return apiErr
+	return provider.Classify(apiErr)
 }
 
 // kindForSmithyCode classifies an AWS error code string when we couldn't
