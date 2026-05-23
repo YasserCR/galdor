@@ -152,18 +152,23 @@ func Classify(apiErr *APIError) error {
 	if apiErr == nil {
 		return nil
 	}
-	switch apiErr.Kind {
-	case ErrRateLimited:
+	// errors.Is comparisons (rather than a switch on apiErr.Kind) keep
+	// errorlint quiet: Kind is typed as error so a bare switch trips
+	// the "switch on an error fails on wrapped errors" heuristic, even
+	// though Kind here is always a bare sentinel produced by the
+	// adapter immediately above. Behavior is identical.
+	switch {
+	case errors.Is(apiErr.Kind, ErrRateLimited):
 		return &RateLimitError{APIError: apiErr}
-	case ErrAuth:
+	case errors.Is(apiErr.Kind, ErrAuth):
 		return &AuthError{APIError: apiErr}
-	case ErrInvalidRequest:
+	case errors.Is(apiErr.Kind, ErrInvalidRequest):
 		return &InvalidRequestError{APIError: apiErr}
-	case ErrServer:
+	case errors.Is(apiErr.Kind, ErrServer):
 		return &TransientError{APIError: apiErr}
-	case ErrContextWindow:
+	case errors.Is(apiErr.Kind, ErrContextWindow):
 		return &ContextLengthError{APIError: apiErr}
-	case ErrUnsupported:
+	case errors.Is(apiErr.Kind, ErrUnsupported):
 		return &UnsupportedError{APIError: apiErr}
 	default:
 		return apiErr

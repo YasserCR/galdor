@@ -284,9 +284,12 @@ func TestRetryPolicyAlias(t *testing.T) {
 	t.Parallel()
 	// RetryPolicy is an alias for RetryConfig; values must be
 	// interchangeable in every position that takes the other.
-	var cfg provider.RetryConfig = provider.RetryPolicy{MaxAttempts: 5, Multiplier: 1.0}
+	var cfg provider.RetryConfig = provider.RetryPolicy{MaxAttempts: 5, Multiplier: 1.5}
 	if cfg.MaxAttempts != 5 {
 		t.Errorf("MaxAttempts via alias = %d", cfg.MaxAttempts)
+	}
+	if cfg.Multiplier != 1.5 {
+		t.Errorf("Multiplier via alias = %v", cfg.Multiplier)
 	}
 	p := &scriptedRetryProv{responses: []scriptedResponse{
 		{resp: &provider.Response{Message: schema.AssistantMessage("ok")}},

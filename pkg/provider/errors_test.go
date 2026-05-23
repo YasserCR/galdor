@@ -77,8 +77,8 @@ func TestErrorAs(t *testing.T) {
 func TestClassify_WrapsByKind(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		kind error
+		name  string
+		kind  error
 		check func(t *testing.T, err error)
 	}{
 		{
@@ -178,17 +178,21 @@ func TestClassify_NilReturnsNil(t *testing.T) {
 
 func TestClassify_UnknownKindPassThrough(t *testing.T) {
 	t.Parallel()
+	// We assert pointer identity here, not error equality:
+	// Classify must return the input *APIError unchanged (same
+	// pointer) when Kind is nil or not in the known sentinel set.
+	// Type-asserting to *APIError first keeps errorlint quiet.
 	in := &APIError{Provider: "anthropic"} // Kind is nil
-	out := Classify(in)
-	if out != in {
-		t.Errorf("Classify with nil Kind should return input unchanged; got %T", out)
+	out, ok := Classify(in).(*APIError)
+	if !ok || out != in {
+		t.Errorf("Classify with nil Kind should return input pointer unchanged; got %T", out)
 	}
 
 	unknown := errors.New("custom sentinel not in galdor")
 	in2 := &APIError{Kind: unknown, Provider: "openai"}
-	out2 := Classify(in2)
-	if out2 != in2 {
-		t.Errorf("Classify with unknown Kind should return input unchanged; got %T", out2)
+	out2, ok := Classify(in2).(*APIError)
+	if !ok || out2 != in2 {
+		t.Errorf("Classify with unknown Kind should return input pointer unchanged; got %T", out2)
 	}
 }
 
