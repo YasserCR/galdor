@@ -11,6 +11,57 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-23
+
+Phase 11 of the roadmap — direct-caller ergonomics, driven by the first
+integrator report (Telegram interpreter migration from LangChain).
+The non-agent `Provider.Generate` path is now as ergonomic as the
+agent loop: typed errors, tolerant JSON parsing, importable test
+provider, surfaced retry policy, and a first-class docs page.
+
+### Added
+- **Typed error wrappers** (`pkg/provider`): `*RateLimitError`,
+  `*AuthError`, `*InvalidRequestError`, `*TransientError`,
+  `*ContextLengthError`, `*UnsupportedError`. All embed `*APIError`
+  and support `errors.As` for idiomatic Go classification. Adapters
+  emit them via `provider.Classify`. Backward compatible with
+  existing `errors.Is(err, ErrRateLimited)` and `errors.As(err,
+  &apiErr)` patterns via the unwrap chain. See ADR-012.
+- **`schema.ParseJSON[T any]`** (`pkg/schema`): tolerant LLM JSON
+  parser. Strips Markdown code fences, extracts JSON from
+  surrounding prose, returns `*schema.BadOutputError` with capped
+  raw input on failure. Stdlib-only; no LLM-driven repair. See
+  ADR-011.
+- **`schema.BadOutputError`** (`pkg/schema`): non-transport content
+  failures, shared by ParseJSON today and JSONOf[T] in Phase 12.
+- **`pkg/testprovider`**: scripted in-process `provider.Provider`
+  for unit tests. `New`, `Responses`, `JSONResponses`, `Errors`,
+  `Name`, `Capabilities` options; `Requests()`, `Reset()`,
+  `Remaining()` introspection; goroutine-safe; `ErrScriptExhausted`
+  on overrun.
+- **`provider.WithDefaultRetry(inner)`**: one-line constructor for
+  the common "sensible 429/5xx retry" case.
+- **`provider.RetryPolicy`**: Go type alias for `RetryConfig` so
+  both names refer to the same struct.
+- **`docs/patterns/direct-provider.md`**: end-to-end guide for the
+  one-prompt-one-response case with copy-paste skeleton, full typed-
+  error catalog, retry composition, observability wiring, and
+  testing patterns. Linked from `docs/README.md` ahead of RAG.
+
+### Changed
+- All four adapters (`providers/{anthropic,openai,google,bedrock}`)
+  now return typed error wrappers via `provider.Classify` at every
+  failure boundary. No caller-facing breakage.
+- `pkg/provider/doc.go` rewritten with Errors and Retry sections so
+  the package's godoc.org / pkg.go.dev landing answers \"how do I
+  classify errors\" and \"how do I retry on 429\" without scrolling.
+
+### Acceptance principle hits
+- Rejected: a `Retry` field on every adapter's Config struct.
+  Composition via decorator stays the canonical pattern.
+- Rejected: re-prompt-on-failure inside `ParseJSON[T]`. Failure is
+  signal; recovery via LLM call belongs in caller code.
+
 ## [0.1.1] - 2026-05-23
 
 ### Documentation
@@ -51,6 +102,7 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/YasserCR/galdor/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/YasserCR/galdor/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/YasserCR/galdor/releases/tag/v0.1.0

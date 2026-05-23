@@ -178,26 +178,26 @@ of <other framework>'s <feature>", it does not belong here. If it could be
 expressed as "the natural Go shape for this problem, which happens to remove
 boilerplate integrators write today", it does.
 
-## Phase 11 — Direct-Caller Ergonomics
+## Phase 11 — Direct-Caller Ergonomics *(shipped in v0.2.0)*
 
 The non-agent case (classify / extract / translate / NL-to-DSL) is a large
 share of production usage. v1.0 leads with `agent.Run()`; this phase makes the
 one-shot `Provider.Generate` path equally first-class.
 
-- [ ] `schema.ParseJSON[T any]` — fence-stripping, prose-tolerant, typed error
+- [x] `schema.ParseJSON[T any]` — fence-stripping, prose-tolerant, typed error
       on failure. Stdlib-only, no LLM re-prompt magic. (ADR-011)
-- [ ] Typed errors from `Provider.Generate` — `RateLimitError{RetryAfter}`,
+- [x] Typed errors from `Provider.Generate` — `RateLimitError{RetryAfter}`,
       `AuthError`, `TransientError`, `BadOutputError`, `ContextLengthError`,
       all `errors.As`-friendly. Existing `APIError` keeps working. (ADR-012)
-- [ ] `provider.RetryPolicy` surfaced on provider config (`MaxAttempts`,
-      pluggable `Backoff`). Builds on the v1.0 `provider.Retry` wrapper; the
-      new policy fields are what callers configure, the wrapper executes.
-- [ ] `docs/patterns/direct-provider.md` — single page, ~200 lines of working
-      code: instantiate, build request, wire observability, classify errors,
-      parse output. No agent abstraction in sight.
-- [ ] `pkg/testprovider` — lift the inlined stub from
-      `examples/provider-interface/main.go`.
-      `testprovider.New(testprovider.Responses(...), testprovider.Errors(...))`.
+- [x] `provider.RetryPolicy` — type alias for the v0.1 `RetryConfig` plus
+      `provider.WithDefaultRetry(inner)` one-liner. Rejected: a `Retry` field
+      on every adapter's Config (would duplicate the option across packages
+      and hide the decorator pattern).
+- [x] `docs/patterns/direct-provider.md` — copy-paste-runnable skeleton +
+      full typed-error catalog + retry composition + observability wiring +
+      testing patterns.
+- [x] `pkg/testprovider` — scripted in-process Provider for unit tests:
+      `testprovider.New(testprovider.Responses(...), testprovider.JSONResponses(...), testprovider.Errors(...))`.
 
 **Outcome:** A direct-`Generate` user can ship a production interpreter without
 opening any provider's source code.
