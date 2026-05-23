@@ -149,3 +149,153 @@ Then:
 - [ ] Public launch (HN, r/golang, GopherCon CFP)
 
 **Total estimate:** ~8 months at a focused pace.
+
+---
+
+# Post-v1.0 — Integrator-Driven
+
+Phases 0–10 were built top-down: what a framework needs to be credible. What
+follows is built bottom-up, from concrete reports of real migrations onto
+galdor. Each item links to the feedback that drove it.
+
+Phases remain independently shippable. Within a cycle, priority is set by
+(1) items unblocking another phase, (2) items cited by the most-recent
+integrator report, (3) smallest "LoC deleted in integrator repos / LoC added
+in galdor" ratio.
+
+### Acceptance principle
+
+Items in this section come from real migrations and are accepted only when
+they **reinforce galdor's Go-native posture** — leaning on generics,
+`context.Context`, `errors.As`, struct tags, composition via decorators, and
+a single binary. Suggestions that would import another framework's shape —
+even when popular or familiar — are recorded under Non-Goals, not adopted out
+of sympathy. The migration guide reads as "what you stop doing in Go", not
+"the equivalent abstraction for X".
+
+When in doubt: if a proposed item could only be expressed as "the Go version
+of <other framework>'s <feature>", it does not belong here. If it could be
+expressed as "the natural Go shape for this problem, which happens to remove
+boilerplate integrators write today", it does.
+
+## Phase 11 — Direct-Caller Ergonomics
+
+The non-agent case (classify / extract / translate / NL-to-DSL) is a large
+share of production usage. v1.0 leads with `agent.Run()`; this phase makes the
+one-shot `Provider.Generate` path equally first-class.
+
+- [ ] `schema.ParseJSON[T any]` — fence-stripping, prose-tolerant, typed error
+      on failure. Stdlib-only, no LLM re-prompt magic. (ADR-011)
+- [ ] Typed errors from `Provider.Generate` — `RateLimitError{RetryAfter}`,
+      `AuthError`, `TransientError`, `BadOutputError`, `ContextLengthError`,
+      all `errors.As`-friendly. Existing `APIError` keeps working. (ADR-012)
+- [ ] `provider.RetryPolicy` surfaced on provider config (`MaxAttempts`,
+      pluggable `Backoff`). Builds on the v1.0 `provider.Retry` wrapper; the
+      new policy fields are what callers configure, the wrapper executes.
+- [ ] `docs/patterns/direct-provider.md` — single page, ~200 lines of working
+      code: instantiate, build request, wire observability, classify errors,
+      parse output. No agent abstraction in sight.
+- [ ] `pkg/testprovider` — lift the inlined stub from
+      `examples/provider-interface/main.go`.
+      `testprovider.New(testprovider.Responses(...), testprovider.Errors(...))`.
+
+**Outcome:** A direct-`Generate` user can ship a production interpreter without
+opening any provider's source code.
+
+**Driven by:** integrator report §2, §3, §4, §5, §10.
+
+## Phase 12 — Structured Output (Schema-Bound)
+
+The biggest ergonomic gap when porting from LangChain. Providers (Gemini,
+OpenAI, Anthropic tool-mode) all support real schema-bound responses; galdor
+exposes `ResponseFormat` but no binding. This phase closes the loop.
+
+- [ ] `schema.JSONOf[T any]` — generic ResponseFormat that compiles a Go type
+      to JSON Schema via `internal/jsonschema` and threads it through
+      `provider.Request.ResponseFormat`. (ADR-013)
+- [ ] Per-provider adapter wiring — Google `response_schema`, OpenAI
+      `response_format: json_schema`, Anthropic forced-tool with JSON schema.
+      Capability gating already in place (`StructuredOutput: true`); now it
+      means something.
+- [ ] `Response.Parsed[T]` accessor — returns `(T, error)`, populated when the
+      request used `JSONOf[T]`. Falls back to `ParseJSON[T]` on the raw text
+      when the provider returned schema but did not enforce it.
+- [ ] Refactor existing examples that ask for JSON in the prompt (e.g.
+      plan-and-execute helper) to use `JSONOf[T]` where the provider supports
+      it. Backward compatible — text-mode JSON path stays.
+- [ ] `docs/patterns/structured-output.md` with the full "Gemini receives a
+      real schema, returns parsed `T`" example.
+
+**Outcome:** The fence-stripping regex and permissive structs that every
+integrator currently writes simply disappear.
+
+**Driven by:** integrator report §1.
+
+## Phase 13 — Production Polish
+
+Smaller items that compound. Each ships independently.
+
+- [ ] `pkg/pricing` — embedded per-model price table,
+      `pricing.For(model).Cost(usage)`. Override-friendly. Documented refresh
+      process (single file, PRs welcome). `observability.InstrumentProvider`
+      decorates spans with `cost.usd` when the model is known. (ADR-014)
+- [ ] `schema.Template` — minimal `text/template` wrapper for prompt
+      variables. Explicit non-goals documented: no partials, no composition,
+      no auto format-instructions. (ADR-015)
+- [ ] Granular content capture — `observability.WithCapturePrompt(bool)` and
+      `WithCaptureResponse(bool)` separately. `WithRedactor(func(string) string)`
+      runs before persisting to spans. Existing `WithCaptureContent` stays as
+      a shortcut for both.
+- [ ] `CHANGELOG.md` + tagged GitHub releases for every minor.
+      Auto-generated stub (release-please or equivalent); curated highlights
+      by hand.
+- [ ] Doc additions: `$GOBIN` on `PATH` in the CLI install snippet; one
+      paragraph in `docs/concepts/observability.md` clarifying that galdor
+      spans nest under any caller-provided parent span via context
+      propagation.
+
+**Outcome:** Removes the most-cited friction points from real integrations
+without expanding core surface area.
+
+**Driven by:** integrator report §6, §7, §8, §11, §12, §13.
+
+## Phase 14 — Ecosystem & Adoption
+
+Materials that make the second, third, and tenth integration cheaper than the
+first — without adding framework surface area.
+
+- [ ] `examples/integration-http-interpret` — full HTTP service: provider +
+      structured output + observability + graceful shutdown + health endpoint.
+      Copy-paste starter, not a `pkg/serve` abstraction. (Decision recorded
+      in ADR-016 on why we resist `pkg/serve`.)
+- [ ] `docs/migration/from-langchain-py.md` — concrete mappings
+      (`JsonOutputParser` → `schema.ParseJSON`, LCEL pipe → "write a Go
+      function", `RunnableWithFallbacks` → `provider.RetryPolicy` + typed
+      errors).
+- [ ] Public integrator-feedback intake — `docs/feedback/` + issue template
+      `integration-report.yml`. Each shipped migration writes one up; the
+      current report becomes the seed entry.
+- [ ] `galdor doctor` CLI — sanity-checks `$GOBIN`, provider env vars, SQLite
+      store reachability, prints first-call diagnostics.
+
+**Outcome:** Adoption cost halves between integration #1 and integration #N
+because the cliffs the first one hit are paved.
+
+**Driven by:** integrator report §3 (docs framing), §9 (resist `pkg/serve`),
+"What NOT to Add" section.
+
+---
+
+## Explicit Non-Goals (carried forward)
+
+These remain off the table, regardless of integrator pull:
+
+- **Declarative chains** (`prompt | llm | parser`). Plain Go functions are the
+  composition primitive. (Captured in ADR-016.)
+- **A zoo of overlapping abstractions** (`Runnable`, `Chain`, `Agent`, `Tool`,
+  `Memory` where the same task expresses four ways). Current core size is the
+  ceiling, not the floor.
+- **Vector stores or document loaders in core.** Stay in `memory/<backend>`
+  modules, the way provider adapters are isolated.
+- **`pkg/serve` HTTP framework helper.** Ship the example, not the
+  abstraction. Revisit only after ≥3 integrations converge on the same shape.
