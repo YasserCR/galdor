@@ -32,6 +32,7 @@ One page per package. Each follows the same shape: what it's for, the core types
 
 End-to-end workflows assembled from the concept primitives. Each maps to a runnable example under `examples/`.
 
+- [Direct provider usage](patterns/direct-provider.md) — one prompt, one response, no agent. Classifiers, extractors, NL-to-DSL.
 - [RAG](patterns/rag.md) — chunk → embed → store → retrieve → answer.
 - [Multi-agent](patterns/multi-agent.md) — Supervisor + specialist sub-agents.
 - [Human-in-the-loop](patterns/human-in-the-loop.md) — `InterruptBefore` + `Resume` + state edits.
