@@ -79,27 +79,22 @@ Pointer-embed (not value-embed) so the wrappers share storage with the
 underlying APIError and zero-value wrappers are clearly broken (nil
 pointer) rather than silently empty.
 
-### D2. `BadOutputError` does not embed `APIError`
+### D2. `BadOutputError` lives in `pkg/schema`, not here
 
 Output-parsing failures happen *after* a successful HTTP call, so they
 don't fit the `APIError` mold (no StatusCode, no Provider-side message).
-`BadOutputError` is its own shape:
+`BadOutputError` is its own shape and is returned by `schema.ParseJSON[T]`
+(ADR-011) and by future schema-bound `JSONOf[T]` paths.
 
-```go
-type BadOutputError struct {
-    Provider string // adapter name (or "schema" for parser-side failures)
-    Raw      string // the raw bytes/text that failed to parse
-    Reason   string // short human description of what went wrong
-    cause    error  // wrapped underlying error (json.SyntaxError, ...)
-}
+The type was originally introduced in `pkg/provider` by an earlier
+draft of this ADR. ADR-011 revises the placement to `pkg/schema`
+because `pkg/provider` already imports `pkg/schema` (for Message,
+ToolDef, etc.) and the reverse direction would create a circular
+import. Putting `BadOutputError` in `pkg/schema` lets both
+`pkg/schema` helpers and `pkg/provider` adapters reference the same
+shape without introducing a third package.
 
-func (e *BadOutputError) Unwrap() error { return e.cause }
-```
-
-This is the type returned by `schema.ParseJSON[T]` (Phase 11, separate
-item) and by future schema-bound `JSONOf[T]` paths (Phase 12). Including
-it here avoids defining two error shapes for what is conceptually the
-same failure mode.
+See ADR-011 D4 for the field-level contract.
 
 ### D3. A `Classify` constructor wraps an `APIError` in the right type
 

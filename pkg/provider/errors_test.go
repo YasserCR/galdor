@@ -203,38 +203,7 @@ func TestRateLimitError_ErrorMessageDelegated(t *testing.T) {
 	}
 }
 
-func TestBadOutputError(t *testing.T) {
-	t.Parallel()
-	cause := errors.New("unexpected end of JSON input")
-	err := &BadOutputError{
-		Provider: "google",
-		Raw:      "{partial",
-		Reason:   "invalid JSON",
-		Cause:    cause,
-	}
-	if got := err.Error(); got != "google: bad output: invalid JSON" {
-		t.Errorf("Error() = %q", got)
-	}
-	if !errors.Is(err, cause) {
-		t.Errorf("errors.Is(err, cause) = false; want true")
-	}
-}
-
-func TestBadOutputError_DefaultPrefix(t *testing.T) {
-	t.Parallel()
-	err := &BadOutputError{Reason: "trailing prose"}
-	if got := err.Error(); got != "schema: bad output: trailing prose" {
-		t.Errorf("Error() = %q", got)
-	}
-}
-
-func TestBadOutputError_NilSafe(t *testing.T) {
-	t.Parallel()
-	var e *BadOutputError
-	if got := e.Error(); got != "<nil>" {
-		t.Errorf("nil BadOutputError.Error() = %q", got)
-	}
-}
+// BadOutputError tests live in pkg/schema (the type's home).
 
 // Regression: the existing Retry middleware classifies by errors.Is on
 // the unwrap chain. Wrapping in a typed struct must not break that.
