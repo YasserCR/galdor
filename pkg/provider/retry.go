@@ -14,6 +14,9 @@ import (
 // exponential backoff starting at 1s, capped at 30s, ±25% jitter.
 // Override individual fields; zero values for any field other than
 // MaxAttempts and Multiplier fall back to the default.
+//
+// Also available under the RetryPolicy alias for readers who prefer
+// the "policy" framing; both names refer to the same struct.
 type RetryConfig struct {
 	// MaxAttempts is the total number of tries (NOT extra retries).
 	// MaxAttempts=1 disables retry; MaxAttempts=3 means up to two
@@ -70,6 +73,25 @@ func (cfg RetryConfig) withDefaults() RetryConfig {
 		cfg.Now = time.Now
 	}
 	return cfg
+}
+
+// RetryPolicy is an alias for RetryConfig. Both names are exported
+// so callers can pick whichever reads better in their code:
+//
+//	p := provider.Retry(inner, provider.RetryPolicy{MaxAttempts: 5})
+//	p := provider.Retry(inner, provider.RetryConfig{MaxAttempts: 5})
+//
+// The alias is a Go type alias (not a separate type), so values are
+// fully interchangeable in every position.
+type RetryPolicy = RetryConfig
+
+// WithDefaultRetry wraps inner with Retry using the package defaults
+// (3 attempts, 1s→30s exponential backoff, ±25% jitter). It is
+// shorthand for provider.Retry(inner, provider.RetryPolicy{}) and is
+// intended to make the "I just want sensible retry on production
+// 429s" case a one-liner.
+func WithDefaultRetry(inner Provider) Provider {
+	return Retry(inner, RetryPolicy{})
 }
 
 // Retry returns a Provider that wraps inner with automatic retries

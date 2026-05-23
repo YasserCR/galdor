@@ -279,3 +279,48 @@ func TestRetry_PanicOnNilProvider(t *testing.T) {
 	}()
 	provider.Retry(nil, provider.RetryConfig{})
 }
+
+func TestRetryPolicyAlias(t *testing.T) {
+	t.Parallel()
+	// RetryPolicy is an alias for RetryConfig; values must be
+	// interchangeable in every position that takes the other.
+	var cfg provider.RetryConfig = provider.RetryPolicy{MaxAttempts: 5, Multiplier: 1.0}
+	if cfg.MaxAttempts != 5 {
+		t.Errorf("MaxAttempts via alias = %d", cfg.MaxAttempts)
+	}
+	p := &scriptedRetryProv{responses: []scriptedResponse{
+		{resp: &provider.Response{Message: schema.AssistantMessage("ok")}},
+	}}
+	wrapped := provider.Retry(p, provider.RetryPolicy{InitialDelay: time.Millisecond})
+	if _, err := wrapped.Generate(context.Background(), provider.Request{}); err != nil {
+		t.Fatalf("alias should be usable in Retry: %v", err)
+	}
+}
+
+func TestWithDefaultRetry(t *testing.T) {
+	t.Parallel()
+	// One transient failure followed by success — defaults give us
+	// 3 attempts, so this should succeed on attempt 2.
+	p := &scriptedRetryProv{responses: []scriptedResponse{
+		{err: provider.Classify(&provider.APIError{Kind: provider.ErrServer})},
+		{resp: &provider.Response{Message: schema.AssistantMessage("recovered")}},
+	}}
+	// Defaults use InitialDelay=1s which would slow the test; we
+	// can't override here, but the success path on attempt 2 still
+	// runs in ~1s which is acceptable for an integration-style test.
+	// Skip in -short.
+	if testing.Short() {
+		t.Skip("skip WithDefaultRetry in -short (1s minimum due to default delay)")
+	}
+	wrapped := provider.WithDefaultRetry(p)
+	resp, err := wrapped.Generate(context.Background(), provider.Request{})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if resp.Message.Text() != "recovered" {
+		t.Errorf("response = %q", resp.Message.Text())
+	}
+	if got := p.calls.Load(); got != 2 {
+		t.Errorf("calls = %d, want 2", got)
+	}
+}
