@@ -10,7 +10,7 @@
     <div class="brand"><a href="/">galdor scry</a></div>
     <nav class="links">
       <a href="/runs/{{ .RunID }}/steps">steps view</a>
-      <a href="/graph">graph</a>
+      <a href="/graph?run={{ .RunID }}">graph</a>
       <a href="/api/runs/{{ .RunID }}/spans">api</a>
       <span class="db">{{ if .DBPath }}{{ .DBPath }}{{ end }}</span>
     </nav>
@@ -30,18 +30,33 @@
     <details class="graph-panel" open>
       <summary>graph topology</summary>
       <div class="graph-svg">{{ .GraphSVG }}</div>
+      <p style="margin: 10px 0 2px; font-size: 12.5px;"><a href="/graph?run={{ .RunID }}">open in graph viewer →</a></p>
     </details>
+    {{ else }}
+    <p class="graph-hint">
+      <strong>No execution graph recorded for this run.</strong>
+      Wire <code>observability.RecordGraphSpec</code> into the run's hooks and the
+      graph renders here automatically. You can still inspect any topology
+      in the <a href="/graph">graph viewer</a>.
+    </p>
     {{ end }}
 
     {{ if .Timeline.Bars }}
     <div class="timeline">
-      <svg viewBox="0 0 {{ .Timeline.Width }} {{ .Timeline.Height }}" width="100%" height="{{ .Timeline.Height }}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <svg viewBox="0 0 {{ .Timeline.Width }} {{ .Timeline.Height }}" width="{{ .Timeline.Width }}" height="{{ .Timeline.Height }}" xmlns="http://www.w3.org/2000/svg">
+        <!-- time axis: gridlines + elapsed-time labels across the chart -->
+        {{ range .Timeline.Ticks }}
+        <line class="grid" x1="{{ .X }}" y1="{{ $.Timeline.HeaderH }}" x2="{{ .X }}" y2="{{ $.Timeline.Height }}"></line>
+        <text class="axis-label" x="{{ .X }}" y="{{ $.Timeline.AxisLabelY }}" text-anchor="middle">{{ .Label }}</text>
+        {{ end }}
         <line class="axis" x1="{{ .Timeline.LabelWidth }}" y1="0" x2="{{ .Timeline.LabelWidth }}" y2="{{ .Timeline.Height }}"></line>
+        <line class="axis" x1="{{ .Timeline.LabelWidth }}" y1="{{ .Timeline.HeaderH }}" x2="{{ .Timeline.Width }}" y2="{{ .Timeline.HeaderH }}"></line>
         {{ range .Timeline.Bars }}
         <a href="/runs/{{ $.RunID }}/spans/{{ .SpanID }}">
           <title>{{ .Tooltip }}</title>
           <text class="label" x="{{ .LabelX }}" y="{{ .LabelY }}">{{ .Name }}</text>
-          <rect class="bar {{ if .OK }}ok{{ else }}err{{ end }}" x="{{ .X }}" y="{{ .Y }}" width="{{ .W }}" height="10"></rect>
+          <text class="dur" x="{{ .DurX }}" y="{{ .LabelY }}" text-anchor="end">{{ .Dur }}</text>
+          <rect class="bar {{ if .OK }}ok{{ else }}err{{ end }}" x="{{ .X }}" y="{{ .Y }}" width="{{ .W }}" height="11"></rect>
         </a>
         {{ end }}
       </svg>

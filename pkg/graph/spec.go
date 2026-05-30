@@ -120,6 +120,15 @@ func (r *Runnable[S]) Inspect() Spec {
 	return spec
 }
 
+// NodeAnnotation decorates a node when rendering. Href, when set, wraps
+// the node in an SVG <a> link (e.g. to the span/step that ran it).
+// Tooltip, when set, becomes a hover <title>. The zero value renders a
+// plain, non-interactive node.
+type NodeAnnotation struct {
+	Href    string
+	Tooltip string
+}
+
 // RenderSVG writes a self-contained SVG visualization of the spec to
 // w. The layout is a layered (Sugiyama-style) flow from START on the
 // left to END on the right; static edges are solid, conditional
@@ -129,6 +138,15 @@ func (r *Runnable[S]) Inspect() Spec {
 // be inlined into HTML, served as image/svg+xml, or piped through
 // `rsvg-convert` to produce PNGs.
 func (s Spec) RenderSVG(w io.Writer) error {
+	return s.RenderSVGAnnotated(w, nil)
+}
+
+// RenderSVGAnnotated is RenderSVG with optional per-node decorations:
+// nodes present in ann are wrapped in a clickable <a> and/or carry a
+// hover <title>. A nil map renders exactly like RenderSVG. This is how
+// the dashboard turns the static topology into a map you can click
+// through to each node's execution (span/step).
+func (s Spec) RenderSVGAnnotated(w io.Writer, ann map[string]NodeAnnotation) error {
 	layers := layeredPositions(s)
 	maxRow := 0
 	for _, l := range layers {
@@ -173,10 +191,11 @@ func (s Spec) RenderSVG(w io.Writer) error {
 		return err
 	}
 
-	// Defs: arrowhead markers.
+	// Defs: arrowhead markers + a soft drop shadow for node cards.
 	if _, err := io.WriteString(w, `<defs>`+
-		`<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>`+
-		`<marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>`+
+		`<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>`+
+		`<marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a5b4fc"/></marker>`+
+		`<filter id="sh" x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="1" stdDeviation="1.1" flood-color="#0f172a" flood-opacity="0.12"/></filter>`+
 		`</defs>`); err != nil {
 		return err
 	}
@@ -205,29 +224,41 @@ func (s Spec) RenderSVG(w io.Writer) error {
 		if !ok {
 			continue
 		}
-		fill := "#f1f5f9"
-		stroke := "#475569"
+		// Normal nodes are indigo-tinted cards; interrupt-gated nodes are
+		// amber so a paused boundary stands out. (Note: plain %s here, not
+		// %q — %q would wrap the value in its own quotes, producing
+		// fill=""#eef2ff"" which browsers read as no fill.)
+		fill, stroke, textFill := "#eef2ff", "#c7d2fe", "#3730a3"
 		if node.Interrupt {
-			fill = "#fef3c7"
-			stroke = "#b45309"
+			fill, stroke, textFill = "#fef3c7", "#fcd34d", "#92400e"
 		}
-		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="6" ry="6" fill="%q" stroke="%q" stroke-width="1.5"/>`,
+		a, annotated := ann[node.Name]
+		if annotated && a.Href != "" {
+			_, _ = fmt.Fprintf(w, `<a href="%s">`, escapeSVG(a.Href))
+		}
+		if annotated && a.Tooltip != "" {
+			_, _ = fmt.Fprintf(w, `<title>%s</title>`, escapeSVG(a.Tooltip))
+		}
+		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="8" ry="8" fill="%s" stroke="%s" stroke-width="1.25" filter="url(#sh)"/>`,
 			p.X, p.Y, nodeW, nodeH, fill, stroke)
-		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="#0f172a">%s</text>`,
-			p.X+nodeW/2, p.Y+nodeH/2+4, escapeSVG(prettyName(node.Name)))
+		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="%s" font-weight="500">%s</text>`,
+			p.X+nodeW/2, p.Y+nodeH/2+4, textFill, escapeSVG(prettyName(node.Name)))
+		if annotated && a.Href != "" {
+			_, _ = io.WriteString(w, `</a>`)
+		}
 	}
 
 	// START / END markers (drawn as smaller pill-shaped nodes).
 	if p, ok := pos[START]; ok {
-		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#10b981" stroke="#047857" stroke-width="1.5"/>`,
+		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#4f46e5" stroke="#4338ca" stroke-width="1.25" filter="url(#sh)"/>`,
 			p.X, p.Y, nodeW, nodeH)
-		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600">START</text>`,
+		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600" letter-spacing="0.5">START</text>`,
 			p.X+nodeW/2, p.Y+nodeH/2+4)
 	}
 	if p, ok := pos[END]; ok {
-		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>`,
+		_, _ = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" rx="14" ry="14" fill="#1e293b" stroke="#0f172a" stroke-width="1.25" filter="url(#sh)"/>`,
 			p.X, p.Y, nodeW, nodeH)
-		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600">END</text>`,
+		_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" text-anchor="middle" fill="white" font-weight="600" letter-spacing="0.5">END</text>`,
 			p.X+nodeW/2, p.Y+nodeH/2+4)
 	}
 
@@ -254,11 +285,11 @@ func drawEdge(w io.Writer, pos map[string]struct{ X, Y int }, from, to string, d
 	midX := (x1 + x2) / 2
 	d := fmt.Sprintf("M%d,%d C%d,%d %d,%d %d,%d", x1, y1, midX, y1, midX, y2, x2, y2)
 	dash := ""
-	stroke := "#475569"
+	stroke := "#94a3b8"
 	marker := "url(#a)"
 	if dashed {
 		dash = ` stroke-dasharray="4 3"`
-		stroke = "#94a3b8"
+		stroke = "#a5b4fc"
 		marker = "url(#ad)"
 	}
 	_, _ = fmt.Fprintf(w, `<path d=%q fill="none" stroke=%q stroke-width="1.5" marker-end="%s"%s/>`,
@@ -278,7 +309,7 @@ func drawConditionalStub(w io.Writer, pos map[string]struct{ X, Y int }, from st
 	x1 := p.X + nodeW
 	y1 := p.Y + nodeH/2
 	x2 := x1 + 32
-	_, _ = fmt.Fprintf(w, `<path d="M%d,%d L%d,%d" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ad)"/>`,
+	_, _ = fmt.Fprintf(w, `<path d="M%d,%d L%d,%d" fill="none" stroke="#a5b4fc" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ad)"/>`,
 		x1, y1, x2, y1)
 	_, _ = fmt.Fprintf(w, `<text x="%d" y="%d" fill="#64748b">router?</text>`,
 		x2+4, y1+4)

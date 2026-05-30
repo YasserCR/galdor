@@ -10,16 +10,38 @@ import (
 	"github.com/YasserCR/galdor/pkg/graph"
 )
 
-// handleGraphPage serves the static DAG viewer at /graph. Users paste
-// a JSON-encoded graph.Spec into the textarea and the page renders it
-// as SVG via the /api/graph/svg endpoint.
-//
-// The page is intentionally untied to a specific run: graph topology
-// is a per-Runnable property, not a per-run one. Persisting specs
-// alongside runs (so the run-detail page can show "this is the graph
-// that ran") is a separate, larger change tracked for a follow-up.
-func (s *Server) handleGraphPage(w http.ResponseWriter, _ *http.Request) {
-	s.renderTemplate(w, "graph.html", graphPageData{DBPath: s.dbPath})
+// handleGraphPage serves the DAG viewer at /graph. By default it
+// auto-loads the execution graph recorded for the most recent run
+// (specs are persisted per run by observability.RecordGraphSpec); a
+// run dropdown switches between them, and an "advanced" panel still
+// lets you paste an ad-hoc graph.Spec. ?run=<id> selects a run
+// directly.
+func (s *Server) handleGraphPage(w http.ResponseWriter, r *http.Request) {
+	runs, _ := s.store.ListRuns(r.Context(), 50)
+
+	selected := r.URL.Query().Get("run")
+	if selected == "" && len(runs) > 0 {
+		selected = runs[0].RunID // default to the latest run
+	}
+
+	data := graphPageData{DBPath: s.dbPath, SelectedRun: selected}
+	for _, ru := range runs {
+		data.Runs = append(data.Runs, graphRunOption{RunID: ru.RunID, Selected: ru.RunID == selected})
+	}
+
+	if selected != "" {
+		if specJSON, err := s.store.GetGraphSpec(r.Context(), selected); err == nil && specJSON != "" {
+			data.SpecJSON = specJSON
+			// Reuse the run-detail renderer so the viewer's graph is
+			// clickable too: each node links to its step, hover shows
+			// duration + status.
+			spans, _ := s.store.SpansForRun(r.Context(), selected)
+			data.GraphSVG = s.renderRunGraphSVG(r.Context(), selected, spans)
+		}
+		data.NoSpec = data.GraphSVG == ""
+	}
+
+	s.renderTemplate(w, "graph.html", data)
 }
 
 // handleGraphSVG accepts a JSON-encoded graph.Spec via POST and
@@ -65,5 +87,15 @@ func errorSVG(w http.ResponseWriter, code int, msg string) {
 }
 
 type graphPageData struct {
-	DBPath string
+	DBPath      string
+	Runs        []graphRunOption // recent runs for the dropdown
+	SelectedRun string           // run whose graph is shown ("" if none)
+	GraphSVG    template.HTML    // pre-rendered SVG, "" when absent
+	SpecJSON    string           // raw spec, pre-filled into the advanced textarea
+	NoSpec      bool             // a run is selected but has no recorded spec
+}
+
+type graphRunOption struct {
+	RunID    string
+	Selected bool
 }

@@ -4,16 +4,6 @@
   <meta charset="utf-8">
   <title>galdor scry — graph viewer</title>
   <link rel="stylesheet" href="/static/style.css">
-  <style>
-    .graph-layout { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
-    .graph-input textarea { width: 100%; min-height: 320px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px; box-sizing: border-box; }
-    .graph-input .actions { margin-top: 8px; display: flex; gap: 8px; }
-    .graph-output { border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; background: #fff; min-height: 320px; overflow: auto; }
-    .graph-output .placeholder { color: #94a3b8; font-style: italic; }
-    .graph-help { font-size: 12px; color: #64748b; line-height: 1.5; }
-    .graph-help pre { background: #f8fafc; padding: 8px; border-radius: 4px; overflow: auto; }
-    @media (max-width: 880px) { .graph-layout { grid-template-columns: 1fr; } }
-  </style>
 </head>
 <body>
   <header class="topbar">
@@ -27,28 +17,39 @@
 
   <main>
     <h1>Graph viewer</h1>
-    <p class="graph-help">
-      Paste the JSON output of <code>Runnable.Inspect()</code> below and the
-      server renders it as an SVG. Useful for verifying that a graph you built
-      matches the topology you intended.
-    </p>
 
-    <div class="graph-layout">
-      <section class="graph-input">
-        <label for="spec" style="font-weight: 600;">graph.Spec JSON</label>
-        <textarea id="spec" placeholder='{"entry":"model","nodes":[...],"static_edges":[...],"conditional_edges":[...]}' spellcheck="false"></textarea>
-        <div class="actions">
-          <button type="button" id="render">Render SVG</button>
-          <button type="button" id="example">Insert example</button>
-        </div>
-      </section>
-      <section class="graph-output" id="output">
-        <div class="placeholder">SVG output appears here.</div>
-      </section>
+    <div class="graph-toolbar">
+      <label for="run-select">Run</label>
+      <select id="run-select" onchange="if(this.value){location.href='/graph?run='+encodeURIComponent(this.value)}">
+        {{ if not .Runs }}<option value="">— no runs recorded —</option>{{ end }}
+        {{ range .Runs }}<option value="{{ .RunID }}"{{ if .Selected }} selected{{ end }}>{{ .RunID }}</option>{{ end }}
+      </select>
+      {{ if .SelectedRun }}<a class="btn" href="/runs/{{ .SelectedRun }}">view run →</a>{{ end }}
+      <div class="legend">
+        <span class="swatch node"><i></i> node</span>
+        <span class="swatch interrupt"><i></i> interrupt</span>
+        <span class="swatch start"><i></i> start</span>
+        <span class="swatch end"><i></i> end</span>
+      </div>
     </div>
 
-    <details class="graph-help" style="margin-top: 16px;">
-      <summary>How to produce a Spec from your code</summary>
+    <div class="graph-stage" id="stage">
+      {{ if .GraphSVG }}{{ .GraphSVG }}
+      {{ else if .NoSpec }}<div class="placeholder">No execution graph recorded for run <code>{{ .SelectedRun }}</code>.<br>Wire <code>observability.RecordGraphSpec</code> to capture it automatically, or paste a spec below.</div>
+      {{ else }}<div class="placeholder">Select a run above to view its execution graph, or paste a spec below.</div>
+      {{ end }}
+    </div>
+
+    <details class="graph-advanced"{{ if not .GraphSVG }} open{{ end }}>
+      <summary>Advanced — render a graph.Spec by hand</summary>
+      <p class="graph-help">Paste the JSON from <code>Runnable.Inspect()</code> to render any topology ad-hoc, without recording a run.</p>
+      <textarea id="spec" placeholder='{"entry":"model","nodes":[...],"static_edges":[...],"conditional_edges":[...]}' spellcheck="false">{{ .SpecJSON }}</textarea>
+      <div class="actions">
+        <button type="button" class="primary" id="render">Render</button>
+        <button type="button" id="example">Insert example</button>
+      </div>
+      <details class="graph-help" style="margin-top: 14px;">
+        <summary>How to produce a Spec from your code</summary>
 <pre>import (
     "encoding/json"
     "os"
@@ -57,10 +58,11 @@
 
 r, _ := agent.NewReAct(agent.Config{ /* ... */ })
 _ = json.NewEncoder(os.Stdout).Encode(r.Inspect())</pre>
-      Pipe the result into the textarea above, or POST it to
-      <code>/api/graph/svg</code> to fetch the rendered SVG directly.
+      </details>
     </details>
   </main>
+
+  <footer><span class="dim">galdor scry web UI</span></footer>
 
   <script>
     const exampleSpec = {
@@ -83,7 +85,7 @@ _ = json.NewEncoder(os.Stdout).Encode(r.Inspect())</pre>
     });
 
     document.getElementById("render").addEventListener("click", async () => {
-      const out = document.getElementById("output");
+      const out = document.getElementById("stage");
       const body = document.getElementById("spec").value.trim();
       if (!body) {
         out.innerHTML = '<div class="placeholder">Paste a graph.Spec JSON first.</div>';
@@ -92,9 +94,7 @@ _ = json.NewEncoder(os.Stdout).Encode(r.Inspect())</pre>
       out.innerHTML = '<div class="placeholder">rendering…</div>';
       try {
         const resp = await fetch("/api/graph/svg", { method: "POST", headers: {"Content-Type": "application/json"}, body });
-        const svg = await resp.text();
-        // The server returns the SVG body either way; inline it.
-        out.innerHTML = svg;
+        out.innerHTML = await resp.text();
       } catch (e) {
         out.innerHTML = '<div class="placeholder">error: ' + (e?.message || e) + '</div>';
       }

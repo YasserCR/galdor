@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/YasserCR/galdor/internal/store"
@@ -57,7 +58,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roots, total, errs := buildSpanTree(spans, runID)
-	graphSVG := s.renderRunGraphSVG(r.Context(), runID)
+	graphSVG := s.renderRunGraphSVG(r.Context(), runID, spans)
 	data := runPageData{
 		DBPath:   s.dbPath,
 		RunID:    runID,
@@ -74,7 +75,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 // recorded for runID, or "" when no spec was recorded for the run.
 // Errors are swallowed: a broken or absent spec is shown as the
 // absence of the graph panel, not as a 500 on the run page.
-func (s *Server) renderRunGraphSVG(ctx context.Context, runID string) template.HTML {
+func (s *Server) renderRunGraphSVG(ctx context.Context, runID string, spans []store.Span) template.HTML {
 	specJSON, err := s.store.GetGraphSpec(ctx, runID)
 	if err != nil || specJSON == "" {
 		return ""
@@ -84,11 +85,47 @@ func (s *Server) renderRunGraphSVG(ctx context.Context, runID string) template.H
 		return ""
 	}
 	var buf bytes.Buffer
-	if err := spec.RenderSVG(&buf); err != nil {
+	if err := spec.RenderSVGAnnotated(&buf, buildNodeAnnotations(runID, spans)); err != nil {
 		return ""
 	}
-	// #nosec G203 -- SVG body is produced in-process by pkg/graph.Spec.RenderSVG; no user input.
+	// #nosec G203 -- SVG body is produced in-process by pkg/graph.Spec; no user input.
 	return template.HTML(buf.String())
+}
+
+// buildNodeAnnotations maps each graph node to the run step that executed
+// it, turning the static topology into a clickable map: hover shows the
+// node's duration + status, click jumps to that node's step in the
+// time-travel view. The first execution wins when a node runs more than
+// once (a loop).
+func buildNodeAnnotations(runID string, spans []store.Span) map[string]graph.NodeAnnotation {
+	var nodes []store.Span
+	for _, sp := range spans {
+		if sp.Name == "galdor.graph.node" {
+			nodes = append(nodes, sp)
+		}
+	}
+	sort.SliceStable(nodes, func(i, j int) bool {
+		return nodes[i].StartTimeUnixNano < nodes[j].StartTimeUnixNano
+	})
+	ann := make(map[string]graph.NodeAnnotation, len(nodes))
+	for i, n := range nodes {
+		name := stringAttr(n.Attributes, "galdor.node.name")
+		if name == "" {
+			name = n.Name
+		}
+		if _, seen := ann[name]; seen {
+			continue // first occurrence wins
+		}
+		status := n.StatusCode
+		if status == "" || status == "unset" {
+			status = "ok"
+		}
+		ann[name] = graph.NodeAnnotation{
+			Href:    fmt.Sprintf("/runs/%s/steps#step-%d", runID, i+1),
+			Tooltip: fmt.Sprintf("%s · %s · %s", name, formatDuration(n.Duration()), status),
+		}
+	}
+	return ann
 }
 
 // handleSpan serves a single span's detail at
@@ -245,15 +282,27 @@ type timelineView struct {
 	Height     int
 	RowHeight  int
 	LabelWidth int
+	HeaderH    int            // top band reserved for the time axis
+	AxisLabelY int            // baseline y for the tick labels
+	Ticks      []timelineTick // evenly spaced time-axis ticks
 	Bars       []timelineBar
+}
+
+// timelineTick is one mark on the top time axis: an x position and the
+// elapsed-time label drawn above it (e.g. "0", "1.5s").
+type timelineTick struct {
+	X     int
+	Label string
 }
 
 type timelineBar struct {
 	Y       int
 	X       int
 	W       int
-	LabelX  int
-	LabelY  int
+	LabelX  int    // x of the (depth-indented) span name
+	LabelY  int    // baseline y shared by the name + duration
+	DurX    int    // x of the right-aligned duration label
+	Dur     string // formatted span duration
 	OK      bool
 	SpanID  string
 	Name    string
@@ -372,15 +421,20 @@ func buildSpanTree(spans []store.Span, runID string) (roots []*spanNode, total, 
 // than 2px are widened so they remain clickable.
 func buildTimeline(spans []store.Span) timelineView {
 	const (
-		width      = 960
-		labelWidth = 320
-		rowHeight  = 20
+		width      = 1000
+		labelWidth = 300
+		rowHeight  = 22
+		barH       = 11
+		headerH    = 30
 		minBarPx   = 2
+		numTicks   = 6
 	)
 	tv := timelineView{
 		Width:      width,
 		LabelWidth: labelWidth,
 		RowHeight:  rowHeight,
+		HeaderH:    headerH,
+		AxisLabelY: headerH - 11,
 	}
 	if len(spans) == 0 {
 		return tv
@@ -411,36 +465,62 @@ func buildTimeline(spans []store.Span) timelineView {
 	}
 
 	chartWidth := width - labelWidth
+
+	// Top time axis: evenly spaced ticks from 0 to the total duration so
+	// the chart reads as a real scale, not just bars on a strip.
+	for k := 0; k <= numTicks; k++ {
+		tv.Ticks = append(tv.Ticks, timelineTick{
+			X:     labelWidth + chartWidth*k/numTicks,
+			Label: tickLabel(total * int64(k) / int64(numTicks)),
+		})
+	}
+
 	row := 0
-	var walk func(node *spanNode)
-	walk = func(node *spanNode) {
+	var walk func(node *spanNode, depth int)
+	walk = func(node *spanNode, depth int) {
 		sp := srcByID[node.SpanID]
 		x := labelWidth + int(float64(chartWidth)*float64(sp.StartTimeUnixNano-minStart)/float64(total))
 		w := max(int(float64(chartWidth)*float64(sp.EndTimeUnixNano-sp.StartTimeUnixNano)/float64(total)), minBarPx)
 		if x+w > width {
 			w = width - x
 		}
+		rowTop := headerH + row*rowHeight
+		labelX := 10 + depth*14 // indent by tree depth: run › node › provider
+		if labelX > labelWidth-48 {
+			labelX = labelWidth - 48
+		}
 		tv.Bars = append(tv.Bars, timelineBar{
-			Y:       row*rowHeight + 10,
+			Y:       rowTop + (rowHeight-barH)/2,
 			X:       x,
 			W:       w,
-			LabelX:  8,
-			LabelY:  row*rowHeight + 24,
+			LabelX:  labelX,
+			LabelY:  rowTop + 15,
+			DurX:    labelWidth - 8,
+			Dur:     formatDuration(sp.Duration()),
 			OK:      sp.StatusCode != "error",
 			SpanID:  sp.SpanID,
-			Name:    sp.Name,
+			Name:    strings.TrimPrefix(sp.Name, "galdor."),
 			Tooltip: fmt.Sprintf("%s · %s", sp.Name, formatDuration(sp.Duration())),
 		})
 		row++
 		for _, child := range node.Children {
-			walk(child)
+			walk(child, depth+1)
 		}
 	}
 	for _, r := range roots {
-		walk(r)
+		walk(r, 0)
 	}
-	tv.Height = row*rowHeight + 20
+	tv.Height = headerH + row*rowHeight + 12
 	return tv
+}
+
+// tickLabel formats an elapsed-time axis label; the origin reads "0"
+// rather than the em-dash formatDuration uses for zero durations.
+func tickLabel(ns int64) string {
+	if ns <= 0 {
+		return "0"
+	}
+	return formatDuration(ns)
 }
 
 // spanPageData backs the span detail page. Prompt and Completion

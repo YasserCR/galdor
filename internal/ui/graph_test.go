@@ -23,7 +23,7 @@ func TestHandleGraphPage_RendersHTML(t *testing.T) {
 		t.Errorf("Content-Type = %q", got)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Graph viewer", "graph.Spec JSON", "Render SVG"} {
+	for _, want := range []string{"Graph viewer", "graph.Spec", "Render", "run-select"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
 		}
