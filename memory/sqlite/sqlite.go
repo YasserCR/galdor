@@ -167,6 +167,12 @@ func (s *Store) lexicalRetrieve(ctx context.Context, q memory.Query, k int) ([]m
 	return results, rows.Err()
 }
 
+// vectorRetrieve ranks chunks by cosine similarity. NOTE: this is an
+// O(N) full-table scan — every row's embedding blob is read and scored
+// in Go on each call, because SQLite has no native vector index. It is
+// fine for the small single-process corpora this backend targets; for
+// large corpora use the pgvector or qdrant backend, which push the
+// nearest-neighbor search into an indexed store.
 func (s *Store) vectorRetrieve(ctx context.Context, q memory.Query, k int) ([]memory.Result, error) {
 	rows, err := s.db.QueryContext(ctx, scanAllSQL)
 	if err != nil {
@@ -207,15 +213,18 @@ func (s *Store) vectorRetrieve(ctx context.Context, q memory.Query, k int) ([]me
 	return hits, nil
 }
 
-// buildFTSMatch turns a free-form query into an FTS5 MATCH clause.
-// Stop characters that FTS5 treats as operators are stripped to
-// avoid syntax errors on user-typed queries. Terms are joined with
-// OR so any of them contributes to the score (BM25 handles the
+// buildFTSMatch turns a free-form query into an FTS5 MATCH clause. Each
+// token is wrapped as a quoted FTS5 string literal so that operator
+// keywords (AND/OR/NOT) and special characters (* ( ) : - + ^ ~) in the
+// user's text are matched literally instead of being parsed as query
+// syntax — a bare `foo AND bar` would otherwise produce a MATCH of
+// `foo OR AND OR bar`, which is an FTS5 syntax error. Terms are joined
+// with OR so any of them contributes to the score (BM25 handles the
 // weighting).
 func buildFTSMatch(query string) string {
 	var terms []string
 	for _, raw := range strings.Fields(query) {
-		t := sanitizeFTSTerm(raw)
+		t := quoteFTSTerm(raw)
 		if t == "" {
 			continue
 		}
@@ -227,16 +236,16 @@ func buildFTSMatch(query string) string {
 	return strings.Join(terms, " OR ")
 }
 
-func sanitizeFTSTerm(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch r {
-		case '"', '*', '(', ')', ':', '-', '+', '^', '~':
-			continue
-		}
-		b.WriteRune(r)
+// quoteFTSTerm wraps a single user token as an FTS5 string literal.
+// Inside a double-quoted FTS5 string the only character needing escaping
+// is the double-quote itself, which is escaped by doubling it. Returns ""
+// for whitespace-only input.
+func quoteFTSTerm(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
 	}
-	return strings.TrimSpace(b.String())
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
 func matchesFilter(meta, filter map[string]string) bool {

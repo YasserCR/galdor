@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"errors"
 	"sync"
 	"time"
@@ -61,10 +63,17 @@ const (
 // reload Checkpoints. Implementations need only be safe for the
 // concurrency level the calling code uses; MemoryCheckpointer below
 // is safe across goroutines.
+//
+// Immutability contract: Save must capture an independent snapshot of
+// ck.State. The runtime passes state by value, but when S contains
+// reference types (slices, maps, pointers) a later node can mutate the
+// shared backing storage and silently corrupt an already-saved
+// checkpoint. Serializing implementations (SQLite, Postgres) get this
+// for free; in-memory ones must deep-copy. MemoryCheckpointer does.
 type Checkpointer[S any] interface {
 	// Save stores ck. Implementations may keep only the latest
 	// Checkpoint per RunID or retain history — galdor never assumes
-	// history is preserved.
+	// history is preserved. See the immutability contract above.
 	Save(ctx context.Context, ck Checkpoint[S]) error
 
 	// Load returns the latest Checkpoint for runID. The second
@@ -97,12 +106,44 @@ type MemoryCheckpointer[S any] struct {
 	history map[string][]Checkpoint[S]
 }
 
-// Save appends ck to the history for ck.RunID.
+// Save appends a snapshot of ck to the history for ck.RunID. The State
+// is deep-copied (see cloneState) so a later node mutating shared slices
+// or maps cannot corrupt this already-saved checkpoint.
 func (m *MemoryCheckpointer[S]) Save(_ context.Context, ck Checkpoint[S]) error {
+	ck.State = cloneState(ck.State)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.history[ck.RunID] = append(m.history[ck.RunID], ck)
 	return nil
+}
+
+// Cloner lets a state type provide a precise deep copy for checkpointing.
+// When S (or *S) implements Cloner, MemoryCheckpointer uses Clone() to
+// snapshot state on Save. Implement it when your state carries unexported
+// fields, funcs, channels, or anything a gob round-trip can't reproduce.
+type Cloner[S any] interface {
+	Clone() S
+}
+
+// cloneState returns an independent deep copy of s for safe checkpoint
+// storage. It prefers an explicit Clone() (Cloner), falls back to a gob
+// round-trip for ordinary exported-field structs, and finally returns s
+// unchanged when the type is not gob-serializable (funcs, channels, no
+// exported fields) — preserving prior behavior rather than failing the
+// run. Types in the last bucket should implement Cloner to be safe.
+func cloneState[S any](s S) S {
+	if c, ok := any(s).(Cloner[S]); ok {
+		return c.Clone()
+	}
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(s); err != nil {
+		return s
+	}
+	var out S
+	if err := gob.NewDecoder(&buf).Decode(&out); err != nil {
+		return s
+	}
+	return out
 }
 
 // Load returns the most recent Checkpoint for runID.

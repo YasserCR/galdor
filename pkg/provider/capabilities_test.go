@@ -71,6 +71,31 @@ func TestCapabilities_ValidateRequest_VisionWithSupport(t *testing.T) {
 	}
 }
 
+func TestCapabilities_ValidateRequest_CacheControlWithoutSupport(t *testing.T) {
+	t.Parallel()
+	caps := provider.Capabilities{}
+	req := provider.Request{Messages: []schema.Message{
+		{Role: schema.RoleUser, Content: []schema.ContentPart{schema.TextPart("hi")},
+			CacheControl: schema.EphemeralCache()},
+	}}
+	err := caps.ValidateRequest(req)
+	if !errors.Is(err, provider.ErrUnsupported) {
+		t.Fatalf("err = %v, want ErrUnsupported", err)
+	}
+}
+
+func TestCapabilities_ValidateRequest_CacheControlWithSupport(t *testing.T) {
+	t.Parallel()
+	caps := provider.Capabilities{PromptCaching: true}
+	req := provider.Request{Messages: []schema.Message{
+		{Role: schema.RoleUser, Content: []schema.ContentPart{schema.TextPart("hi")},
+			CacheControl: schema.EphemeralCache()},
+	}}
+	if err := caps.ValidateRequest(req); err != nil {
+		t.Errorf("CacheControl with PromptCaching=true should pass: %v", err)
+	}
+}
+
 func TestCapabilities_ValidateRequest_EmptyIsAlwaysOK(t *testing.T) {
 	t.Parallel()
 	caps := provider.Capabilities{}

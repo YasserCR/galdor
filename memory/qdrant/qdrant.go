@@ -165,7 +165,11 @@ func (s *Store) Retrieve(ctx context.Context, q memory.Query) ([]memory.Result, 
 		c := chunkFromPayload(pt.Payload)
 		c.Embedding = pt.Vector
 		// Qdrant's cosine score is already higher-is-better and lives
-		// in [-1, 1].
+		// in [-1, 1]. Drop anti-correlated chunks (negative cosine) for
+		// parity with the sqlite / in-memory backends.
+		if pt.Score < 0 {
+			continue
+		}
 		results = append(results, memory.Result{Chunk: c, Score: pt.Score})
 	}
 	return results, nil

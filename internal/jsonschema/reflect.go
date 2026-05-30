@@ -100,18 +100,10 @@ func buildSchema(t reflect.Type, seen map[reflect.Type]bool) (*Schema, error) {
 		if err != nil {
 			return nil, err
 		}
-		// We model `map[string]T` as an object whose additional
-		// properties match T's schema. The known-properties set is
-		// empty.
-		out := &Schema{Type: "object"}
-		// Smuggle the value schema through Properties[""] is the
-		// common hack; instead we leave properties empty and rely on
-		// describing it via Items? No — JSON Schema uses
-		// additionalProperties with a Schema value. We can't model
-		// that without adding it. Future ADR.
-		_ = val
-		out.AdditionalProperties = boolPtr(true)
-		return out, nil
+		// Model `map[string]T` as an object with no known properties
+		// whose additionalProperties carry T's schema, so the model gets
+		// the value shape instead of an unconstrained object.
+		return &Schema{Type: "object", AdditionalProperties: val}, nil
 
 	case reflect.Struct:
 		seen[t] = true
@@ -154,12 +146,22 @@ func collectFields(t reflect.Type, out *Schema, seen map[reflect.Type]bool) erro
 			continue
 		}
 
-		// Anonymous (embedded) struct → promote its fields.
-		if f.Anonymous && f.Type.Kind() == reflect.Struct {
-			if err := collectFields(f.Type, out, seen); err != nil {
-				return err
+		// Anonymous (embedded) struct → promote its fields. Unwrap one
+		// pointer level first so an embedded *Base is promoted exactly
+		// like encoding/json promotes it; without this it would leak as a
+		// spurious "Base" property and, under additionalProperties:false,
+		// make the schema reject the model's correct (promoted) output.
+		if f.Anonymous {
+			ft := f.Type
+			if ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
 			}
-			continue
+			if ft.Kind() == reflect.Struct {
+				if err := collectFields(ft, out, seen); err != nil {
+					return err
+				}
+				continue
+			}
 		}
 
 		name, opts := parseJSONTag(f)

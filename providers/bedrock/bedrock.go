@@ -56,12 +56,19 @@ func (p *Provider) Name() string { return providerName }
 // should consult Bedrock's documentation. MaxContextTokens is reported
 // as the long-context tier; some models on Bedrock cap at 200K, others
 // at 1M (Claude Sonnet 4.x family) when long-context is enabled.
+//
+// StructuredOutput and PromptCaching are reported false: although the
+// Converse API can express both (response_format / cachePoint blocks),
+// this adapter does not yet wire Request.ResponseFormat or
+// schema.CacheControl into the request. Reporting them honestly lets
+// callers fall back instead of silently getting free-form text or
+// uncached prompts. Flip these to true only alongside the wiring.
 func (p *Provider) Capabilities() provider.Capabilities {
 	return provider.Capabilities{
 		Streaming:        true,
 		ToolCalling:      true,
-		StructuredOutput: true,
-		PromptCaching:    true,
+		StructuredOutput: false,
+		PromptCaching:    false,
 		VisionInput:      true,
 		MaxContextTokens: 200_000,
 	}

@@ -144,8 +144,8 @@ func TestFor_StructWithTags(t *testing.T) {
 	if required["country"] || required["detail"] {
 		t.Errorf("omitempty fields should not be required, got %+v", s.Required)
 	}
-	if s.AdditionalProperties == nil || *s.AdditionalProperties {
-		t.Errorf("AdditionalProperties should be false")
+	if ap, ok := s.AdditionalProperties.(*bool); !ok || ap == nil || *ap {
+		t.Errorf("AdditionalProperties should be a *bool false, got %#v", s.AdditionalProperties)
 	}
 }
 
@@ -210,6 +210,29 @@ func TestFor_EmbeddedFieldsPromoted(t *testing.T) {
 	}
 }
 
+type embeddedPtr struct {
+	*Weather
+	Extra string `json:"extra"`
+}
+
+func TestFor_EmbeddedPointerFieldsPromoted(t *testing.T) {
+	t.Parallel()
+	s, err := For[embeddedPtr]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"city", "country", "days", "extra"} {
+		if _, ok := s.Properties[want]; !ok {
+			t.Errorf("missing promoted field %q in %+v", want, s.Properties)
+		}
+	}
+	// The embedded *Weather must not leak as a spurious "Weather" property,
+	// which would be rejected under additionalProperties:false.
+	if _, leaked := s.Properties["Weather"]; leaked {
+		t.Errorf("embedded pointer leaked as %q property", "Weather")
+	}
+}
+
 type recursive struct {
 	Self *recursive `json:"self,omitempty"`
 }
@@ -255,8 +278,13 @@ func TestFor_MapStringT(t *testing.T) {
 	if s.Type != "object" {
 		t.Errorf("Type = %q", s.Type)
 	}
-	if s.AdditionalProperties == nil || !*s.AdditionalProperties {
-		t.Errorf("AdditionalProperties should be true for map")
+	// map[string]int → additionalProperties carries the value schema.
+	ap, ok := s.AdditionalProperties.(*Schema)
+	if !ok || ap == nil {
+		t.Fatalf("AdditionalProperties should be a *Schema for map, got %#v", s.AdditionalProperties)
+	}
+	if ap.Type != "integer" {
+		t.Errorf("map value schema Type = %q, want integer", ap.Type)
 	}
 }
 

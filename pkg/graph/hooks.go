@@ -139,7 +139,11 @@ func MergeHooks[S any](hs ...Hooks[S]) Hooks[S] {
 }
 
 func nonEmptyHooks[S any](hs []Hooks[S]) []Hooks[S] {
-	out := hs[:0]
+	// Allocate a fresh slice rather than compacting in place (hs[:0]):
+	// MergeHooks is variadic, so MergeHooks(mySlice...) aliases the
+	// caller's backing array, and in-place compaction would overwrite
+	// their elements.
+	out := make([]Hooks[S], 0, len(hs))
 	for _, h := range hs {
 		if !h.IsZero() {
 			out = append(out, h)

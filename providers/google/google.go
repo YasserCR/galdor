@@ -76,17 +76,20 @@ func (p *Provider) Name() string { return providerName }
 
 // Capabilities implements provider.Provider.
 //
-// PromptCaching is reported true: Gemini's CachedContent feature lets
-// callers reuse long prompt prefixes. The adapter does not yet wire
-// schema.CacheControl hints into a CachedContent resource; users that
-// need it can construct one out-of-band and reference it via metadata.
+// PromptCaching is reported false: although Gemini's CachedContent
+// feature lets callers reuse long prompt prefixes, this adapter does
+// not yet wire schema.CacheControl hints into a CachedContent resource.
+// Reporting it honestly lets callers fall back rather than silently
+// getting an uncached prompt; users that need caching today can
+// construct a CachedContent out-of-band and reference it via metadata.
+// Flip this to true only alongside the wiring.
 // MaxContextTokens reflects Gemini 2.5-class context windows.
 func (p *Provider) Capabilities() provider.Capabilities {
 	return provider.Capabilities{
 		Streaming:        true,
 		ToolCalling:      true,
 		StructuredOutput: true,
-		PromptCaching:    true,
+		PromptCaching:    false,
 		VisionInput:      true,
 		MaxContextTokens: 1_048_576,
 	}

@@ -98,13 +98,36 @@ func TestRetrieve_LexicalTolerantOfOperators(t *testing.T) {
 		{ID: "c", DocumentID: "d", Text: "Hello world."},
 	})
 	// Punctuation-heavy queries used to make FTS5 raise a syntax
-	// error; the sanitizer must strip operator chars.
+	// error; quoting each token as a literal neutralizes the operators.
 	res, err := s.Retrieve(ctx, memory.Query{Text: `"hello" *world*: +foo -bar`, K: 5})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
 	if len(res) != 1 {
 		t.Errorf("got %d results, want 1", len(res))
+	}
+}
+
+func TestRetrieve_LexicalTolerantOfBooleanKeywords(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	_ = s.Add(ctx, []memory.Chunk{
+		{ID: "c", DocumentID: "d", Text: "Hello world."},
+	})
+	// FTS5 treats AND/OR/NOT as operators; a natural query containing
+	// them (or a lone keyword) used to raise "fts5: syntax error near
+	// ...". Quoting each token as a literal must keep these queries safe.
+	for _, q := range []string{
+		"hello AND world",
+		"hello OR world",
+		"AND OR NOT",
+		"OR",
+		"world NOT gardening",
+	} {
+		if _, err := s.Retrieve(ctx, memory.Query{Text: q, K: 5}); err != nil {
+			t.Errorf("query %q: unexpected error %v", q, err)
+		}
 	}
 }
 

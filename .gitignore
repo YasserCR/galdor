@@ -39,6 +39,9 @@ vendor/
 .env.local
 *.local
 
+# Private working notes (debug / audit plans, not for the repo)
+/debug/
+
 # Embedded storage artefacts
 *.bolt
 *.db

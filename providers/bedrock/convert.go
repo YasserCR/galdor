@@ -94,6 +94,14 @@ func buildConverseInput(req provider.Request) (*bedrockruntime.ConverseInput, er
 		in.ToolConfig = tc
 	}
 
+	// Forward the user_id metadata into Converse's RequestMetadata, matching
+	// the Anthropic/OpenAI adapters (which map the same key). Only user_id
+	// is mapped so the four adapters stay consistent; other Metadata keys
+	// are ignored per the Request.Metadata contract.
+	if uid, ok := req.Metadata["user_id"]; ok && uid != "" {
+		in.RequestMetadata = map[string]string{"user_id": uid}
+	}
+
 	return in, nil
 }
 
@@ -163,10 +171,13 @@ func buildToolConfig(tools []schema.ToolDef, choice provider.ToolChoice) (*brtyp
 	case provider.ToolChoiceAuto:
 		out.ToolChoice = &brtypes.ToolChoiceMemberAuto{}
 	case provider.ToolChoiceNone:
-		// Bedrock has no explicit "none"; omit the tools entirely. The
-		// caller's expectation is "do not call tools", so we drop the
-		// tool config.
-		return nil, nil
+		// Bedrock's Converse has no "none" tool choice. Keep the tool
+		// *definitions* declared and just leave ToolChoice unset: dropping
+		// the definitions would invalidate a follow-up turn carrying prior
+		// tool_result blocks, which Converse validates against toolConfig
+		// (and diverges from the other adapters, which keep tools visible
+		// while forbidding a call). Bedrock cannot hard-forbid a call, so
+		// this is best-effort — tools stay visible, no choice is forced.
 	case provider.ToolChoiceRequired:
 		out.ToolChoice = &brtypes.ToolChoiceMemberAny{}
 	}

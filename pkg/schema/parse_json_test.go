@@ -59,6 +59,50 @@ func TestParseJSON_TolerateLeadingProse(t *testing.T) {
 	}
 }
 
+func TestParseJSON_TolerateTrailingProse(t *testing.T) {
+	t.Parallel()
+	// Leading JSON token followed by a sign-off — the single most common
+	// real model shape. Previously failed with "invalid character 'H'
+	// after top-level value".
+	raw := "{\"name\":\"delta\",\"count\":42}\n\nHope that helps!"
+	out, err := ParseJSON[sampleShape](raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Name != "delta" || out.Count != 42 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func TestParseJSON_TopLevelArrayWithTrailingProse(t *testing.T) {
+	t.Parallel()
+	raw := "[{\"name\":\"a\",\"count\":1},{\"name\":\"b\",\"count\":2}]\nThat's the list."
+	out, err := ParseJSON[[]sampleShape](raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out) != 2 || out[1].Name != "b" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func TestParseJSON_TruncatedStillReportsInvalidJSON(t *testing.T) {
+	t.Parallel()
+	// A genuinely truncated object (no closing brace) must keep the precise
+	// "invalid JSON" diagnostic, not be masked by the extraction fallback.
+	_, err := ParseJSON[sampleShape](`{"name":"x","count":1`)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var bad *BadOutputError
+	if !errors.As(err, &bad) {
+		t.Fatalf("errors.As(*BadOutputError) failed: %v", err)
+	}
+	if !strings.HasPrefix(bad.Reason, "invalid JSON:") {
+		t.Errorf("Reason = %q, want invalid JSON prefix", bad.Reason)
+	}
+}
+
 func TestParseJSON_TopLevelArray(t *testing.T) {
 	t.Parallel()
 	raw := "```json\n[{\"name\":\"a\",\"count\":1},{\"name\":\"b\",\"count\":2}]\n```"

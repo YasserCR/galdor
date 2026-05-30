@@ -267,3 +267,123 @@ func TestStream_MaxStepsErrorEvent(t *testing.T) {
 		t.Error("expected ErrMaxSteps event")
 	}
 }
+
+// TestStream_RecoversNodePanic is the regression for the Stream/Invoke
+// parity gap: a node panic on the streaming path used to crash the whole
+// process. It must now surface as a terminal EventError wrapping ErrPanic.
+func TestStream_RecoversNodePanic(t *testing.T) {
+	t.Parallel()
+	r, err := New[counter]().
+		AddNode("boom", func(_ context.Context, _ counter) (counter, error) {
+			panic("stream kaboom")
+		}).
+		AddEdge(START, "boom").
+		AddEdge("boom", END).
+		Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var panicEv *Event[counter]
+	for ev := range r.Stream(context.Background(), counter{}) {
+		if ev.Type == EventError {
+			ev := ev
+			panicEv = &ev
+		}
+	}
+	if panicEv == nil {
+		t.Fatal("expected an EventError from the panicking node")
+	}
+	if !errors.Is(panicEv.Err, ErrPanic) {
+		t.Fatalf("err = %v, want ErrPanic", panicEv.Err)
+	}
+	var pe *PanicError
+	if !errors.As(panicEv.Err, &pe) {
+		t.Fatalf("err = %v, want *PanicError", panicEv.Err)
+	}
+}
+
+// TestStreamWith_CheckpointsAndHooks verifies the streaming path now
+// drives Checkpointer and Hooks, exactly like InvokeWith.
+func TestStreamWith_CheckpointsAndHooks(t *testing.T) {
+	t.Parallel()
+	r := buildCounter(t)
+	cp := NewMemoryCheckpointer[counter]()
+	var beforeNodes, afterNodes int
+	hooks := Hooks[counter]{
+		BeforeNode: func(ctx context.Context, _, _ string, _ int, _ counter) context.Context {
+			beforeNodes++
+			return ctx
+		},
+		AfterNode: func(_ context.Context, _, _ string, _ int, _ counter, _ error) {
+			afterNodes++
+		},
+	}
+	ch := r.StreamWith(context.Background(), counter{Limit: 3}, RunOptions[counter]{
+		Checkpointer: cp, RunID: "stream-cp", Hooks: hooks,
+	})
+	var ended bool
+	for ev := range ch {
+		if ev.Type == EventRunEnd {
+			ended = true
+		}
+		if ev.Type == EventError {
+			t.Fatalf("unexpected error event: %v", ev.Err)
+		}
+	}
+	if !ended {
+		t.Fatal("missing EventRunEnd")
+	}
+	if beforeNodes != 3 || afterNodes != 3 {
+		t.Errorf("hook counts: before=%d after=%d, want 3/3", beforeNodes, afterNodes)
+	}
+	hist := cp.History("stream-cp")
+	if len(hist) == 0 {
+		t.Fatal("no checkpoints saved on the streaming path")
+	}
+	if last := hist[len(hist)-1]; last.Node != END || last.Reason != CheckpointReasonEnd {
+		t.Errorf("last checkpoint = %+v, want END/end", last)
+	}
+}
+
+// TestStreamWith_InterruptEmitsErrInterrupted verifies interrupt gating on
+// the streaming path: a gated node saves an interrupt checkpoint and ends
+// the stream with an ErrInterrupted EventError, and Resume continues.
+func TestStreamWith_InterruptEmitsErrInterrupted(t *testing.T) {
+	t.Parallel()
+	r, err := New[counter]().
+		AddNode("a", func(_ context.Context, c counter) (counter, error) { c.N += 1; return c, nil }).
+		AddNode("b", func(_ context.Context, c counter) (counter, error) { c.N += 10; return c, nil }).
+		AddEdge(START, "a").
+		AddEdge("a", "b").
+		AddEdge("b", END).
+		InterruptBefore("b").
+		Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := NewMemoryCheckpointer[counter]()
+	var interruptErr error
+	for ev := range r.StreamWith(context.Background(), counter{}, RunOptions[counter]{
+		Checkpointer: cp, RunID: "stream-int",
+	}) {
+		if ev.Type == EventError {
+			interruptErr = ev.Err
+		}
+	}
+	if !errors.Is(interruptErr, ErrInterrupted) {
+		t.Fatalf("err = %v, want ErrInterrupted", interruptErr)
+	}
+	last, _, _ := cp.Load(context.Background(), "stream-int")
+	if last.Node != "b" || last.Reason != CheckpointReasonInterrupt {
+		t.Errorf("interrupt checkpoint = %+v", last)
+	}
+	final, err := r.Resume(context.Background(), RunOptions[counter]{
+		Checkpointer: cp, RunID: "stream-int",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.N != 11 {
+		t.Errorf("final.N = %d, want 11 (1+10)", final.N)
+	}
+}

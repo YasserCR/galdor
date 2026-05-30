@@ -84,6 +84,19 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			return provider.Event{}, err
 		}
 		if !ok {
+			// EOF before a message_delta/message_stop frame — the
+			// connection dropped or the response was truncated mid-stream.
+			// Synthesize the terminal MessageStop from the accumulated
+			// state so consumers that key off EventMessageStop still see
+			// the partial usage/model, matching the other adapters.
+			if !r.stopped {
+				r.stopped = true
+				return provider.Event{
+					Type:  provider.EventMessageStop,
+					Usage: r.usage,
+					Model: r.model,
+				}, nil
+			}
 			return provider.Event{}, io.EOF
 		}
 		out, emit, err := r.handleEvent(ev)

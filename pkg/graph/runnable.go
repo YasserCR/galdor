@@ -415,14 +415,18 @@ func (r *Runnable[S]) runLoop(
 		// Per-node timeout, applied AFTER the BeforeNode hook so
 		// the span the hook created isn't tainted by the deadline
 		// (it's the node's work that's being bounded, not the
-		// instrumentation).
+		// instrumentation). cancel() fires per-iteration — not via
+		// defer — so timers/closures don't accumulate O(steps) across a
+		// long run (ReAct / Plan-Execute loops are exactly that).
+		var cancel context.CancelFunc
 		if opts.NodeTimeout > 0 {
-			var cancel context.CancelFunc
 			nodeCtx, cancel = context.WithTimeout(nodeCtx, opts.NodeTimeout)
-			defer cancel() // intentionally fires at runLoop return; deadlines are short
 		}
 		out, nodeErr := safeCallNode(node, nodeCtx, state)
 		opts.Hooks.nodeAfter(nodeCtx, opts.Logger, opts.RunID, next, step+1, out, nodeErr)
+		if cancel != nil {
+			cancel()
+		}
 		if nodeErr != nil {
 			r.logPanicIfAny(opts, next, step+1, nodeErr)
 			return state, fmt.Errorf("node %q: %w", next, nodeErr)
@@ -473,19 +477,35 @@ func (r *Runnable[S]) saveCheckpoint(ctx context.Context, opts RunOptions[S], ck
 // channel as it progresses. The channel is buffered to soften the
 // producer/consumer coupling and is closed when the run terminates
 // (success or error). Cancellation through ctx is checked at each
-// step; the consumer must drain the channel until it closes.
+// step; the consumer must drain the channel until it closes — or
+// cancel ctx — otherwise the producer goroutine blocks once the
+// buffer fills and leaks.
+//
+// Equivalent to StreamWith(ctx, initial, RunOptions[S]{}).
 func (r *Runnable[S]) Stream(ctx context.Context, initial S) <-chan Event[S] {
+	return r.StreamWith(ctx, initial, RunOptions[S]{})
+}
+
+// StreamWith is the option-taking variant of Stream. It honors the same
+// RunOptions as InvokeWith — Checkpointer (RunID required), Hooks,
+// Timeout, NodeTimeout, MaxSteps — and gates on InterruptBefore exactly
+// like InvokeWith: at a gated node it saves a checkpoint and emits a
+// terminal EventError wrapping ErrInterrupted (the streaming event model
+// has no dedicated interrupt type; detect with errors.Is(ev.Err,
+// ErrInterrupted) and continue with Resume).
+//
+// Node panics are recovered into an EventError carrying a *PanicError
+// instead of crashing the process — the same guarantee InvokeWith gives.
+func (r *Runnable[S]) StreamWith(ctx context.Context, initial S, opts RunOptions[S]) <-chan Event[S] {
 	out := make(chan Event[S], 16)
-	go r.runStream(ctx, initial, out)
+	go r.runStream(ctx, initial, out, opts)
 	return out
 }
 
-func (r *Runnable[S]) runStream(ctx context.Context, initial S, out chan<- Event[S]) {
+func (r *Runnable[S]) runStream(ctx context.Context, initial S, out chan<- Event[S], opts RunOptions[S]) {
 	defer close(out)
 
 	state := initial
-	step := 0
-	maxSteps := r.maxStepsOrDefault()
 
 	emit := func(ev Event[S]) bool {
 		select {
@@ -496,41 +516,128 @@ func (r *Runnable[S]) runStream(ctx context.Context, initial S, out chan<- Event
 		}
 	}
 
-	emit(Event[S]{Type: EventRunStart, Node: r.entry, State: state, Step: 0})
+	// Backstop: a panic in a router / edge resolver (user code called
+	// outside safeCallNode) would otherwise crash the whole process from
+	// this goroutine, with no caller able to recover. Convert it into a
+	// terminal EventError. Node-body panics are already handled below via
+	// safeCallNode, which yields a richer *PanicError.
+	defer func() {
+		if rec := recover(); rec != nil {
+			emit(Event[S]{Type: EventError, State: state,
+				Err: &PanicError{Value: rec, Stack: captureStack()}})
+		}
+	}()
+
+	if err := validateRunOptions(opts); err != nil {
+		emit(Event[S]{Type: EventError, Err: err})
+		return
+	}
+
+	// Run-level timeout: derive a deadline-bound child context so nodes
+	// and hooks observe the cancellation when the deadline fires.
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
+	// BeforeRun installs spans/loggers on the context; AfterRun observes
+	// the terminal state and error.
+	ctx = opts.Hooks.runBefore(ctx, opts.Logger, opts.RunID, initial)
+	var runErr error
+	defer func() { opts.Hooks.runAfter(ctx, opts.Logger, opts.RunID, state, runErr) }()
+
+	maxSteps := r.maxStepsOrDefault()
+	if opts.MaxSteps > 0 {
+		maxSteps = opts.MaxSteps
+	}
+
+	if !emit(Event[S]{Type: EventRunStart, Node: r.entry, State: state, Step: 0}) {
+		return
+	}
 
 	next := r.entry
+	step := 0
 	for {
 		if err := ctx.Err(); err != nil {
+			runErr = err
 			emit(Event[S]{Type: EventError, Err: err, Step: step})
 			return
 		}
 		if next == END {
+			if err := r.saveCheckpoint(ctx, opts, Checkpoint[S]{
+				RunID: opts.RunID, Step: step, Node: END, State: state,
+				Reason: CheckpointReasonEnd, CreatedAt: time.Now(),
+			}); err != nil {
+				runErr = err
+				emit(Event[S]{Type: EventError, Err: err, Step: step})
+				return
+			}
 			emit(Event[S]{Type: EventRunEnd, Node: END, State: state, Step: step})
 			return
 		}
 		if step >= maxSteps {
-			emit(Event[S]{
-				Type: EventError, Step: step,
-				Err: fmt.Errorf("%w: limit %d", ErrMaxSteps, maxSteps),
-			})
+			runErr = fmt.Errorf("%w: limit %d", ErrMaxSteps, maxSteps)
+			emit(Event[S]{Type: EventError, Step: step, Err: runErr})
+			return
+		}
+
+		// Interrupt gate: save a checkpoint and end the stream with an
+		// ErrInterrupted EventError, mirroring InvokeWith's contract.
+		if _, gated := r.interruptBefore[next]; gated {
+			if err := r.saveCheckpoint(ctx, opts, Checkpoint[S]{
+				RunID: opts.RunID, Step: step + 1, Node: next, State: state,
+				Reason: CheckpointReasonInterrupt, CreatedAt: time.Now(),
+			}); err != nil {
+				runErr = err
+				emit(Event[S]{Type: EventError, Err: err, Step: step})
+				return
+			}
+			runErr = fmt.Errorf("%w: at node %q", ErrInterrupted, next)
+			emit(Event[S]{Type: EventError, Node: next, State: state, Step: step + 1, Err: runErr})
 			return
 		}
 		step++
 
 		node, ok := r.nodes[next]
 		if !ok {
-			emit(Event[S]{Type: EventError, Step: step,
-				Err: fmt.Errorf("%w: %q", ErrUnknownNode, next)})
+			runErr = fmt.Errorf("%w: %q", ErrUnknownNode, next)
+			emit(Event[S]{Type: EventError, Step: step, Err: runErr})
 			return
 		}
+
+		// Per-step checkpoint, before the node runs.
+		if err := r.saveCheckpoint(ctx, opts, Checkpoint[S]{
+			RunID: opts.RunID, Step: step, Node: next, State: state,
+			Reason: CheckpointReasonStep, CreatedAt: time.Now(),
+		}); err != nil {
+			runErr = err
+			emit(Event[S]{Type: EventError, Node: next, Step: step, Err: err})
+			return
+		}
+
 		if !emit(Event[S]{Type: EventNodeStart, Node: next, State: state, Step: step}) {
 			return
 		}
 
-		newState, err := node(ctx, state)
-		if err != nil {
-			emit(Event[S]{Type: EventError, Node: next, Step: step,
-				Err: fmt.Errorf("node %q: %w", next, err)})
+		// Node lifecycle hooks + optional per-node timeout, mirroring
+		// runLoop. The hook's BeforeNode ctx is used for the node call and
+		// for AfterNode. cancel() fires per-iteration (not via defer) so
+		// timers don't accumulate across a long stream.
+		nodeCtx := opts.Hooks.nodeBefore(ctx, opts.Logger, opts.RunID, next, step, state)
+		var cancel context.CancelFunc
+		if opts.NodeTimeout > 0 {
+			nodeCtx, cancel = context.WithTimeout(nodeCtx, opts.NodeTimeout)
+		}
+		newState, nodeErr := safeCallNode(node, nodeCtx, state)
+		opts.Hooks.nodeAfter(nodeCtx, opts.Logger, opts.RunID, next, step, newState, nodeErr)
+		if cancel != nil {
+			cancel()
+		}
+		if nodeErr != nil {
+			r.logPanicIfAny(opts, next, step, nodeErr)
+			runErr = fmt.Errorf("node %q: %w", next, nodeErr)
+			emit(Event[S]{Type: EventError, Node: next, Step: step, Err: runErr})
 			return
 		}
 		state = newState
@@ -541,6 +648,7 @@ func (r *Runnable[S]) runStream(ctx context.Context, initial S, out chan<- Event
 
 		nxt, err := r.resolveNext(next, state)
 		if err != nil {
+			runErr = err
 			emit(Event[S]{Type: EventError, Node: next, Step: step, Err: err})
 			return
 		}

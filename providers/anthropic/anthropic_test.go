@@ -445,6 +445,58 @@ func TestStream_HappyPath(t *testing.T) {
 	}
 }
 
+func TestStream_SynthesizesStopOnTruncation(t *testing.T) {
+	t.Parallel()
+	// SSE body that drops after a text delta — no message_delta or
+	// message_stop frame, as happens on a mid-stream connection drop.
+	body := strings.Join([]string{
+		"event: message_start",
+		`data: {"type":"message_start","message":{"id":"msg_1","model":"claude-haiku-4-5","usage":{"input_tokens":7,"output_tokens":0}}}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}`,
+		"",
+		"",
+	}, "\n")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	stream := mustStream(t, p, provider.Request{
+		Model:    "claude-haiku-4-5",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	defer func() { _ = stream.Close() }()
+
+	var stopEv *provider.Event
+	for {
+		ev, err := stream.Recv(context.Background())
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Recv: %v", err)
+		}
+		if ev.Type == provider.EventMessageStop {
+			ev := ev
+			stopEv = &ev
+		}
+	}
+	if stopEv == nil {
+		t.Fatal("expected a synthesized EventMessageStop on truncated stream")
+	}
+	if stopEv.Model != "claude-haiku-4-5" || stopEv.Usage.InputTokens != 7 {
+		t.Errorf("synthesized stop lost accumulated state: %+v", *stopEv)
+	}
+}
+
 func TestStream_ToolUseAssembled(t *testing.T) {
 	t.Parallel()
 	body := strings.Join([]string{

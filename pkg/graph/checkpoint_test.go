@@ -6,6 +6,69 @@ import (
 	"testing"
 )
 
+// sliceState carries a reference type (slice) to exercise the
+// checkpoint deep-copy contract.
+type sliceState struct {
+	Items []int
+}
+
+// TestMemoryCheckpointer_SaveSnapshotsState is the regression for
+// checkpoint state aliasing: Save must capture an independent snapshot so
+// a later in-place mutation of the live state cannot corrupt an
+// already-saved checkpoint.
+func TestMemoryCheckpointer_SaveSnapshotsState(t *testing.T) {
+	t.Parallel()
+	cp := NewMemoryCheckpointer[sliceState]()
+	ctx := context.Background()
+
+	st := sliceState{Items: []int{1, 2, 3}}
+	if err := cp.Save(ctx, Checkpoint[sliceState]{
+		RunID: "r", Step: 1, Node: "a", State: st,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a later node mutating the shared backing array in place.
+	st.Items[0] = 999
+
+	got, ok, _ := cp.Load(ctx, "r")
+	if !ok {
+		t.Fatal("checkpoint not found")
+	}
+	if got.State.Items[0] != 1 {
+		t.Errorf("saved checkpoint corrupted by later mutation: Items[0] = %d, want 1", got.State.Items[0])
+	}
+}
+
+// cloneableState implements Cloner to exercise the precise-copy path.
+type cloneableState struct {
+	Items  []int
+	cloned bool // unexported: gob would drop it; Clone preserves intent
+}
+
+func (c cloneableState) Clone() cloneableState {
+	dup := make([]int, len(c.Items))
+	copy(dup, c.Items)
+	return cloneableState{Items: dup, cloned: true}
+}
+
+func TestMemoryCheckpointer_UsesClonerWhenAvailable(t *testing.T) {
+	t.Parallel()
+	cp := NewMemoryCheckpointer[cloneableState]()
+	ctx := context.Background()
+	st := cloneableState{Items: []int{1, 2}}
+	if err := cp.Save(ctx, Checkpoint[cloneableState]{RunID: "r", State: st}); err != nil {
+		t.Fatal(err)
+	}
+	st.Items[0] = 999
+	got, _, _ := cp.Load(ctx, "r")
+	if !got.State.cloned {
+		t.Error("Cloner.Clone was not used")
+	}
+	if got.State.Items[0] != 1 {
+		t.Errorf("Items[0] = %d, want 1", got.State.Items[0])
+	}
+}
+
 // buildAddThree assembles a tiny 3-step pipeline used by checkpoint
 // and interrupt tests. Steps add 1, 10, 100 to N respectively.
 func buildAddThree(t *testing.T) *Runnable[counter] {

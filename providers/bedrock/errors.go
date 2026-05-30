@@ -3,9 +3,11 @@ package bedrock
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	brtypes "github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	smithy "github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 )
@@ -85,6 +87,19 @@ func normalizeAWSError(err error) error {
 	var statusErr interface{ HTTPStatusCode() int }
 	if errors.As(err, &statusErr) {
 		apiErr.StatusCode = statusErr.HTTPStatusCode()
+	}
+
+	// Retry-After header off the underlying HTTP response, when present.
+	// The retry wrapper honors this server-suggested backoff for
+	// ErrRateLimited (throttling / quota); without it Bedrock 429s would
+	// fall back to galdor's generic schedule, unlike the HTTP adapters.
+	var respErr *smithyhttp.ResponseError
+	if errors.As(err, &respErr) && respErr.Response != nil {
+		if ra := respErr.Response.Header.Get("Retry-After"); ra != "" {
+			if secs, convErr := strconv.Atoi(ra); convErr == nil && secs > 0 {
+				apiErr.RetryAfter = secs
+			}
+		}
 	}
 
 	return provider.Classify(apiErr)

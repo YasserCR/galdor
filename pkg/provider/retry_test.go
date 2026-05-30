@@ -182,6 +182,54 @@ func TestRetry_RespectsRetryAfterHeader(t *testing.T) {
 	}
 }
 
+func TestRetry_RetryAfterClampedToMaxDelay(t *testing.T) {
+	t.Parallel()
+	// A hostile/buggy server asks for a 1-day backoff; MaxDelay is the
+	// caller's hard ceiling and must cap it.
+	p := &scriptedRetryProv{responses: []scriptedResponse{
+		{err: &provider.APIError{Kind: provider.ErrRateLimited, RetryAfter: 86400}}, // 1 day
+		{resp: &provider.Response{Message: schema.AssistantMessage("ok")}},
+	}}
+	var planned time.Duration
+	wrapped := provider.Retry(p, provider.RetryConfig{
+		MaxAttempts: 3,
+		MaxDelay:    50 * time.Millisecond,
+		Jitter:      -1, // deterministic for the assertion
+		OnRetry:     func(_ int, delay time.Duration, _ error) { planned = delay },
+	})
+	if _, err := wrapped.Generate(context.Background(), provider.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if planned != 50*time.Millisecond {
+		t.Errorf("planned delay = %v, want clamped to MaxDelay 50ms", planned)
+	}
+}
+
+func TestRetry_NegativeJitterIsDeterministic(t *testing.T) {
+	t.Parallel()
+	// Negative jitter must yield the exact exponential value with no
+	// randomization — the documented escape hatch for deterministic backoff.
+	p := &scriptedRetryProv{responses: []scriptedResponse{
+		{err: &provider.APIError{Kind: provider.ErrServer}},
+		{resp: &provider.Response{Message: schema.AssistantMessage("ok")}},
+	}}
+	var planned time.Duration
+	wrapped := provider.Retry(p, provider.RetryConfig{
+		MaxAttempts:  3,
+		InitialDelay: 20 * time.Millisecond,
+		Multiplier:   2,
+		MaxDelay:     time.Second,
+		Jitter:       -1,
+		OnRetry:      func(_ int, delay time.Duration, _ error) { planned = delay },
+	})
+	if _, err := wrapped.Generate(context.Background(), provider.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if planned != 20*time.Millisecond {
+		t.Errorf("planned delay = %v, want exactly 20ms (no jitter)", planned)
+	}
+}
+
 func TestRetry_AbortsOnContextCancellation(t *testing.T) {
 	t.Parallel()
 	p := &scriptedRetryProv{responses: []scriptedResponse{

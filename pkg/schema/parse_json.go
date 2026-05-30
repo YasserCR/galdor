@@ -48,6 +48,7 @@ func ParseJSON[T any](raw string) (T, error) {
 	// embedded object/array between prose. Bail out clearly when no
 	// candidate exists rather than letting json.Unmarshal produce a
 	// confusing "invalid character" error on the prose itself.
+	candidate := s
 	if !looksLikeJSONStart(s) {
 		payload := extractStructured(s)
 		if payload == "" {
@@ -57,19 +58,34 @@ func ParseJSON[T any](raw string) (T, error) {
 				Reason:   "no JSON payload found",
 			}
 		}
-		s = payload
+		candidate = payload
 	}
 
 	var out T
-	if err := json.Unmarshal([]byte(s), &out); err != nil {
-		return zero, &BadOutputError{
-			Provider: "schema",
-			Raw:      capRaw(raw),
-			Reason:   "invalid JSON: " + err.Error(),
-			Cause:    err,
+	err := json.Unmarshal([]byte(candidate), &out)
+	if err == nil {
+		return out, nil
+	}
+
+	// The candidate started with a JSON token but didn't parse cleanly —
+	// most commonly because the model appended trailing prose after the
+	// value ("{\"a\":1}\n\nHope that helps!"). Retry against the outermost
+	// object/array clipped from the text before giving up, so leading AND
+	// trailing prose are both tolerated as documented.
+	if looksLikeJSONStart(s) {
+		if payload := extractStructured(s); payload != "" && payload != candidate {
+			if err2 := json.Unmarshal([]byte(payload), &out); err2 == nil {
+				return out, nil
+			}
 		}
 	}
-	return out, nil
+
+	return zero, &BadOutputError{
+		Provider: "schema",
+		Raw:      capRaw(raw),
+		Reason:   "invalid JSON: " + err.Error(),
+		Cause:    err,
+	}
 }
 
 // looksLikeJSONStart reports whether s begins with a token that could

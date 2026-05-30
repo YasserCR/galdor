@@ -62,6 +62,14 @@ func TestProvider_NameAndCapabilities(t *testing.T) {
 	if !caps.Streaming || !caps.ToolCalling || !caps.VisionInput {
 		t.Errorf("Capabilities = %+v", caps)
 	}
+	// StructuredOutput and PromptCaching must be reported false until the
+	// adapter actually wires ResponseFormat / CacheControl into Converse.
+	if caps.StructuredOutput {
+		t.Error("StructuredOutput must be false: adapter does not wire ResponseFormat")
+	}
+	if caps.PromptCaching {
+		t.Error("PromptCaching must be false: adapter does not wire CacheControl")
+	}
 }
 
 func TestProvider_StringHidesCredentials(t *testing.T) {

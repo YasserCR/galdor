@@ -65,11 +65,19 @@ func TestIntegration_AddAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res) != 3 {
-		t.Fatalf("got %d results, want 3", len(res))
+	// n3 is anti-correlated (cosine -1) to the query and is dropped, for
+	// parity with the sqlite / in-memory backends. n1 (identical, score 1)
+	// and n2 (orthogonal, score 0) remain.
+	if len(res) != 2 {
+		t.Fatalf("got %d results, want 2 (anti-correlated n3 dropped)", len(res))
 	}
 	if res[0].Chunk.ID != "n1" {
 		t.Errorf("top hit = %q, want n1", res[0].Chunk.ID)
+	}
+	for _, r := range res {
+		if r.Chunk.ID == "n3" {
+			t.Error("anti-correlated chunk n3 should be dropped (negative cosine)")
+		}
 	}
 	// Score = 1 - cosine_distance; identical vectors → 1.0
 	if res[0].Score < 0.99 {

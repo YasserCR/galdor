@@ -168,7 +168,14 @@ func (s *Store) Retrieve(ctx context.Context, q memory.Query) ([]memory.Result, 
 		c.Embedding = parseVector(embedStr)
 		// Convert pgvector cosine distance (0 = identical, 2 = opposite)
 		// to galdor's higher-is-better Score in [-1, 1].
-		results = append(results, memory.Result{Chunk: c, Score: float32(1.0 - distance)})
+		score := float32(1.0 - distance)
+		// Drop anti-correlated chunks (negative cosine) for parity with the
+		// sqlite / in-memory backends. Rows arrive ORDER BY distance ASC, so
+		// once the score goes negative every remaining row is too.
+		if score < 0 {
+			break
+		}
+		results = append(results, memory.Result{Chunk: c, Score: score})
 	}
 	return results, rows.Err()
 }

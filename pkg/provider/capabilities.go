@@ -53,9 +53,7 @@ type Capabilities struct {
 //   - Tools set but ToolCalling == false
 //   - ResponseFormat set but StructuredOutput == false
 //   - Vision image part present but VisionInput == false
-//   - CacheControl hints present but PromptCaching == false (only
-//     a sanity check — most adapters silently ignore the hint when
-//     unsupported, which is also legal)
+//   - CacheControl hints present but PromptCaching == false
 //
 // Streaming is NOT validated here; Stream returns ErrUnsupported on
 // its own when Capabilities.Streaming is false.
@@ -72,6 +70,10 @@ func (c Capabilities) ValidateRequest(req Request) error {
 		return fmt.Errorf("%w: provider does not support vision input but Request.Messages contains image parts",
 			ErrUnsupported)
 	}
+	if hasCacheControl(req.Messages) && !c.PromptCaching {
+		return fmt.Errorf("%w: provider does not support prompt caching but Request.Messages carries CacheControl hints",
+			ErrUnsupported)
+	}
 	return nil
 }
 
@@ -83,6 +85,17 @@ func hasImageInput(msgs []schema.Message) bool {
 			if p.Type == schema.ContentTypeImage {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// hasCacheControl reports whether any message in msgs carries a
+// CacheControl hint.
+func hasCacheControl(msgs []schema.Message) bool {
+	for _, m := range msgs {
+		if m.CacheControl != nil {
+			return true
 		}
 	}
 	return false

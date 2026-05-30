@@ -12,9 +12,12 @@ type Schema struct {
 	Format      string `json:"format,omitempty"`
 
 	// Object schemas.
-	Properties           map[string]*Schema `json:"properties,omitempty"`
-	Required             []string           `json:"required,omitempty"`
-	AdditionalProperties *bool              `json:"additionalProperties,omitempty"`
+	Properties map[string]*Schema `json:"properties,omitempty"`
+	Required   []string           `json:"required,omitempty"`
+	// AdditionalProperties is either a *bool (false = closed object, the
+	// canonical "no extra fields" form) or a *Schema describing the
+	// permitted value shape (used for map[string]T). nil omits the field.
+	AdditionalProperties any `json:"additionalProperties,omitempty"`
 
 	// Array schema.
 	Items *Schema `json:"items,omitempty"`

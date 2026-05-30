@@ -61,6 +61,35 @@ func TestInMemoryStore_EmbeddingRetrieval(t *testing.T) {
 	}
 }
 
+func TestInMemoryStore_VectorQuerySkipsEmbeddinglessChunks(t *testing.T) {
+	t.Parallel()
+	s := memory.NewInMemoryStore()
+	// One embedded chunk and one with text but no embedding. A vector
+	// query must rank by cosine only — the embedding-less chunk used to
+	// get a lexical score and compete on an incomparable scale.
+	chunks := []memory.Chunk{
+		{ID: "vec", DocumentID: "d", Text: "alpha", Embedding: []float32{1, 0}},
+		{ID: "noembed", DocumentID: "d", Text: "alpha beta gamma"},
+	}
+	if err := s.Add(context.Background(), chunks); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Retrieve(context.Background(), memory.Query{
+		Embedding: []float32{1, 0},
+		Text:      "alpha", // present, but must be ignored in vector mode
+		K:         5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("got %d results, want 1 (embedding-less chunk skipped)", len(res))
+	}
+	if res[0].Chunk.ID != "vec" {
+		t.Errorf("hit = %q, want vec", res[0].Chunk.ID)
+	}
+}
+
 func TestInMemoryStore_MetadataFilter(t *testing.T) {
 	t.Parallel()
 	s := memory.NewInMemoryStore()

@@ -51,8 +51,11 @@ func TestProvider_NameAndCapabilities(t *testing.T) {
 		t.Errorf("Name = %q", p.Name())
 	}
 	caps := p.Capabilities()
-	if !caps.Streaming || !caps.ToolCalling || !caps.StructuredOutput || !caps.VisionInput || !caps.PromptCaching {
+	if !caps.Streaming || !caps.ToolCalling || !caps.StructuredOutput || !caps.VisionInput {
 		t.Errorf("Capabilities = %+v", caps)
+	}
+	if caps.PromptCaching {
+		t.Error("PromptCaching must be false: adapter does not wire CacheControl into CachedContent")
 	}
 	if caps.MaxContextTokens < 1_000_000 {
 		t.Errorf("MaxContextTokens too low: %d", caps.MaxContextTokens)

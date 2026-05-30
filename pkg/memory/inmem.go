@@ -76,7 +76,14 @@ func (s *InMemoryStore) Retrieve(_ context.Context, q Query) ([]Result, error) {
 		var score float32
 		vector := false
 		switch {
-		case len(q.Embedding) > 0 && len(c.Embedding) > 0:
+		case len(q.Embedding) > 0:
+			// Vector query: rank by cosine only. A chunk without an
+			// embedding is incomparable, so skip it rather than falling
+			// back to a lexical score that would compete in the same
+			// ranking on an entirely different scale.
+			if len(c.Embedding) == 0 {
+				continue
+			}
 			score = cosine(q.Embedding, c.Embedding)
 			vector = true
 		case q.Text != "":

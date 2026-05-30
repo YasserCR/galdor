@@ -3,10 +3,12 @@ package bedrock
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	brtypes "github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
@@ -254,7 +256,7 @@ func TestBuildConverseInput_ToolChoiceRequired(t *testing.T) {
 	}
 }
 
-func TestBuildConverseInput_ToolChoiceNoneDropsTools(t *testing.T) {
+func TestBuildConverseInput_ToolChoiceNoneKeepsToolDefs(t *testing.T) {
 	t.Parallel()
 	in, err := buildConverseInput(provider.Request{
 		Model:    "x",
@@ -267,10 +269,32 @@ func TestBuildConverseInput_ToolChoiceNoneDropsTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Bedrock has no "none" choice — adapter drops the tool config so
-	// the model can't call tools.
-	if in.ToolConfig != nil {
-		t.Errorf("ToolChoiceNone should drop ToolConfig; got %+v", in.ToolConfig)
+	// Bedrock has no "none" choice. The tool *definitions* must stay
+	// declared (so a follow-up turn with prior tool_result blocks still
+	// validates), but no ToolChoice is forced.
+	if in.ToolConfig == nil || len(in.ToolConfig.Tools) != 1 {
+		t.Fatalf("ToolChoiceNone should keep tool defs; got %+v", in.ToolConfig)
+	}
+	if in.ToolConfig.ToolChoice != nil {
+		t.Errorf("ToolChoiceNone should leave ToolChoice unset; got %T", in.ToolConfig.ToolChoice)
+	}
+}
+
+func TestBuildConverseInput_ForwardsUserIDMetadata(t *testing.T) {
+	t.Parallel()
+	in, err := buildConverseInput(provider.Request{
+		Model:    "x",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+		Metadata: map[string]string{"user_id": "u-123", "other": "ignored"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.RequestMetadata["user_id"] != "u-123" {
+		t.Errorf("RequestMetadata[user_id] = %q, want u-123", in.RequestMetadata["user_id"])
+	}
+	if _, ok := in.RequestMetadata["other"]; ok {
+		t.Error("only user_id should be forwarded; 'other' leaked into RequestMetadata")
 	}
 }
 
@@ -398,6 +422,30 @@ func TestNormalizeAWSError_TypedExceptions(t *testing.T) {
 				t.Errorf("Provider = %q", apiErr.Provider)
 			}
 		})
+	}
+}
+
+func TestNormalizeAWSError_ExtractsRetryAfter(t *testing.T) {
+	t.Parallel()
+	// A throttling error carrying an HTTP Retry-After header must surface
+	// it on the APIError so the retry wrapper honors the server backoff.
+	in := &smithyhttp.ResponseError{
+		Response: &smithyhttp.Response{Response: &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     http.Header{"Retry-After": {"7"}},
+		}},
+		Err: &brtypes.ThrottlingException{Message: strPtr("slow down")},
+	}
+	err := normalizeAWSError(in)
+	if !errors.Is(err, provider.ErrRateLimited) {
+		t.Fatalf("err = %v, want ErrRateLimited", err)
+	}
+	var apiErr *provider.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatal("err not *APIError")
+	}
+	if apiErr.RetryAfter != 7 {
+		t.Errorf("RetryAfter = %d, want 7", apiErr.RetryAfter)
 	}
 }
 

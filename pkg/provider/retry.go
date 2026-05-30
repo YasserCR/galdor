@@ -34,11 +34,15 @@ type RetryConfig struct {
 	Multiplier float64
 
 	// Jitter is the fractional ±randomness applied to each delay.
-	// 0.0 disables jitter; 0.25 means each delay is multiplied by
-	// a random factor in [0.75, 1.25]. Default 0.25.
+	// The zero value uses the default 0.25 (each delay multiplied by a
+	// random factor in [0.75, 1.25]). Set a NEGATIVE value to disable
+	// jitter entirely for deterministic backoff — the zero value cannot
+	// mean "off" without also breaking the sensible default for callers
+	// who never set the field.
 	//
-	// Jitter prevents synchronized retries from a fleet of clients
-	// after a shared rate-limit window.
+	// Jitter prevents synchronized retries from a fleet of clients after
+	// a shared rate-limit window, so disabling it is rarely what you want
+	// outside tests.
 	Jitter float64
 
 	// OnRetry, when non-nil, is called before each retry sleep with
@@ -194,21 +198,27 @@ func (r *retryProvider) Stream(ctx context.Context, req Request) (StreamReader, 
 // nextDelay computes the delay for the next attempt. ErrRateLimited
 // with a positive APIError.RetryAfter takes precedence over the
 // exponential schedule — servers know better than our heuristic.
-// Jitter is applied to either source.
+// Jitter is applied to either source, and MaxDelay is enforced last as
+// a hard ceiling so neither exponential growth, a hostile/buggy
+// Retry-After, nor jitter can exceed the caller's configured cap.
 func (r *retryProvider) nextDelay(attempt int, err error) time.Duration {
-	// Server-suggested backoff wins.
+	var d time.Duration
+	// Server-suggested backoff wins over the exponential schedule.
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.RetryAfter > 0 {
-		return applyJitter(time.Duration(apiErr.RetryAfter)*time.Second, r.cfg.Jitter)
+		d = time.Duration(apiErr.RetryAfter) * time.Second
+	} else {
+		f := float64(r.cfg.InitialDelay)
+		for i := 1; i < attempt; i++ {
+			f *= r.cfg.Multiplier
+		}
+		d = time.Duration(f)
 	}
-	d := float64(r.cfg.InitialDelay)
-	for i := 1; i < attempt; i++ {
-		d *= r.cfg.Multiplier
+	d = applyJitter(d, r.cfg.Jitter)
+	if d > r.cfg.MaxDelay {
+		d = r.cfg.MaxDelay
 	}
-	if d > float64(r.cfg.MaxDelay) {
-		d = float64(r.cfg.MaxDelay)
-	}
-	return applyJitter(time.Duration(d), r.cfg.Jitter)
+	return d
 }
 
 // IsRetryable reports whether err is a transient failure worth
