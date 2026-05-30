@@ -11,6 +11,71 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-30
+
+Pre-launch hardening + dashboard redesign. An adversarial audit of the
+surface not covered by v0.3.0 (MCP, A2A, multi-agent council, eval,
+replay, web UI/CLI) plus a full redesign of the embedded dashboard.
+Every bug fix ships a regression test; the release is green under
+`go test -race`, golangci-lint v2.12.2, govulncheck and gosec across all
+nine modules.
+
+### Added
+- **Embedded dashboard redesign** (`internal/ui`): a light, professional
+  "Studio" theme (neutral slate + a single indigo accent) replacing the
+  dark/neon look; an **interactive execution graph** whose nodes link to
+  their step and show duration/status on hover (`graph.NodeAnnotation` +
+  `Spec.RenderSVGAnnotated`); the `/graph` viewer now auto-loads the
+  selected run's recorded topology (run dropdown, `?run=<id>`); and a
+  richer timeline with a top time axis, gridlines, per-bar durations and
+  depth-indented span names.
+- **`graph.NodeAnnotation` + `Spec.RenderSVGAnnotated`** (`pkg/graph`):
+  additive; `RenderSVG` is unchanged.
+- **`council.ErrMaxHopsExceeded`, `council.ErrUnknownHandoffTarget`**: a
+  Supervisor/Swarm run that is capped or misrouted now returns a
+  detectable sentinel instead of a silent empty result.
+- **`replay.ErrNilResponse`**: replaying a recorded nil response returns
+  a descriptive error instead of `(nil, nil)`.
+
+### Changed
+- ⚠️ **Replay fixture format bumped to v2** (`replay.CurrentFixtureVersion`):
+  the request fingerprint now folds in `Tools` and `ToolChoice` (and the
+  model), so changing a run's available tools correctly invalidates a
+  recorded answer. v1 fixtures are rejected and must be re-recorded.
+- ⚠️ **Swarm handoffs are enforced at runtime**: an agent can only hand
+  off to a target it declared in `Handoffs`; an undeclared `handoff_to_*`
+  is rejected (returned to the model as an error result) instead of
+  silently transferring control.
+- ⚠️ **A2A client defaults are stricter**: cross-host redirects are
+  rejected on card discovery (SSRF) and response bodies are size-capped
+  (OOM); override via `WithHTTPClient` if you need the old behavior.
+
+### Fixed
+- **MCP** (`pkg/mcp`): a panicking tool no longer crashes the server
+  process (recovered into a JSON-RPC error); the StreamableHTTP transport
+  correlates replies by JSON-RPC id (no more dropped/cross-talked replies
+  under concurrent same-session requests); the client no longer leaks its
+  dispatch goroutine on `Close`; inbound messages are size-capped; the
+  initialize handshake echoes the client's protocol version.
+- **A2A** (`pkg/a2a`): a client-controlled `*Task` is now guarded by a
+  per-task mutex (fixes a remote-triggerable data race / crash).
+- **Eval** (`pkg/eval`): the shared `*Regex` scorer is compiled under a
+  `sync.Once` (fixes a `-race` failure); the LLM-judge score parser no
+  longer mis-reads numbers embedded in prose (no false PASS/FAIL); the
+  runner honors context cancellation and recovers panicking
+  Subjects/Scorers (one bad case errors instead of aborting the batch);
+  `ExactMatch` no longer passes on empty expected-vs-actual; duplicate
+  scorer names are rejected at setup.
+- **Replay** (`pkg/replay`): lenient mode serves same-prompt calls in
+  recorded order instead of collapsing to the last; cloned responses are
+  deep-copied (nested image bytes / tool-call arguments no longer alias
+  the recording).
+- **UI/CLI**: `/api/graph/svg` caps request body and node count; the SSE
+  endpoint clamps a minimum poll interval; `galdor ui` warns when binding
+  to a non-loopback address (no auth); the `scry replay` CLI no longer
+  panics on a short fingerprint. Also fixes the graph SVG node-fill bug
+  (`fill="%q"` rendered empty).
+
 ## [0.3.1] - 2026-05-30
 
 Hygiene-only patch. No code change.
@@ -198,7 +263,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/YasserCR/galdor/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/YasserCR/galdor/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/YasserCR/galdor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/YasserCR/galdor/compare/v0.1.1...v0.2.0

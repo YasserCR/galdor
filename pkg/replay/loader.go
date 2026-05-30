@@ -42,6 +42,12 @@ func LoadFromFile(path string) (Recording, error) {
 		return Recording{}, fmt.Errorf("replay: fixture version %d unsupported (want %d)",
 			rec.Version, CurrentFixtureVersion)
 	}
+	for i := range rec.Calls {
+		if rec.Calls[i].Response == nil {
+			return Recording{}, fmt.Errorf("replay: %s: call %d has a nil response: %w",
+				path, i+1, ErrNilResponse)
+		}
+	}
 	return rec, nil
 }
 

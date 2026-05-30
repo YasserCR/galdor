@@ -10,6 +10,17 @@ import (
 	"github.com/YasserCR/galdor/pkg/graph"
 )
 
+const (
+	// maxGraphSVGBody caps the request body for /api/graph/svg. A
+	// spec large enough to exceed this is almost certainly an attempt
+	// to amplify a small POST into a multi-MB SVG buffered in memory.
+	maxGraphSVGBody = 1 << 20 // 1 MiB
+	// maxGraphNodes caps the node count we'll render. The SVG grows
+	// with the node count, so this bounds peak render memory even for
+	// a body that fits under maxGraphSVGBody.
+	maxGraphNodes = 2000
+)
+
 // handleGraphPage serves the DAG viewer at /graph. By default it
 // auto-loads the execution graph recorded for the most recent run
 // (specs are persisted per run by observability.RecordGraphSpec); a
@@ -53,7 +64,7 @@ func (s *Server) handleGraphPage(w http.ResponseWriter, r *http.Request) {
 // caller is rendering the response into an <img> or <object>.
 func (s *Server) handleGraphSVG(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = r.Body.Close() }()
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxGraphSVGBody))
 	if err != nil {
 		errorSVG(w, http.StatusBadRequest, "read body: "+err.Error())
 		return
@@ -65,6 +76,10 @@ func (s *Server) handleGraphSVG(w http.ResponseWriter, r *http.Request) {
 	var spec graph.Spec
 	if err := json.Unmarshal(body, &spec); err != nil {
 		errorSVG(w, http.StatusBadRequest, "decode spec: "+err.Error())
+		return
+	}
+	if len(spec.Nodes) > maxGraphNodes {
+		errorSVG(w, http.StatusBadRequest, "spec too large: node count exceeds limit")
 		return
 	}
 	var buf bytes.Buffer

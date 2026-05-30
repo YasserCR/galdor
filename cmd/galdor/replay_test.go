@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/YasserCR/galdor/internal/store"
+	"github.com/YasserCR/galdor/pkg/replay"
 )
 
 // seedReplayDB creates a store seeded with one provider.generate
@@ -106,7 +107,7 @@ func TestScryReplay_WritesFixture(t *testing.T) {
 	if err := json.Unmarshal(raw, &loaded); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Version != 1 || loaded.RunID != "rec-2" || loaded.Note != "v1" {
+	if loaded.Version != replay.CurrentFixtureVersion || loaded.RunID != "rec-2" || loaded.Note != "v1" {
 		t.Errorf("fixture metadata wrong: %+v", loaded)
 	}
 	if len(loaded.Calls) != 1 {

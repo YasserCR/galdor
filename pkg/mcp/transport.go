@@ -10,6 +10,12 @@ import (
 	"sync"
 )
 
+// maxMessageBytes caps the size of a single inbound JSON-RPC frame
+// across every transport. It bounds memory a peer can force us to
+// allocate per message (a crude but effective DoS guard). 4 MiB is far
+// larger than any legitimate tool call yet small enough to stay cheap.
+const maxMessageBytes = 4 << 20
+
 // Transport is the wire-level abstraction MCP messages flow through.
 // Implementations frame messages however the underlying medium
 // requires; callers exchange decoded JSON-RPC messages with the peer
@@ -43,14 +49,16 @@ type Transport interface {
 // writes with an internal mutex so concurrent Send calls are safe.
 func NewStdioTransport(r io.Reader, w io.Writer) Transport {
 	return &stdioTransport{
-		r: bufio.NewReader(r),
-		w: w,
+		r:   bufio.NewReader(r),
+		raw: r,
+		w:   w,
 	}
 }
 
 type stdioTransport struct {
 	mu     sync.Mutex
 	r      *bufio.Reader
+	raw    io.Reader // underlying reader, closed in Close if it's an io.Closer
 	w      io.Writer
 	closed bool
 }
@@ -84,7 +92,7 @@ func (t *stdioTransport) Recv(ctx context.Context) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	line, err := t.r.ReadBytes('\n')
+	line, err := t.readFrame()
 	if err != nil {
 		if errors.Is(err, io.EOF) && len(line) == 0 {
 			return nil, io.EOF
@@ -107,8 +115,37 @@ func (t *stdioTransport) Recv(ctx context.Context) ([]byte, error) {
 	return line, nil
 }
 
-// Close marks the transport as closed and best-effort closes the
-// underlying writer if it implements io.Closer.
+// readFrame reads a single newline-delimited frame from the buffered
+// reader, refusing to buffer more than maxMessageBytes so a peer
+// (compromised or buggy) can't drive unbounded memory growth with a
+// frame that never terminates. The returned bytes still include the
+// trailing delimiter when present; the caller trims it.
+func (t *stdioTransport) readFrame() ([]byte, error) {
+	var buf []byte
+	for {
+		chunk, err := t.r.ReadSlice('\n')
+		if len(buf)+len(chunk) > maxMessageBytes {
+			return nil, fmt.Errorf("mcp: frame exceeds %d bytes", maxMessageBytes)
+		}
+		// ReadSlice returns a slice into the reader's buffer; copy it
+		// out before the next read reuses that memory.
+		buf = append(buf, chunk...)
+		if err == nil {
+			return buf, nil
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			// Delimiter not yet seen; keep accumulating (bounded above).
+			continue
+		}
+		return buf, err
+	}
+}
+
+// Close marks the transport as closed and best-effort closes both the
+// underlying writer and reader if they implement io.Closer. Closing
+// the reader is what unblocks a dispatch loop parked in ReadBytes on a
+// blocking source (e.g. NewStdioTransport(os.Stdin, os.Stdout)); a
+// writer-only close would leak that goroutine.
 func (t *stdioTransport) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -116,8 +153,14 @@ func (t *stdioTransport) Close() error {
 		return nil
 	}
 	t.closed = true
-	if c, ok := t.w.(io.Closer); ok {
-		return c.Close()
+	var rerr error
+	if c, ok := t.raw.(io.Closer); ok {
+		rerr = c.Close()
 	}
-	return nil
+	if c, ok := t.w.(io.Closer); ok {
+		if err := c.Close(); err != nil {
+			return err
+		}
+	}
+	return rerr
 }

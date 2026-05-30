@@ -31,6 +31,7 @@ type Client struct {
 	info      ClientInfo
 	serverCap Capabilities
 	serverInf ServerInfo
+	serverVer string // protocol version reported by the server
 }
 
 // ClientOption configures NewClient.
@@ -88,6 +89,7 @@ func (c *Client) Initialize(ctx context.Context) error {
 	}
 	c.serverCap = out.Capabilities
 	c.serverInf = out.ServerInfo
+	c.serverVer = out.ProtocolVersion
 	// Spec: clients MUST send `notifications/initialized` after a
 	// successful initialize.
 	return c.notify(ctx, MethodInitialized, struct{}{})
@@ -96,6 +98,10 @@ func (c *Client) Initialize(ctx context.Context) error {
 // ServerInfo returns the name/version the server reported during
 // initialize. Empty before Initialize completes.
 func (c *Client) ServerInfo() ServerInfo { return c.serverInf }
+
+// ProtocolVersion returns the protocol version the server reported in
+// its initialize response. Empty before Initialize completes.
+func (c *Client) ProtocolVersion() string { return c.serverVer }
 
 // ListTools fetches the tool catalog from the server.
 func (c *Client) ListTools(ctx context.Context) ([]ToolDef, error) {

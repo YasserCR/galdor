@@ -92,6 +92,18 @@ type WorkerInvocation struct {
 	Output string
 }
 
+// supervisorTrapNode is the internal node the router diverts to when a
+// run is capped at MaxHops without a final answer. It runs a NodeFunc
+// that returns ErrMaxHopsExceeded so the error reaches Invoke callers,
+// not just the RunSupervisor wrapper.
+const supervisorTrapNode = "__supervisor_trap__"
+
+// supervisorTrap converts a capped run into an explicit sentinel error
+// (B10).
+func supervisorTrap(_ context.Context, s SupervisorState) (SupervisorState, error) {
+	return s, fmt.Errorf("%w (hops=%d)", ErrMaxHopsExceeded, s.Hops)
+}
+
 const defaultSupervisorPrompt = `You are a routing supervisor coordinating specialized workers.
 
 Each turn, decide one of:
@@ -137,7 +149,7 @@ func NewSupervisor(cfg SupervisorConfig) (*graph.Runnable[SupervisorState], erro
 		if !isSafeWorkerName(w.Name) {
 			return nil, fmt.Errorf("council: Worker.Name %q must match [a-zA-Z0-9_-]+", w.Name)
 		}
-		if w.Name == graph.START || w.Name == graph.END || w.Name == "supervisor" {
+		if w.Name == graph.START || w.Name == graph.END || w.Name == "supervisor" || w.Name == supervisorTrapNode {
 			return nil, fmt.Errorf("council: Worker.Name %q is reserved", w.Name)
 		}
 		if w.Run == nil {
@@ -194,7 +206,10 @@ func NewSupervisor(cfg SupervisorConfig) (*graph.Runnable[SupervisorState], erro
 			return graph.END
 		}
 		if s.Hops >= maxHops {
-			return graph.END
+			// Capped before producing a final answer; divert to the
+			// trap node so the run fails loudly rather than returning a
+			// silent empty result (B10).
+			return supervisorTrapNode
 		}
 		if s.Next == "" {
 			return graph.END
@@ -204,6 +219,8 @@ func NewSupervisor(cfg SupervisorConfig) (*graph.Runnable[SupervisorState], erro
 
 	g := graph.New[SupervisorState]().
 		AddNode("supervisor", supervisorNode).
+		AddNode(supervisorTrapNode, supervisorTrap).
+		AddEdge(supervisorTrapNode, graph.END).
 		AddEdge(graph.START, "supervisor").
 		AddConditionalEdge("supervisor", router)
 

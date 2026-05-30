@@ -3,6 +3,7 @@ package eval
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -48,6 +49,16 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	if len(cfg.Dataset.Cases) == 0 {
 		return nil, errors.New("eval: Dataset.Cases is empty")
 	}
+	// Scorer names key the per-case and aggregate maps; duplicates
+	// would silently overwrite each other and corrupt the report.
+	seenNames := make(map[string]struct{}, len(cfg.Scorers))
+	for _, s := range cfg.Scorers {
+		name := s.Name()
+		if _, dup := seenNames[name]; dup {
+			return nil, fmt.Errorf("eval: duplicate scorer name %q (set NameOverride to disambiguate)", name)
+		}
+		seenNames[name] = struct{}{}
+	}
 	parallel := cfg.Parallel
 	if parallel <= 0 {
 		parallel = 4
@@ -76,7 +87,15 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 		}()
 	}
 	for i := range cfg.Dataset.Cases {
-		queue <- i
+		// Workers always drain the queue, so the send can't deadlock;
+		// the ctx.Done() arm just lets the producer stop promptly on
+		// cancellation. Every index is still enqueued (or short-cut by
+		// the select) and evalOne records cancelled cases as Errored.
+		select {
+		case queue <- i:
+		case <-ctx.Done():
+			queue <- i
+		}
 	}
 	close(queue)
 	wg.Wait()
@@ -96,7 +115,16 @@ func evalOne(parentCtx context.Context, cfg Config, c Case) CaseResult {
 	}
 
 	result := CaseResult{Case: c, Scores: map[string]Score{}}
-	actual, err := cfg.Subject(ctx, c.Input)
+
+	// Honor cancellation before doing any work so a cancelled run
+	// stops promptly and never falsely reports a pass.
+	if err := ctx.Err(); err != nil {
+		result.Err = "context: " + err.Error()
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	actual, err := callSubject(ctx, cfg.Subject, c.Input)
 	if err != nil {
 		result.Err = err.Error()
 		result.Duration = time.Since(start)
@@ -106,7 +134,7 @@ func evalOne(parentCtx context.Context, cfg Config, c Case) CaseResult {
 	result.Actual = actual
 	pass := true
 	for _, s := range cfg.Scorers {
-		sc, err := s.Score(ctx, c, actual)
+		sc, err := callScorer(ctx, s, c, actual)
 		if err != nil {
 			// Scorer errors degrade to "fail" with the error in the
 			// Explanation so the report stays well-formed.
@@ -120,6 +148,31 @@ func evalOne(parentCtx context.Context, cfg Config, c Case) CaseResult {
 	result.Pass = pass
 	result.Duration = time.Since(start)
 	return result
+}
+
+// callSubject invokes the Subject, converting a panic into an error so
+// one misbehaving case is recorded as Errored instead of aborting the
+// whole process (RunAndExit is a plain main(), not go test, so there
+// is no recovering harness above us).
+func callSubject(ctx context.Context, subject Subject, input string) (out string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out = ""
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return subject(ctx, input)
+}
+
+// callScorer invokes a Scorer, converting a panic into an error.
+func callScorer(ctx context.Context, s Scorer, c Case, actual string) (sc Score, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			sc = Score{}
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return s.Score(ctx, c, actual)
 }
 
 // tallyReport walks the case results and fills Passed / Failed /

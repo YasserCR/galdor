@@ -79,7 +79,14 @@ func printReplaySummary(w io.Writer, rec replay.Recording) {
 		if c.Response != nil {
 			preview = c.Response.Message.Text()
 		}
+		// Fingerprint can fail (and yield "") when the matching surface
+		// won't JSON-encode; truncate is length-guarded so a short or
+		// empty fingerprint never panics on a raw [:12] slice.
+		fp, err := c.Fingerprint()
+		if err != nil {
+			fp = "(unavailable)"
+		}
 		_, _ = fmt.Fprintf(w, "  %2d. model=%-24s fp=%s\n      reply: %s\n",
-			i+1, c.Model, c.Fingerprint()[:12], truncate(preview, 72))
+			i+1, c.Model, truncate(fp, 12), truncate(preview, 72))
 	}
 }

@@ -13,6 +13,12 @@ import (
 	"time"
 )
 
+// maxResponseBytes caps how much of a remote agent's response we will
+// buffer or decode. A hostile or compromised agent could otherwise
+// stream an arbitrarily large body and OOM the client; 4 MiB is far
+// more than any legitimate Agent Card or task reply needs.
+const maxResponseBytes = 4 << 20
+
 // Client speaks A2A to a single remote agent. The zero value is not
 // usable; call NewClient.
 //
@@ -35,12 +41,35 @@ type Client struct {
 func NewClient(baseURL string, opts ...ClientOption) *Client {
 	c := &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{Timeout: 60 * time.Second},
+		http: &http.Client{
+			Timeout: 60 * time.Second,
+			// Reject cross-host redirects. Go's default policy
+			// follows up to 10 redirects to any host, which turns
+			// card discovery against a semi-trusted URL into an SSRF
+			// pivot (e.g., a 302 to 169.254.169.254 or localhost).
+			// Same-host redirects are still allowed. Callers that
+			// supply their own client via WithHTTPClient keep full
+			// control.
+			CheckRedirect: rejectCrossHostRedirect,
+		},
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
 	return c
+}
+
+// rejectCrossHostRedirect is the default CheckRedirect: it permits
+// redirects that stay on the same host as the previous request and
+// rejects any redirect to a different host.
+func rejectCrossHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	if req.URL.Host != via[len(via)-1].URL.Host {
+		return fmt.Errorf("a2a: refusing cross-host redirect to %q", req.URL.Host)
+	}
+	return nil
 }
 
 // ClientOption configures NewClient.
@@ -72,12 +101,21 @@ func (c *Client) FetchAgentCard(ctx context.Context) (AgentCard, error) {
 		return AgentCard{}, fmt.Errorf("a2a: fetch agent card: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// Cap the body so a hostile agent can't OOM us with a giant card.
+	limited := io.LimitReader(resp.Body, maxResponseBytes+1)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(limited)
 		return AgentCard{}, fmt.Errorf("a2a: agent card HTTP %d: %s", resp.StatusCode, string(body))
 	}
+	raw, err := io.ReadAll(limited)
+	if err != nil {
+		return AgentCard{}, fmt.Errorf("a2a: read agent card: %w", err)
+	}
+	if len(raw) > maxResponseBytes {
+		return AgentCard{}, fmt.Errorf("a2a: agent card exceeds %d bytes", maxResponseBytes)
+	}
 	var card AgentCard
-	if err := json.NewDecoder(resp.Body).Decode(&card); err != nil {
+	if err := json.Unmarshal(raw, &card); err != nil {
 		return AgentCard{}, fmt.Errorf("a2a: decode agent card: %w", err)
 	}
 	return card, nil
@@ -165,9 +203,13 @@ func (c *Client) call(ctx context.Context, method string, params, out any) error
 		return fmt.Errorf("a2a: HTTP transport: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
+	// Cap the body so a hostile agent can't OOM us with a giant reply.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return fmt.Errorf("a2a: read response: %w", err)
+	}
+	if len(respBody) > maxResponseBytes {
+		return fmt.Errorf("a2a: response exceeds %d bytes", maxResponseBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("a2a: HTTP %d: %s", resp.StatusCode, string(respBody))

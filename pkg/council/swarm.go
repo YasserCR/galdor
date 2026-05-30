@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/YasserCR/galdor/pkg/graph"
 	"github.com/YasserCR/galdor/pkg/provider"
@@ -84,8 +85,32 @@ type SwarmState struct {
 	Final string
 }
 
+// Sentinel errors surfaced by the swarm runtime.
+var (
+	// ErrMaxHopsExceeded is returned when a swarm (or supervisor) run
+	// is capped at MaxHops without producing a final answer. It lets
+	// callers distinguish a runaway loop that was truncated from a
+	// genuine empty result.
+	ErrMaxHopsExceeded = errors.New("council: max hops exceeded without a final answer")
+
+	// ErrUnknownHandoffTarget is returned when control would transfer
+	// to an agent that is not registered in the swarm. It surfaces a
+	// misfired handoff instead of terminating silently with an empty
+	// result.
+	ErrUnknownHandoffTarget = errors.New("council: handoff to unknown agent")
+)
+
+// handoffPrefix is the synthetic-tool-name prefix that marks a handoff.
+const handoffPrefix = "handoff_to_"
+
+// swarmTrapNode is the internal node name the router diverts to when a
+// run must terminate with an error (max hops, or an unknown handoff
+// target). It runs a NodeFunc that returns the appropriate sentinel so
+// the error reaches Invoke callers, not just the RunSwarm wrapper.
+const swarmTrapNode = "__swarm_trap__"
+
 // handoffToolName is the synthetic tool name generated for handoffs.
-func handoffToolName(target string) string { return "handoff_to_" + target }
+func handoffToolName(target string) string { return handoffPrefix + target }
 
 // handoffInput is the (empty) input schema we generate for handoff
 // tools. We accept an optional "task" string so the relinquishing
@@ -128,8 +153,21 @@ func NewSwarm(cfg SwarmConfig) (*graph.Runnable[SwarmState], error) {
 		if a.Model == "" {
 			return nil, fmt.Errorf("council: SwarmAgent %q has empty Model", a.Name)
 		}
+		if a.Name == swarmTrapNode {
+			return nil, fmt.Errorf("council: SwarmAgent.Name %q is reserved", a.Name)
+		}
 		if _, dup := byName[a.Name]; dup {
 			return nil, fmt.Errorf("council: duplicate SwarmAgent.Name %q", a.Name)
+		}
+		// A domain tool whose name starts with the handoff prefix would
+		// be hijacked by detectHandoff and never reach the registry, so
+		// reject it at construction with a clear message.
+		if a.Tools != nil {
+			for _, t := range a.Tools.Tools() {
+				if strings.HasPrefix(t.Name(), handoffPrefix) {
+					return nil, fmt.Errorf("council: agent %q domain tool %q collides with reserved handoff prefix %q", a.Name, t.Name(), handoffPrefix)
+				}
+			}
 		}
 		byName[a.Name] = a
 	}
@@ -164,6 +202,10 @@ func NewSwarm(cfg SwarmConfig) (*graph.Runnable[SwarmState], error) {
 		g = g.AddNode(a.Name, makeSwarmAgentNode(a, byName, &maxHops))
 		g = g.AddConditionalEdge(a.Name, makeSwarmRouter(maxHops, byName))
 	}
+	// The trap node turns a capped or misfired run into an explicit
+	// error so callers don't mistake it for a genuine empty result.
+	g = g.AddNode(swarmTrapNode, makeSwarmTrap(byName))
+	g = g.AddEdge(swarmTrapNode, graph.END)
 	g = g.AddEdge(graph.START, cfg.Start)
 
 	r, err := g.Compile()
@@ -200,16 +242,37 @@ func makeSwarmRouter(maxHops int, byName map[string]*SwarmAgent) graph.Router[Sw
 		if s.Final != "" {
 			return graph.END
 		}
-		if s.Hops >= maxHops {
-			return graph.END
-		}
 		if s.Active == "" {
+			// No active agent and no Final: nothing left to do.
 			return graph.END
 		}
 		if _, ok := byName[s.Active]; !ok {
-			return graph.END
+			// A handoff named an agent that does not exist; surface it
+			// rather than terminating silently (B9).
+			return swarmTrapNode
+		}
+		if s.Hops >= maxHops {
+			// Capped before reaching a final answer; surface it (B10).
+			return swarmTrapNode
 		}
 		return s.Active
+	}
+}
+
+// makeSwarmTrap builds the trap NodeFunc. The router sends control
+// here when a run would otherwise terminate without a Final answer:
+// either Active names an agent that does not exist (unknown handoff,
+// B9) or the hop cap was hit before a final answer (B10). It captures
+// byName so it can distinguish the two causes and pick the right
+// sentinel.
+func makeSwarmTrap(byName map[string]*SwarmAgent) graph.NodeFunc[SwarmState] {
+	return func(_ context.Context, s SwarmState) (SwarmState, error) {
+		if s.Active != "" {
+			if _, ok := byName[s.Active]; !ok {
+				return s, fmt.Errorf("%w: %q", ErrUnknownHandoffTarget, s.Active)
+			}
+		}
+		return s, fmt.Errorf("%w (hops=%d)", ErrMaxHopsExceeded, s.Hops)
 	}
 }
 
@@ -220,6 +283,14 @@ func makeSwarmAgentNode(a *SwarmAgent, byName map[string]*SwarmAgent, _ *int) gr
 	maxIter := a.MaxIterations
 	if maxIter <= 0 {
 		maxIter = 6
+	}
+	// allowed is the set of handoff targets THIS agent declared. Only
+	// these edges may transfer control; a handoff_to_<x> call naming a
+	// target outside this set is not a real handoff (see A5) and is
+	// acknowledged as an ordinary tool error so the agent can continue.
+	allowed := make(map[string]struct{}, len(a.Handoffs))
+	for _, target := range a.Handoffs {
+		allowed[target] = struct{}{}
 	}
 	return func(ctx context.Context, s SwarmState) (SwarmState, error) {
 		s.Hops++
@@ -263,8 +334,10 @@ func makeSwarmAgentNode(a *SwarmAgent, byName map[string]*SwarmAgent, _ *int) gr
 			// Inspect tool calls for handoffs. A handoff short-circuits
 			// the remaining tool calls — control goes to the target
 			// agent on the next graph hop with the conversation
-			// state intact.
-			handoffTarget, handoffTask, isHandoff := detectHandoff(resp.Message.ToolCalls)
+			// state intact. Only targets the agent DECLARED in its
+			// Handoffs may transfer control (A5); an undeclared
+			// handoff_to_<x> is treated as a normal tool call below.
+			handoffTarget, handoffTask, isHandoff := detectHandoff(resp.Message.ToolCalls, allowed)
 			if isHandoff {
 				// Acknowledge the handoff call so the conversation
 				// history stays consistent (tool calls without
@@ -275,13 +348,20 @@ func makeSwarmAgentNode(a *SwarmAgent, byName map[string]*SwarmAgent, _ *int) gr
 				return s, nil
 			}
 
-			// Domain tool calls — execute them against the agent's
-			// registry and append the results.
-			if a.Tools == nil {
+			// Domain (and undeclared-handoff) tool calls — execute the
+			// real ones against the agent's registry and synthesize
+			// error results for any handoff_to_<x> the agent is not
+			// permitted to use, so control stays here.
+			realCalls, rejectedResults := partitionHandoffCalls(resp.Message.ToolCalls)
+			if len(realCalls) > 0 && a.Tools == nil {
 				return s, fmt.Errorf("council: agent %q produced tool calls but has nil Tools", a.Name)
 			}
-			toolResults := tool.ExecuteCalls(ctx, a.Tools, resp.Message.ToolCalls)
-			resMsgs := tool.AsToolResultMessages(toolResults)
+			var resMsgs []schema.Message
+			if len(realCalls) > 0 {
+				toolResults := tool.ExecuteCalls(ctx, a.Tools, realCalls)
+				resMsgs = tool.AsToolResultMessages(toolResults)
+			}
+			resMsgs = append(resMsgs, rejectedResults...)
 			s.Messages = append(s.Messages, resMsgs...)
 			msgs = append(msgs, resMsgs...)
 		}
@@ -361,16 +441,47 @@ func buildSwarmMessages(systemPrompt string, shared []schema.Message) []schema.M
 	return out
 }
 
-func detectHandoff(calls []schema.ToolCall) (target, task string, ok bool) {
-	const prefix = "handoff_to_"
+// detectHandoff returns the first DECLARED handoff in calls. A
+// handoff_to_<x> whose target is not in allowed is not a real handoff
+// (A5) — it is left for partitionHandoffCalls to reject — so only a
+// permitted edge transfers control.
+func detectHandoff(calls []schema.ToolCall, allowed map[string]struct{}) (target, task string, ok bool) {
 	for _, c := range calls {
-		if len(c.Name) > len(prefix) && c.Name[:len(prefix)] == prefix {
-			target = c.Name[len(prefix):]
-			task = extractHandoffTask(c.Arguments)
-			return target, task, true
+		if t, isHandoff := handoffTargetOf(c.Name); isHandoff {
+			if _, permitted := allowed[t]; permitted {
+				return t, extractHandoffTask(c.Arguments), true
+			}
 		}
 	}
 	return "", "", false
+}
+
+// handoffTargetOf reports whether name is a handoff tool and, if so,
+// the target agent it names.
+func handoffTargetOf(name string) (target string, ok bool) {
+	if len(name) > len(handoffPrefix) && strings.HasPrefix(name, handoffPrefix) {
+		return name[len(handoffPrefix):], true
+	}
+	return "", false
+}
+
+// partitionHandoffCalls splits a turn's tool calls into the ones that
+// should be executed against the domain registry (realCalls) and
+// error tool-results for any handoff_to_<x>. Any handoff that reaches
+// here is undeclared: permitted handoffs are intercepted earlier by
+// detectHandoff and never make it to this point.
+func partitionHandoffCalls(calls []schema.ToolCall) (realCalls []schema.ToolCall, rejected []schema.Message) {
+	for _, c := range calls {
+		if target, isHandoff := handoffTargetOf(c.Name); isHandoff {
+			// An undeclared handoff: acknowledge with an error result
+			// so the agent can recover, and keep control here.
+			body := fmt.Sprintf("Error: you are not permitted to hand off to %q.", target)
+			rejected = append(rejected, schema.ToolResultMessage(c.ID, body))
+			continue
+		}
+		realCalls = append(realCalls, c)
+	}
+	return realCalls, rejected
 }
 
 func extractHandoffTask(args json.RawMessage) string {

@@ -234,6 +234,88 @@ func TestClientServer_StrictRejectsBeforeInitialize(t *testing.T) {
 	}
 }
 
+// panicRegistry returns a registry with a single tool that panics
+// when invoked, used to verify the server survives a misbehaving tool.
+func panicRegistry(t *testing.T) *tool.Registry {
+	t.Helper()
+	type in struct {
+		X int `json:"x"`
+	}
+	type out struct {
+		Y int `json:"y"`
+	}
+	boom, err := tool.NewTool("boom", "Always panics",
+		func(_ context.Context, _ in) (out, error) {
+			panic("kaboom")
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := tool.NewRegistry(boom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reg
+}
+
+func TestClientServer_PanickingToolReturnsErrorNotCrash(t *testing.T) {
+	t.Parallel()
+	clientT, serverT, cleanup := pairedTransports()
+	defer cleanup()
+	srv := mcp.NewServer(panicRegistry(t), mcp.ServerInfo{Name: "test"})
+	stop := runServer(t, srv, serverT)
+	defer stop()
+
+	c := mcp.NewClient(clientT)
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// The panicking tool must come back as a JSON-RPC error rather than
+	// crashing the server process (which would hang this call / kill
+	// the test binary).
+	_, err := c.CallTool(ctx, "boom", json.RawMessage(`{"x":1}`))
+	if err == nil {
+		t.Fatal("expected an error from a panicking tool")
+	}
+	if !strings.Contains(err.Error(), "panicked") {
+		t.Errorf("error = %q, want it to mention the panic", err.Error())
+	}
+
+	// The server must still be alive: a follow-up call gets a normal
+	// (error) reply rather than hanging.
+	if _, err := c.CallTool(ctx, "boom", json.RawMessage(`{"x":2}`)); err == nil {
+		t.Fatal("expected an error on the second call too")
+	}
+}
+
+func TestClientServer_InitializeEchoesProtocolVersion(t *testing.T) {
+	t.Parallel()
+	clientT, serverT, cleanup := pairedTransports()
+	defer cleanup()
+	srv := mcp.NewServer(newTestRegistry(t), mcp.ServerInfo{Name: "test"})
+	stop := runServer(t, srv, serverT)
+	defer stop()
+
+	c := mcp.NewClient(clientT)
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// The client requests mcp.ProtocolVersion; the server must echo it
+	// back and the client must record it.
+	if got := c.ProtocolVersion(); got != mcp.ProtocolVersion {
+		t.Errorf("ProtocolVersion = %q, want %q", got, mcp.ProtocolVersion)
+	}
+}
+
 func TestClientServer_ServerNotificationsIgnored(t *testing.T) {
 	t.Parallel()
 	// A server that emits a stray notification before any client

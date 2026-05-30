@@ -28,12 +28,13 @@ import (
 // server assigns one on the response to `initialize` and the client
 // must echo it back on every subsequent request in the same session.
 //
-// To fit the request/response Transport interface the Transport
-// surfaces one session at a time to its host (the Server.Serve loop):
-// the first POST opens the session, subsequent POSTs reuse it, and
-// every POST blocks until the host produces exactly one reply via
-// Send. Concurrent POSTs are serialized — MCP clients send requests
-// sequentially per the spec.
+// Concurrency: the host (Server.Serve) dispatches each request in its
+// own goroutine and loops straight back to Recv, so several POSTs in
+// one session can be in flight at once. Each in-flight request's reply
+// channel is tracked in a map keyed by its JSON-RPC id; Send routes a
+// reply to the matching waiter by the id of the message it is sending,
+// the same way the client correlates replies. This keeps overlapping
+// same-session requests from clobbering each other.
 //
 // Close shuts the HTTP server down. Idempotent.
 //
@@ -45,6 +46,7 @@ func NewStreamableHTTPTransport(addr string) Transport {
 func newStreamableHTTPTransport(addr string) *streamableHTTPTransport {
 	t := &streamableHTTPTransport{
 		incoming: make(chan httpRequest),
+		pending:  make(map[string]*httpRequest),
 		done:     make(chan struct{}),
 	}
 	mux := http.NewServeMux()
@@ -60,8 +62,10 @@ func newStreamableHTTPTransport(addr string) *streamableHTTPTransport {
 }
 
 // httpRequest carries one POST body to Recv and provides a one-shot
-// reply channel back to the HTTP handler.
+// reply channel back to the HTTP handler. id is the JSON-RPC request
+// id (raw bytes, as a string) used to correlate the eventual Send.
 type httpRequest struct {
+	id    string
 	body  []byte
 	reply chan []byte // send the JSON-RPC reply bytes here, or close to abandon
 	ctx   context.Context
@@ -75,7 +79,11 @@ type streamableHTTPTransport struct {
 
 	mu        sync.Mutex
 	sessionID string // assigned on the response to `initialize`
-	pending   *httpRequest
+	// pending maps a JSON-RPC request id (its raw JSON bytes, as a
+	// string) to the in-flight request awaiting a reply. Keyed by id so
+	// overlapping same-session requests are correlated correctly rather
+	// than sharing a single slot.
+	pending map[string]*httpRequest
 
 	incoming chan httpRequest
 
@@ -141,9 +149,10 @@ func (t *streamableHTTPTransport) handle(w http.ResponseWriter, r *http.Request)
 }
 
 func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxMessageBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "read body: "+err.Error(), http.StatusRequestEntityTooLarge)
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
@@ -172,6 +181,7 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 	isNotification := len(probe.ID) == 0
 
 	req := httpRequest{
+		id:    string(probe.ID),
 		body:  body,
 		reply: make(chan []byte, 1),
 		ctx:   r.Context(),
@@ -195,6 +205,15 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
+
+	// Ensure the pending entry is removed once this handler returns,
+	// even if it gives up (timeout/cancel) before Send arrives — Send
+	// looks the entry up by id and a leftover would leak the slot.
+	defer func() {
+		t.mu.Lock()
+		delete(t.pending, req.id)
+		t.mu.Unlock()
+	}()
 
 	// Wait for exactly one reply from Send.
 	select {
@@ -224,14 +243,23 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// Recv pops the next POST body off the queue and remembers its reply
-// channel so the next Send can fulfil it. Returns io.EOF on close.
+// Recv pops the next POST body off the queue and, for requests
+// (non-empty id), registers its reply channel keyed by id so the
+// matching Send can fulfil it. Returns io.EOF on close.
 func (t *streamableHTTPTransport) Recv(ctx context.Context) ([]byte, error) {
+	register := func(req httpRequest) {
+		if req.id == "" {
+			// Notification: no reply will be sent, nothing to track.
+			return
+		}
+		r := req
+		t.mu.Lock()
+		t.pending[req.id] = &r
+		t.mu.Unlock()
+	}
 	select {
 	case req := <-t.incoming:
-		t.mu.Lock()
-		t.pending = &req
-		t.mu.Unlock()
+		register(req)
 		return req.body, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -239,9 +267,7 @@ func (t *streamableHTTPTransport) Recv(ctx context.Context) ([]byte, error) {
 		// Drain any in-flight request first.
 		select {
 		case req := <-t.incoming:
-			t.mu.Lock()
-			t.pending = &req
-			t.mu.Unlock()
+			register(req)
 			return req.body, nil
 		default:
 		}
@@ -249,10 +275,10 @@ func (t *streamableHTTPTransport) Recv(ctx context.Context) ([]byte, error) {
 	}
 }
 
-// Send routes msg back to the pending POST handler that produced the
-// last Recv. If no Recv is outstanding the call errors — Send is
-// strictly the reply half of a request/response pair on this
-// transport.
+// Send routes msg back to the pending POST handler whose request id
+// matches the id of the message being sent. Replies for unknown ids
+// (e.g. server-initiated notifications) are dropped — on Streamable
+// HTTP without a long-lived GET stream there is nowhere to push them.
 func (t *streamableHTTPTransport) Send(ctx context.Context, msg any) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -269,15 +295,24 @@ func (t *streamableHTTPTransport) Send(ctx context.Context, msg any) error {
 	// Skip leading/trailing whitespace just to keep the body compact.
 	buf = bytes.TrimSpace(buf)
 
+	// Extract the JSON-RPC id of the reply so we can match it to the
+	// waiting request. Notifications and id-less frames have no waiter.
+	var idHolder struct {
+		ID json.RawMessage `json:"id,omitempty"`
+	}
+	_ = json.Unmarshal(buf, &idHolder)
+	key := string(idHolder.ID)
+
 	t.mu.Lock()
-	req := t.pending
-	t.pending = nil
+	req := t.pending[key]
+	if req != nil {
+		delete(t.pending, key)
+	}
 	t.mu.Unlock()
-	if req == nil {
-		// Server emitted a frame with nothing to reply to (e.g. a
-		// notification). On Streamable HTTP without a long-lived GET
-		// stream we have nowhere to push it; drop it. A future
-		// revision can buffer for a GET subscriber.
+	if key == "" || req == nil {
+		// No waiter for this id (notification, or a reply whose request
+		// already gave up). Drop it; a future revision can buffer for a
+		// GET subscriber.
 		return nil
 	}
 	select {

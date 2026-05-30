@@ -54,9 +54,11 @@ func (r *Report) WriteJSON(w io.Writer) error {
 
 // RunAndExit is the CI-friendly wrapper. It calls Run, prints the
 // summary to stderr, and exits with status 0 when the pass rate
-// meets cfg.MinPass (default 1.0) or 1 otherwise. Scorer setup
-// errors and Subject panics (recovered upstream by go test's harness)
-// surface as exit 2.
+// meets cfg.MinPass (default 1.0) or 1 otherwise. Setup errors (e.g.
+// an empty dataset or duplicate scorer names) surface as exit 2. A
+// panicking Subject or Scorer is recovered by the runner and recorded
+// as an Errored case, so one bad case fails its run rather than
+// aborting the whole batch.
 func RunAndExit(ctx context.Context, cfg Config) {
 	if cfg.MinPass == 0 {
 		cfg.MinPass = 1.0

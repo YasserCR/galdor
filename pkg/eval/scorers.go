@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
@@ -32,6 +33,9 @@ func (e ExactMatch) Score(_ context.Context, c Case, actual string) (Score, erro
 	if !e.CaseSensitive {
 		a = strings.ToLower(a)
 		b = strings.ToLower(b)
+	}
+	if b == "" {
+		return Score{Value: 0, Pass: false, Explanation: "Case.Expected is empty"}, nil
 	}
 	if a == b {
 		return Score{Value: 1, Pass: true}, nil
@@ -68,11 +72,15 @@ func (c Contains) Score(_ context.Context, cs Case, actual string) (Score, error
 }
 
 // Regex scores 1.0 when actual matches Pattern. Compiled lazily on
-// first use and memoized.
+// first use and memoized. The lazy compile is guarded by a sync.Once
+// so a single *Regex instance is safe to share across the runner's
+// Parallel worker goroutines.
 type Regex struct {
 	Pattern string
 
+	once     sync.Once
 	compiled *regexp.Regexp
+	compErr  error
 }
 
 // Name implements Scorer.
@@ -80,12 +88,11 @@ func (r *Regex) Name() string { return "regex" }
 
 // Score implements Scorer.
 func (r *Regex) Score(_ context.Context, _ Case, actual string) (Score, error) {
-	if r.compiled == nil {
-		re, err := regexp.Compile(r.Pattern)
-		if err != nil {
-			return Score{}, fmt.Errorf("regex: compile %q: %w", r.Pattern, err)
-		}
-		r.compiled = re
+	r.once.Do(func() {
+		r.compiled, r.compErr = regexp.Compile(r.Pattern)
+	})
+	if r.compErr != nil {
+		return Score{}, fmt.Errorf("regex: compile %q: %w", r.Pattern, r.compErr)
 	}
 	if r.compiled.MatchString(actual) {
 		return Score{Value: 1, Pass: true}, nil
@@ -224,37 +231,63 @@ func buildJudgeUserPrompt(c Case, actual string) string {
 	return b.String()
 }
 
-// parseJudgeScore extracts the first integer in [0, 100] from raw.
-// LLMs sometimes wrap the answer in quotes or add a trailing comma
-// despite instructions; this is forgiving of that.
+// judgeScoreOutOf matches a number explicitly presented as a score:
+// "88/100" or "88%". These are strong, unambiguous signals so they
+// take priority over loose integer tokens scattered through prose.
+var judgeScoreOutOf = regexp.MustCompile(`(\d{1,3})\s*(?:/\s*100|%)`)
+
+// judgeIntToken matches standalone integer tokens (not glued to other
+// digits or to a slash, e.g. not the "2" in "v2" — but "scored 88" or
+// "answer: 88." both qualify).
+var judgeIntToken = regexp.MustCompile(`\d+`)
+
+// parseJudgeScore extracts the judge's intended score in [0, 100] from
+// raw. The judge is instructed to reply with a bare integer, so:
+//
+//   - Fast path: the whole trimmed string is an integer -> use it.
+//   - Otherwise prefer an explicit "N/100" or "N%" form.
+//   - Otherwise fall back to standalone integer tokens, but only when
+//     they are unambiguous (every token resolves to the same value).
+//     Prose like "matches reference 95 ... score 100" or "version 2
+//     answer scored 88" yields conflicting tokens; rather than guess
+//     wrong (a false pass/fail) we refuse and report a parse failure.
 func parseJudgeScore(raw string) (int, bool) {
 	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
 	// Fast path: the whole thing is the number.
 	if n, err := strconv.Atoi(raw); err == nil {
 		return clampScore(n), true
 	}
-	// Scan for the first contiguous digit run.
-	start := -1
-	for i, r := range raw {
-		if r >= '0' && r <= '9' {
-			if start == -1 {
-				start = i
+	// Explicit "N/100" or "N%" form wins. If several appear and they
+	// disagree, that's ambiguous -> refuse.
+	if m := judgeScoreOutOf.FindAllStringSubmatch(raw, -1); len(m) > 0 {
+		first, _ := strconv.Atoi(m[0][1])
+		for _, g := range m[1:] {
+			if v, _ := strconv.Atoi(g[1]); v != first {
+				return 0, false
 			}
-			continue
 		}
-		if start != -1 {
-			if n, err := strconv.Atoi(raw[start:i]); err == nil {
-				return clampScore(n), true
-			}
-			start = -1
+		return clampScore(first), true
+	}
+	// Fall back to standalone integer tokens, but only if they all
+	// agree; conflicting numbers in prose are not safe to guess from.
+	toks := judgeIntToken.FindAllString(raw, -1)
+	if len(toks) == 0 {
+		return 0, false
+	}
+	first, err := strconv.Atoi(toks[0])
+	if err != nil {
+		return 0, false
+	}
+	for _, t := range toks[1:] {
+		v, err := strconv.Atoi(t)
+		if err != nil || v != first {
+			return 0, false
 		}
 	}
-	if start != -1 {
-		if n, err := strconv.Atoi(raw[start:]); err == nil {
-			return clampScore(n), true
-		}
-	}
-	return 0, false
+	return clampScore(first), true
 }
 
 func clampScore(n int) int {

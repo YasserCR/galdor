@@ -127,10 +127,18 @@ func TestParsePositiveDuration(t *testing.T) {
 		{"250", 250 * time.Millisecond},
 		{"-5s", time.Second},
 		{"abc", time.Second},
+		// Sub-floor values are clamped up to minStreamInterval so a
+		// network caller can't drive a hot poll loop against SQLite.
+		{"1us", minStreamInterval},
+		{"50ms", minStreamInterval},
+		{"10", minStreamInterval},
 	}
 	for _, c := range cases {
 		if got := parsePositiveDuration(c.in, time.Second); got != c.want {
 			t.Errorf("parsePositiveDuration(%q) = %v, want %v", c.in, got, c.want)
+		}
+		if got := parsePositiveDuration(c.in, time.Second); got < minStreamInterval {
+			t.Errorf("parsePositiveDuration(%q) = %v, below floor %v", c.in, got, minStreamInterval)
 		}
 	}
 }

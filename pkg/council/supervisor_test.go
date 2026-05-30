@@ -150,11 +150,14 @@ func TestSupervisor_MaxHopsCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	final, err := r.Invoke(context.Background(), SupervisorState{Input: "loop"})
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrMaxHopsExceeded) {
+		t.Fatalf("err = %v, want ErrMaxHopsExceeded", err)
 	}
 	if final.Hops != 3 {
 		t.Errorf("Hops = %d, want 3 (capped)", final.Hops)
+	}
+	if final.Final != "" {
+		t.Errorf("Final should be empty when capped: %q", final.Final)
 	}
 }
 

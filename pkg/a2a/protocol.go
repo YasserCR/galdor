@@ -12,9 +12,10 @@ import (
 const AgentCardPath = "/.well-known/agent.json"
 
 // ProtocolVersion is the A2A protocol revision this implementation
-// targets. It is reported in the Agent Card and accepted in incoming
-// requests; mismatched versions are still accepted (the spec is
-// forward-compatible) but logged in the response metadata.
+// targets. It is exported for callers who want to surface or compare
+// it; the server does not currently embed it in the Agent Card, and
+// no version negotiation or validation is performed on incoming
+// requests.
 const ProtocolVersion = "0.1"
 
 // A2A JSON-RPC methods we implement.
@@ -214,6 +215,19 @@ func (m Message) Text() string {
 		}
 	}
 	return out
+}
+
+// snapshot returns a copy of the task safe to hand out (or encode)
+// after the caller releases the task's lock. The History slice is
+// copied so a subsequent append on the live task can't mutate or
+// re-slice the backing array observed by the snapshot's reader.
+func (t *Task) snapshot() Task {
+	cp := *t
+	if t.History != nil {
+		cp.History = make([]Message, len(t.History))
+		copy(cp.History, t.History)
+	}
+	return cp
 }
 
 // Append adds a message to the task's history and updates the status

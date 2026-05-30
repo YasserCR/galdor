@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -60,6 +61,19 @@ func TestExactMatch_CaseSensitive(t *testing.T) {
 	}
 }
 
+// C8: ExactMatch must not false-pass when Expected is empty and the
+// actual is empty or whitespace (mirrors the Contains guard).
+func TestExactMatch_EmptyExpectedFails(t *testing.T) {
+	t.Parallel()
+	s := eval.ExactMatch{}
+	for _, actual := range []string{"", "   ", "\t\n"} {
+		got, _ := s.Score(context.Background(), eval.Case{Expected: ""}, actual)
+		if got.Pass {
+			t.Errorf("empty Expected vs %q should fail, got %+v", actual, got)
+		}
+	}
+}
+
 func TestContains(t *testing.T) {
 	t.Parallel()
 	s := eval.Contains{}
@@ -87,6 +101,30 @@ func TestRegex(t *testing.T) {
 	got, _ = s.Score(context.Background(), eval.Case{}, "lots of items")
 	if got.Pass {
 		t.Errorf("expected no match")
+	}
+}
+
+// A6: a single shared *Regex must be race-clean when many cases run
+// concurrently through the Parallel worker pool (the documented
+// Regex + Parallel happy path). Run with -race.
+func TestRegex_SharedAcrossParallelCasesIsRaceClean(t *testing.T) {
+	t.Parallel()
+	var ds []eval.Case
+	for i := 0; i < 64; i++ {
+		ds = append(ds, eval.Case{ID: "c" + strconv.Itoa(i), Input: "x", Expected: "x"})
+	}
+	report, err := eval.Run(context.Background(), eval.Config{
+		Dataset: eval.Dataset{Name: "regex-race", Version: "1", Cases: ds},
+		Subject: func(_ context.Context, _ string) (string, error) { return "42 items", nil },
+		// One shared *Regex instance across all cases / workers.
+		Scorers:  []eval.Scorer{&eval.Regex{Pattern: `^\d+ items?$`}},
+		Parallel: 8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed != len(ds) {
+		t.Errorf("expected all %d cases to pass, got %+v", len(ds), report)
 	}
 }
 
@@ -162,6 +200,64 @@ func TestLLMJudge_GracefulOnUnparseableReply(t *testing.T) {
 	}
 	if got.Pass || got.Value != 0 {
 		t.Errorf("unparseable reply should be 0/fail: %+v", got)
+	}
+}
+
+// B3: the judge score must not be misparsed from ambiguous prose.
+// "matches reference 95 ... score 100" previously parsed to 95 (a
+// false pass) and "version 2 answer scored 88" to 2 (a false fail).
+// Neither may silently produce that wrong number: they must either
+// parse the intended score or fail explicitly (scored 0, not passing).
+func TestLLMJudge_DoesNotMisparseAmbiguousProse(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		reply string
+		wrong float64 // the previously-returned wrong normalized value
+	}{
+		{"false pass", "matches reference 95 ... score 100", 0.95},
+		{"false fail", "version 2 answer scored 88", 0.02},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			judge := eval.LLMJudge{
+				Provider: &scriptedProvider{Reply: schema.AssistantMessage(tc.reply)},
+				Model:    "judge",
+			}
+			got, err := judge.Score(context.Background(), eval.Case{Input: "x"}, "z")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Value == tc.wrong {
+				t.Errorf("reply %q silently parsed to wrong value %v: %+v", tc.reply, tc.wrong, got)
+			}
+			// Ambiguous prose must be a visible parse failure: 0 / no pass.
+			if got.Pass || got.Value != 0 {
+				t.Errorf("ambiguous reply %q should fail explicitly, got %+v", tc.reply, got)
+			}
+		})
+	}
+}
+
+// B3: explicit "N/100" and "%" forms still parse (regression guard for
+// the existing forgiving behavior).
+func TestLLMJudge_ParsesExplicitOutOfForms(t *testing.T) {
+	t.Parallel()
+	for reply, want := range map[string]float64{
+		"Score: 30/100":   0.30,
+		"I'd give it 72%": 0.72,
+	} {
+		judge := eval.LLMJudge{
+			Provider: &scriptedProvider{Reply: schema.AssistantMessage(reply)},
+			Model:    "judge",
+		}
+		got, err := judge.Score(context.Background(), eval.Case{Input: "x"}, "z")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Value < want-0.01 || got.Value > want+0.01 {
+			t.Errorf("reply %q: Value = %v, want ~%v", reply, got.Value, want)
+		}
 	}
 }
 
@@ -295,6 +391,114 @@ func TestRun_RejectsBadConfig(t *testing.T) {
 				t.Fatalf("expected error for %s", name)
 			}
 		})
+	}
+}
+
+// B4: a pre-cancelled context must stop the run promptly and must not
+// report all-cases-passed. Cancelled cases are recorded as Errored.
+func TestRun_PreCancelledContextDoesNotPass(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before Run starts
+
+	var called atomic.Int32
+	report, err := eval.Run(ctx, eval.Config{
+		Dataset: eval.Dataset{Name: "x", Version: "1", Cases: []eval.Case{
+			{ID: "c1", Input: "x", Expected: "x"},
+			{ID: "c2", Input: "x", Expected: "x"},
+		}},
+		Subject: func(_ context.Context, in string) (string, error) {
+			called.Add(1)
+			return in, nil
+		},
+		Scorers:  []eval.Scorer{eval.ExactMatch{}},
+		Parallel: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed != 0 {
+		t.Errorf("cancelled run must not report passes, got Passed=%d (%+v)", report.Passed, report)
+	}
+	if report.Errored != 2 {
+		t.Errorf("cancelled cases should be Errored, got %+v", report)
+	}
+	if report.Meets(1.0) {
+		t.Errorf("cancelled run must not meet 1.0 threshold")
+	}
+}
+
+// B5: a panicking Subject must be recorded as Errored and the rest of
+// the batch must still run (the process must not abort).
+func TestRun_PanickingSubjectIsErroredNotFatal(t *testing.T) {
+	t.Parallel()
+	report, err := eval.Run(context.Background(), eval.Config{
+		Dataset: eval.Dataset{Name: "x", Version: "1", Cases: []eval.Case{
+			{ID: "boom", Input: "boom", Expected: "boom"},
+			{ID: "ok", Input: "ok", Expected: "ok"},
+		}},
+		Subject: func(_ context.Context, in string) (string, error) {
+			if in == "boom" {
+				panic("subject exploded")
+			}
+			return in, nil
+		},
+		Scorers:  []eval.Scorer{eval.ExactMatch{}},
+		Parallel: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Errored != 1 || report.Passed != 1 {
+		t.Errorf("expected 1 errored + 1 passed, got %+v", report)
+	}
+	// The panicking case carries the panic message.
+	for _, cr := range report.Cases {
+		if cr.Case.ID == "boom" && !strings.Contains(cr.Err, "panic") {
+			t.Errorf("boom case should record a panic, got Err=%q", cr.Err)
+		}
+	}
+}
+
+// B5: a panicking Scorer is also contained (degrades to a fail rather
+// than aborting the process).
+func TestRun_PanickingScorerIsContained(t *testing.T) {
+	t.Parallel()
+	bad := eval.ScorerFunc("boom_scorer", func(_ context.Context, _ eval.Case, _ string) (eval.Score, error) {
+		panic("scorer exploded")
+	})
+	report, err := eval.Run(context.Background(), eval.Config{
+		Dataset: eval.Dataset{Name: "x", Version: "1", Cases: []eval.Case{
+			{ID: "c1", Input: "x", Expected: "x"},
+		}},
+		Subject:  func(_ context.Context, in string) (string, error) { return in, nil },
+		Scorers:  []eval.Scorer{bad},
+		Parallel: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed != 0 || report.Failed != 1 {
+		t.Errorf("panicking scorer should yield a failing case, got %+v", report)
+	}
+}
+
+// C9: two scorers sharing a Name() collide in the per-case and
+// aggregate maps; Run must reject this as a setup error.
+func TestRun_RejectsDuplicateScorerNames(t *testing.T) {
+	t.Parallel()
+	_, err := eval.Run(context.Background(), eval.Config{
+		Dataset: eval.Dataset{Name: "x", Version: "1", Cases: []eval.Case{
+			{ID: "c1", Input: "x", Expected: "x"},
+		}},
+		Subject: func(_ context.Context, in string) (string, error) { return in, nil },
+		Scorers: []eval.Scorer{
+			eval.LLMJudge{Provider: &scriptedProvider{Reply: schema.AssistantMessage("100")}, Model: "j"},
+			eval.LLMJudge{Provider: &scriptedProvider{Reply: schema.AssistantMessage("100")}, Model: "j"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected setup error for duplicate scorer names")
 	}
 }
 

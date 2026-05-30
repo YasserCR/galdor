@@ -118,17 +118,26 @@ func writeSSEError(w http.ResponseWriter, flusher http.Flusher, err error) {
 	writeSSE(w, flusher, "error", map[string]string{"error": err.Error()})
 }
 
+// minStreamInterval is the floor applied to the SSE poll cadence.
+// Without it, interval=1us drives SpansSince/ListRuns against SQLite
+// every tick — a cheap hot-loop DoS lever on an exposed instance.
+// Mirrors the 10ms minimum the `scry tail` CLI enforces, but a touch
+// higher since this path also re-queries ListRuns(500).
+const minStreamInterval = 100 * time.Millisecond
+
 func parsePositiveDuration(raw string, fallback time.Duration) time.Duration {
-	if raw == "" {
-		return fallback
+	d := fallback
+	if raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+			d = parsed
+		} else if ms, err := strconv.Atoi(raw); err == nil && ms > 0 {
+			d = time.Duration(ms) * time.Millisecond
+		}
 	}
-	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
-		return d
+	if d < minStreamInterval {
+		return minStreamInterval
 	}
-	if ms, err := strconv.Atoi(raw); err == nil && ms > 0 {
-		return time.Duration(ms) * time.Millisecond
-	}
-	return fallback
+	return d
 }
 
 // parseMaxIters lets the test harness bound a stream to a finite

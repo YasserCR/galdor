@@ -112,3 +112,26 @@ func TestRunUI_StartsAndServes(t *testing.T) {
 		t.Fatal("server did not exit after ctx cancel")
 	}
 }
+
+func TestIsLoopbackAddr(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		addr string
+		want bool
+	}{
+		{"127.0.0.1:7777", true},
+		{"127.0.0.1", true},
+		{"localhost:7777", true},
+		{"[::1]:7777", true},
+		{"::1", true},
+		{"0.0.0.0:7777", false},
+		{":7777", false},
+		{"192.168.1.10:7777", false},
+		{"example.com:7777", false},
+	}
+	for _, c := range cases {
+		if got := isLoopbackAddr(c.addr); got != c.want {
+			t.Errorf("isLoopbackAddr(%q) = %v, want %v", c.addr, got, c.want)
+		}
+	}
+}

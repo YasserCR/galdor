@@ -242,4 +242,13 @@ func TestTruncate(t *testing.T) {
 	if got := truncate("aaaaaaaaaa", 5); got != "aaaa…" {
 		t.Errorf("got %q", got)
 	}
+	// Guards the replay fingerprint path: a failed Fingerprint() can
+	// yield "" (or a sub-12 string), which a raw [:12] slice would
+	// panic on. truncate must return it unchanged without panicking.
+	if got := truncate("", 12); got != "" {
+		t.Errorf("empty input: got %q, want \"\"", got)
+	}
+	if got := truncate("abc", 12); got != "abc" {
+		t.Errorf("sub-n input: got %q, want \"abc\"", got)
+	}
 }

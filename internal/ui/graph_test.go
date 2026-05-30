@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -93,6 +94,51 @@ func TestHandleGraphSVG_MalformedJSONReturns400(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "decode spec") {
 		t.Errorf("error SVG missing decode hint: %s", rec.Body.String())
+	}
+}
+
+func TestHandleGraphSVG_OversizedBodyRejected(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	// A body larger than maxGraphSVGBody is truncated by
+	// MaxBytesReader, so ReadAll errors before any rendering happens.
+	big := bytes.Repeat([]byte("a"), maxGraphSVGBody+1)
+	req := httptest.NewRequest(http.MethodPost, "/api/graph/svg", bytes.NewReader(big))
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("oversized body should be rejected; got 200")
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "image/svg+xml") {
+		t.Errorf("error response should be SVG; got %q", got)
+	}
+}
+
+func TestHandleGraphSVG_TooManyNodesRejected(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	var b bytes.Buffer
+	b.WriteString(`{"entry":"n0","nodes":[`)
+	for i := 0; i <= maxGraphNodes; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, `{"name":"n%d"}`, i)
+	}
+	b.WriteString(`]}`)
+	if b.Len() > maxGraphSVGBody {
+		t.Fatalf("test spec %d bytes exceeds body cap %d; can't isolate node-count path", b.Len(), maxGraphSVGBody)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/graph/svg", bytes.NewReader(b.Bytes()))
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "too large") {
+		t.Errorf("error SVG missing size hint: %s", rec.Body.String())
 	}
 }
 

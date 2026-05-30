@@ -2,6 +2,7 @@ package replay_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sync/atomic"
@@ -160,11 +161,23 @@ func TestProvider_FingerprintStableAcrossSerialization(t *testing.T) {
 		schema.SystemMessage("sys"),
 		schema.UserMessage("u"),
 	}, "x")
-	if a.Fingerprint() != b.Fingerprint() {
-		t.Errorf("identical prompts hash differently:\n%s\n%s", a.Fingerprint(), b.Fingerprint())
+	fpA, err := a.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fpB, err := b.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fpA != fpB {
+		t.Errorf("identical prompts hash differently:\n%s\n%s", fpA, fpB)
 	}
 	c := recordedCall([]schema.Message{schema.UserMessage("diff")}, "x")
-	if a.Fingerprint() == c.Fingerprint() {
+	fpC, err := c.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fpA == fpC {
 		t.Errorf("different prompts hash identically")
 	}
 }
@@ -190,6 +203,160 @@ func TestProvider_ResponseIsDeepCopied(t *testing.T) {
 	again, _ := p.Generate(context.Background(), provider.Request{Messages: prompt})
 	if again.Message.Content[0].Text != "hello" {
 		t.Errorf("recording was aliased: %q", again.Message.Content[0].Text)
+	}
+}
+
+// B6: identical messages but a different tool set must NOT match in
+// strict mode — the fingerprint folds in Tools/ToolChoice/Model.
+func TestProvider_StrictDifferentToolsMismatch(t *testing.T) {
+	t.Parallel()
+	prompt := []schema.Message{schema.UserMessage("hi")}
+	call := replay.RecordedCall{
+		Prompt:   prompt,
+		Tools:    []schema.ToolDef{{Name: "search"}},
+		Response: &provider.Response{Message: schema.AssistantMessage("ok")},
+	}
+	p := replay.NewProvider([]replay.RecordedCall{call}, replay.ModeStrict)
+	// Same messages, different tool set -> must mismatch.
+	_, err := p.Generate(context.Background(), provider.Request{
+		Messages: prompt,
+		Tools:    []schema.ToolDef{{Name: "calculator"}},
+	})
+	if !errors.Is(err, replay.ErrPromptMismatch) {
+		t.Fatalf("err = %v, want ErrPromptMismatch", err)
+	}
+
+	// Matching tool set -> served fine.
+	p.Reset()
+	resp, err := p.Generate(context.Background(), provider.Request{
+		Messages: prompt,
+		Tools:    []schema.ToolDef{{Name: "search"}},
+	})
+	if err != nil {
+		t.Fatalf("matching tools: %v", err)
+	}
+	if resp.Message.Text() != "ok" {
+		t.Errorf("got %q", resp.Message.Text())
+	}
+}
+
+// B7: two recorded calls with the same prompt but different responses
+// must replay in recorded order in lenient mode.
+func TestProvider_LenientSamePromptReplaysInOrder(t *testing.T) {
+	t.Parallel()
+	prompt := []schema.Message{schema.UserMessage("same")}
+	calls := []replay.RecordedCall{
+		recordedCall(prompt, "first"),
+		recordedCall(prompt, "second"),
+	}
+	p := replay.NewProvider(calls, replay.ModeLenient)
+
+	r1, err := p.Generate(context.Background(), provider.Request{Messages: prompt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1.Message.Text() != "first" {
+		t.Errorf("first replay = %q, want first", r1.Message.Text())
+	}
+	r2, err := p.Generate(context.Background(), provider.Request{Messages: prompt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2.Message.Text() != "second" {
+		t.Errorf("second replay = %q, want second", r2.Message.Text())
+	}
+	// Drained queue keeps replaying the last recorded response.
+	r3, err := p.Generate(context.Background(), provider.Request{Messages: prompt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r3.Message.Text() != "second" {
+		t.Errorf("third replay = %q, want second (clamped)", r3.Message.Text())
+	}
+}
+
+// B8: mutating nested *Image and ToolCall.Arguments on the returned
+// Response must not corrupt the stored recording.
+func TestProvider_NestedResponseIsDeepCopied(t *testing.T) {
+	t.Parallel()
+	prompt := []schema.Message{schema.UserMessage("hi")}
+	call := replay.RecordedCall{
+		Prompt: prompt,
+		Response: &provider.Response{
+			Message: schema.Message{
+				Role:    schema.RoleAssistant,
+				Content: []schema.ContentPart{schema.ImagePartURL("http://orig/x.png")},
+				ToolCalls: []schema.ToolCall{
+					{ID: "1", Name: "t", Arguments: json.RawMessage(`{"a":1}`)},
+				},
+			},
+		},
+	}
+	p := replay.NewProvider([]replay.RecordedCall{call}, replay.ModeStrict)
+	resp, err := p.Generate(context.Background(), provider.Request{Messages: prompt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mutate nested reference-typed fields on the returned copy.
+	resp.Message.Content[0].Image.URL = "MUTATED"
+	resp.Message.ToolCalls[0].Arguments[6] = 'X'
+
+	p.Reset()
+	again, err := p.Generate(context.Background(), provider.Request{Messages: prompt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Message.Content[0].Image.URL != "http://orig/x.png" {
+		t.Errorf("Image was aliased: %q", again.Message.Content[0].Image.URL)
+	}
+	if string(again.Message.ToolCalls[0].Arguments) != `{"a":1}` {
+		t.Errorf("Arguments were aliased: %s", again.Message.ToolCalls[0].Arguments)
+	}
+}
+
+// C10: a recorded nil response must yield an error from Generate, not
+// (nil, nil).
+func TestProvider_NilResponseErrors(t *testing.T) {
+	t.Parallel()
+	prompt := []schema.Message{schema.UserMessage("hi")}
+	call := replay.RecordedCall{Prompt: prompt, Response: nil}
+
+	pStrict := replay.NewProvider([]replay.RecordedCall{call}, replay.ModeStrict)
+	resp, err := pStrict.Generate(context.Background(), provider.Request{Messages: prompt})
+	if !errors.Is(err, replay.ErrNilResponse) {
+		t.Fatalf("strict err = %v, want ErrNilResponse", err)
+	}
+	if resp != nil {
+		t.Errorf("strict resp = %+v, want nil", resp)
+	}
+
+	pLenient := replay.NewProvider([]replay.RecordedCall{call}, replay.ModeLenient)
+	resp, err = pLenient.Generate(context.Background(), provider.Request{Messages: prompt})
+	if !errors.Is(err, replay.ErrNilResponse) {
+		t.Fatalf("lenient err = %v, want ErrNilResponse", err)
+	}
+	if resp != nil {
+		t.Errorf("lenient resp = %+v, want nil", resp)
+	}
+}
+
+// C10 (loader): a fixture with a nil response is rejected at load.
+func TestLoadFromFile_RejectsNilResponse(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "nilresp.json")
+	rec := replay.Recording{
+		Version: replay.CurrentFixtureVersion,
+		Calls: []replay.RecordedCall{
+			{Prompt: []schema.Message{schema.UserMessage("hi")}, Response: nil},
+		},
+	}
+	if err := replay.SaveToFile(rec, path); err != nil {
+		t.Fatal(err)
+	}
+	_, err := replay.LoadFromFile(path)
+	if !errors.Is(err, replay.ErrNilResponse) {
+		t.Fatalf("err = %v, want ErrNilResponse", err)
 	}
 }
 
@@ -221,7 +388,15 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 		t.Errorf("calls: %+v", loaded.Calls)
 	}
 	// Fingerprints must match across the roundtrip.
-	if loaded.Calls[0].Fingerprint() != original.Calls[0].Fingerprint() {
+	loadedFP, err := loaded.Calls[0].Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalFP, err := original.Calls[0].Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loadedFP != originalFP {
 		t.Errorf("fingerprint drifted across roundtrip")
 	}
 }

@@ -3,6 +3,7 @@ package council
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -186,8 +187,8 @@ func TestSwarm_MaxHopsCap(t *testing.T) {
 		Messages: []schema.Message{schema.UserMessage("loop")},
 		Active:   "a",
 	})
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrMaxHopsExceeded) {
+		t.Fatalf("err = %v, want ErrMaxHopsExceeded", err)
 	}
 	if final.Hops != 3 {
 		t.Errorf("Hops = %d, want 3 (capped)", final.Hops)
@@ -236,6 +237,84 @@ func TestSwarm_HandoffEmitsToolResult(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected a tool-result acknowledging the handoff in final.Messages: %+v", final.Messages)
+	}
+}
+
+func TestSwarm_UndeclaredHandoffDoesNotTransfer(t *testing.T) {
+	t.Parallel()
+	// Agent "a" has an EMPTY Handoffs list but emits handoff_to_b.
+	// Per the documented contract control must NOT transfer to b; the
+	// call is rejected as an ordinary tool error and a continues until
+	// it produces a final answer.
+	p := &perAgentProvider{
+		plans: map[string][]schema.Message{
+			"a": {handoffCall("b", "do it"), schema.AssistantMessage("a finishes itself")},
+			"b": {schema.AssistantMessage("b should never speak")},
+		},
+		calls: map[string]int{},
+	}
+	a := &SwarmAgent{Name: "a", Description: "x", Provider: p, Model: "x"} // no Handoffs
+	b := &SwarmAgent{Name: "b", Description: "y", Provider: p, Model: "x"}
+	final, err := RunSwarm(context.Background(), SwarmConfig{
+		Agents: []*SwarmAgent{a, b},
+		Start:  "a",
+	}, "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final != "a finishes itself" {
+		t.Errorf("final = %q, want a to keep control", final)
+	}
+	if p.calls["b"] != 0 {
+		t.Errorf("b was activated %d times, want 0 (no transfer)", p.calls["b"])
+	}
+}
+
+func TestSwarm_HandoffToNonexistentAgentErrors(t *testing.T) {
+	t.Parallel()
+	// A fabricated handoff whose Active names an agent that is not
+	// registered must surface ErrUnknownHandoffTarget, not terminate
+	// silently with ("", nil). The router classifies it and diverts to
+	// the trap node; we exercise both directly since the construction
+	// guard makes this state otherwise unreachable through the public
+	// API.
+	byName := map[string]*SwarmAgent{"a": {Name: "a"}}
+	router := makeSwarmRouter(8, byName)
+	if got := router(SwarmState{Active: "ghost", Hops: 1}); got != swarmTrapNode {
+		t.Fatalf("router target = %q, want %q", got, swarmTrapNode)
+	}
+	trap := makeSwarmTrap(byName)
+	final, err := trap(context.Background(), SwarmState{Active: "ghost", Hops: 1})
+	if !errors.Is(err, ErrUnknownHandoffTarget) {
+		t.Fatalf("err = %v, want ErrUnknownHandoffTarget", err)
+	}
+	if final.Final != "" {
+		t.Errorf("Final should be empty: %q", final.Final)
+	}
+}
+
+func TestSwarm_RejectsHandoffPrefixedDomainTool(t *testing.T) {
+	t.Parallel()
+	collide, err := tool.NewTool("handoff_to_x", "a domain tool that collides",
+		func(_ context.Context, _ struct{}) (struct{}, error) { return struct{}{}, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := tool.NewRegistry(collide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewSwarm(SwarmConfig{
+		Agents: []*SwarmAgent{
+			{Name: "a", Description: "x", Provider: &scriptedProvider{}, Model: "x", Tools: reg},
+		},
+		Start: "a",
+	})
+	if err == nil {
+		t.Fatal("expected construction error for handoff_to_-prefixed domain tool")
+	}
+	if !strings.Contains(err.Error(), "handoff_to_x") {
+		t.Errorf("err should name the offending tool: %v", err)
 	}
 }
 

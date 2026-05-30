@@ -217,9 +217,10 @@ func (t *sseTransport) handlePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no active session", http.StatusNotFound)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxMessageBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "read body: "+err.Error(), http.StatusRequestEntityTooLarge)
 		return
 	}
 	defer func() { _ = r.Body.Close() }()

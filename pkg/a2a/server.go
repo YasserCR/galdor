@@ -49,7 +49,17 @@ type Server struct {
 	handler Handler
 
 	mu    sync.Mutex
-	tasks map[string]*Task
+	tasks map[string]*taskEntry
+}
+
+// taskEntry wraps a stored Task with its own mutex. The store map is
+// guarded by Server.mu; each task's contents are guarded by the
+// entry's mu so a slow handler can run without holding the store
+// lock, and concurrent operations on the same task (two same-id
+// tasks/send, or tasks/send racing tasks/get) are serialized.
+type taskEntry struct {
+	mu   sync.Mutex
+	task *Task
 }
 
 // NewServer constructs a Server. The card is served verbatim at the
@@ -64,7 +74,7 @@ func NewServer(card AgentCard, handler Handler) *Server {
 	return &Server{
 		card:    card,
 		handler: handler,
-		tasks:   map[string]*Task{},
+		tasks:   map[string]*taskEntry{},
 	}
 }
 
@@ -119,48 +129,55 @@ func (s *Server) handleTasksSend(ctx context.Context, req rpcMessage) rpcMessage
 		return errorReply(req.ID, ErrCodeInvalidParams, "message.parts is empty", "")
 	}
 
-	// Look up or create the task. Clients may reuse IDs across calls
-	// in a multi-turn conversation (e.g., to satisfy an
-	// input-required state).
+	// Look up or create the task entry. Clients may reuse IDs across
+	// calls in a multi-turn conversation (e.g., to satisfy an
+	// input-required state). Only the store map is guarded by s.mu;
+	// the task contents are guarded by the entry's own lock.
 	s.mu.Lock()
-	t, ok := s.tasks[p.ID]
+	e, ok := s.tasks[p.ID]
 	if !ok {
 		id := p.ID
 		if id == "" {
 			id = uuid.NewString()
 		}
-		t = &Task{
+		e = &taskEntry{task: &Task{
 			ID:        id,
 			SessionID: p.SessionID,
 			Status:    TaskStatus{State: TaskSubmitted, Timestamp: time.Now().UTC()},
 			Metadata:  p.Metadata,
-		}
-		s.tasks[id] = t
+		}}
+		s.tasks[id] = e
 	}
+	s.mu.Unlock()
+
+	// Hold the per-task lock for the whole send: appending the user
+	// message, running the handler, and committing the result. This
+	// serializes concurrent same-id sends and keeps tasks/get from
+	// observing a half-mutated task without blocking sends to other
+	// tasks.
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.task
+
 	// Append the new user message and flip to working.
 	t.Append(p.Message)
 	t.Status.State = TaskWorking
 	t.Status.Timestamp = time.Now().UTC()
-	s.mu.Unlock()
 
-	// Run the handler outside the lock so a slow agent doesn't
-	// block tasks/get.
 	if err := s.handler.Handle(ctx, t); err != nil {
-		s.mu.Lock()
 		t.Status.State = TaskFailed
 		t.Status.Message = &Message{Role: RoleAgent, Parts: []Part{TextPart(err.Error())}}
 		t.Status.Timestamp = time.Now().UTC()
-		s.mu.Unlock()
 	} else if !isTerminalState(t.Status.State) && t.Status.State != TaskInputRequired {
 		// Handler returned cleanly but forgot to set a terminal
 		// state; assume completion.
-		s.mu.Lock()
 		t.Status.State = TaskCompleted
 		t.Status.Timestamp = time.Now().UTC()
-		s.mu.Unlock()
 	}
 
-	return successReply(req.ID, t)
+	// Reply with a snapshot taken under the lock so the encode in
+	// successReply doesn't race a later send on the same task.
+	return successReply(req.ID, t.snapshot())
 }
 
 func (s *Server) handleTasksGet(req rpcMessage) rpcMessage {
@@ -172,14 +189,16 @@ func (s *Server) handleTasksGet(req rpcMessage) rpcMessage {
 		return errorReply(req.ID, ErrCodeInvalidParams, "id is required", "")
 	}
 	s.mu.Lock()
-	t, ok := s.tasks[p.ID]
+	e, ok := s.tasks[p.ID]
 	s.mu.Unlock()
 	if !ok {
 		return errorReply(req.ID, ErrCodeTaskNotFound, "task not found", p.ID)
 	}
-	// Return a copy with optionally truncated history so callers
-	// can mutate the result without racing on the in-memory store.
-	copyT := *t
+	// Snapshot under the per-task lock so we never read History/Status
+	// while a concurrent send is mutating them.
+	e.mu.Lock()
+	copyT := e.task.snapshot()
+	e.mu.Unlock()
 	if p.HistoryLength > 0 && len(copyT.History) > p.HistoryLength {
 		copyT.History = copyT.History[len(copyT.History)-p.HistoryLength:]
 	}

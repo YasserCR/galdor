@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -99,7 +100,7 @@ func (s *Server) Serve(ctx context.Context, t Transport) error {
 		wg.Add(1)
 		go func(req rpcMessage) {
 			defer wg.Done()
-			reply := s.dispatch(ctx, req)
+			reply := s.dispatchSafe(ctx, req)
 			if err := t.Send(ctx, reply); err != nil {
 				// Best-effort: nothing we can do if the peer's
 				// gone. Log when we add a logger.
@@ -107,6 +108,19 @@ func (s *Server) Serve(ctx context.Context, t Transport) error {
 			}
 		}(msg)
 	}
+}
+
+// dispatchSafe runs dispatch with panic recovery so a misbehaving
+// tool (nil deref, etc.) becomes a JSON-RPC error reply instead of
+// crashing the whole server process. This matters most on the stdio
+// path where a single panic would otherwise take down the child.
+func (s *Server) dispatchSafe(ctx context.Context, req rpcMessage) (reply rpcMessage) {
+	defer func() {
+		if r := recover(); r != nil {
+			reply = errorReply(req.ID, ErrCodeInternalError, fmt.Sprintf("tool panicked: %v", r), "")
+		}
+	}()
+	return s.dispatch(ctx, req)
 }
 
 // dispatch handles one inbound request and returns the response
@@ -127,16 +141,19 @@ func (s *Server) dispatch(ctx context.Context, req rpcMessage) rpcMessage {
 }
 
 func (s *Server) handleInitialize(req rpcMessage) rpcMessage {
-	// We accept the client's protocol version verbatim so newer
-	// clients can negotiate up. If the client's version is older
-	// than ours, returning our own version signals "downgrade me to
-	// your level" per the spec.
+	// Echo the client's requested protocol version when it sends one
+	// so a client pinned to a known revision keeps negotiating at that
+	// level; fall back to our default when the client omits it.
 	var params initializeParams
 	if len(req.Params) > 0 {
 		_ = json.Unmarshal(req.Params, &params)
 	}
+	version := params.ProtocolVersion
+	if version == "" {
+		version = ProtocolVersion
+	}
 	resp := initializeResult{
-		ProtocolVersion: ProtocolVersion,
+		ProtocolVersion: version,
 		Capabilities:    Capabilities{Tools: &ToolsCapability{}},
 		ServerInfo:      s.info,
 	}
