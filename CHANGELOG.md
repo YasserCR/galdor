@@ -11,6 +11,20 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-30
+
+Hygiene-only patch. No code change.
+
+### Build
+- Pin submodule `require` directives to root `v0.4.1` across the workspace
+  (`providers/*`, `memory/*`, `providerset`, `examples`), bumping them from
+  the stale `v0.3.1` floor left after the v0.4.0 release. Pure go.mod edit —
+  no go.sum churn (the local `replace => ../..` directives keep workspace
+  builds resolving from source) and no code change. Minimal version
+  selection already resolves the root to the newest required version for any
+  consumer that depends on it directly; this keeps the submodules' own floor
+  consistent with the release.
+
 ## [0.4.0] - 2026-05-30
 
 Pre-launch hardening + dashboard redesign. An adversarial audit of the
@@ -263,7 +277,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/YasserCR/galdor/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/YasserCR/galdor/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/YasserCR/galdor/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/YasserCR/galdor/compare/v0.2.0...v0.3.0
