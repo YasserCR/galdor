@@ -250,6 +250,9 @@ func renderSpan(w io.Writer, byID map[string]store.Span, children map[string][]s
 // useful attributes — node name, provider, token usage, tool name.
 func formatExtras(sp store.Span) string {
 	var parts []string
+	if v, ok := sp.Attributes["galdor.span.label"].(string); ok && v != "" {
+		parts = append(parts, "label="+v)
+	}
 	if v, ok := sp.Attributes["galdor.node.name"].(string); ok && v != "" {
 		parts = append(parts, "node="+v)
 	}

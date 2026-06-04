@@ -73,6 +73,9 @@ func (i *instrumentedProvider) Generate(ctx context.Context, req provider.Reques
 	if runID := resolveRunID(ctx); runID != "" {
 		span.SetAttributes(attribute.String(AttrGaldorRunID, runID))
 	}
+	if label := SpanLabelFromContext(ctx); label != "" {
+		span.SetAttributes(attribute.String(AttrGaldorSpanLabel, label))
+	}
 	if i.opts.captureContent {
 		if v := encodeMessages(req.Messages); v != "" {
 			span.SetAttributes(attribute.String(AttrGenAIPrompt, v))
@@ -109,6 +112,9 @@ func (i *instrumentedProvider) Stream(ctx context.Context, req provider.Request)
 	))
 	if runID := resolveRunID(ctx); runID != "" {
 		span.SetAttributes(attribute.String(AttrGaldorRunID, runID))
+	}
+	if label := SpanLabelFromContext(ctx); label != "" {
+		span.SetAttributes(attribute.String(AttrGaldorSpanLabel, label))
 	}
 	if i.opts.captureContent {
 		if v := encodeMessages(req.Messages); v != "" {

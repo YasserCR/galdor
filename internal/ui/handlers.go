@@ -306,6 +306,7 @@ type timelineBar struct {
 	OK      bool
 	SpanID  string
 	Name    string
+	Label   string // optional galdor.span.label, shown after the name
 	Tooltip string
 }
 
@@ -500,6 +501,7 @@ func buildTimeline(spans []store.Span) timelineView {
 			OK:      sp.StatusCode != "error",
 			SpanID:  sp.SpanID,
 			Name:    strings.TrimPrefix(sp.Name, "galdor."),
+			Label:   truncLabel(spanLabel(sp)),
 			Tooltip: fmt.Sprintf("%s · %s", sp.Name, formatDuration(sp.Duration())),
 		})
 		row++
@@ -686,6 +688,9 @@ func extractExtras(sp store.Span) []spanExtra {
 			extras = append(extras, spanExtra{Key: k, Value: v})
 		}
 	}
+	if v := spanLabel(sp); v != "" {
+		add("label", v)
+	}
 	if v, ok := sp.Attributes["galdor.node.name"].(string); ok {
 		add("node", v)
 	}
@@ -705,6 +710,24 @@ func extractExtras(sp store.Span) []spanExtra {
 		add("out", strconv.Itoa(int(v)))
 	}
 	return extras
+}
+
+// spanLabel returns the user-supplied span label (set via
+// observability.WithSpanLabel), or "" when none was set.
+func spanLabel(sp store.Span) string {
+	v, _ := sp.Attributes["galdor.span.label"].(string)
+	return v
+}
+
+// truncLabel caps a label so it doesn't overflow the timeline's fixed
+// label column.
+func truncLabel(s string) string {
+	const n = 28
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 func displayStatus(s string) string {

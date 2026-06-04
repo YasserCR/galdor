@@ -1,8 +1,8 @@
 module github.com/YasserCR/galdor/memory/qdrant
 
-go 1.25.10
+go 1.25.11
 
-require github.com/YasserCR/galdor v0.4.1
+require github.com/YasserCR/galdor v0.5.0
 
 require github.com/google/uuid v1.6.0 // indirect
 

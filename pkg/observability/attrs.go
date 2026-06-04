@@ -37,6 +37,7 @@ const (
 	AttrGaldorStateGo   = "galdor.state.type" // Go type name of the graph state
 	AttrGaldorProvider  = "galdor.provider.name"
 	AttrGaldorStreaming = "galdor.provider.streaming"
+	AttrGaldorSpanLabel = "galdor.span.label" // optional human-readable label set via WithSpanLabel
 )
 
 // Span names. Centralized so the dashboard (Phase 5) and any

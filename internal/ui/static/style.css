@@ -364,6 +364,7 @@ table.runs tr.flash td { animation: rowflash 1.6s ease-out; }
 .timeline .bar.ok  { fill: var(--accent); }
 .timeline .bar.err { fill: var(--err); }
 .timeline .label { font: 12px var(--mono); fill: var(--text); }
+.timeline .span-label { fill: var(--muted); }
 .timeline .dur { font: 11px var(--mono); fill: var(--muted); }
 .timeline .axis  { stroke: var(--border); stroke-width: 1; }
 .timeline .grid  { stroke: var(--border-2); stroke-width: 1; }

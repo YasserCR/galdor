@@ -11,6 +11,36 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-03
+
+Bedrock embeddings, per-span labels for observability, and a Go toolchain
+floor bump for the patched standard library. Green under `go test -race`,
+golangci-lint v2.12.2, govulncheck and gosec across all nine modules.
+
+### Added
+- **Bedrock embeddings** (`providers/bedrock`): `NewEmbedder` calls Amazon
+  Bedrock embedding models — Titan (`amazon.titan-embed-text-v2:0`) and
+  Cohere (`cohere.embed-*`) — and satisfies `memory.Embedder`, so the full
+  RAG stack (`pkg/memory` + `memory/pgvector`) runs natively on AWS with no
+  external embedding server. Ships unit tests plus a build-tagged integration
+  test.
+- **Per-span labels** (`pkg/observability`): `WithSpanLabel(ctx, "...")`
+  stamps a `galdor.span.label` attribute on the instrumented provider and
+  tool spans, context-scoped exactly like `WithRunID`. The dashboard timeline
+  and `scry show` render it next to the span type (e.g. `provider.generate ·
+  review code`), so steps are distinguishable straight from the timeline
+  without opening each span.
+
+### Changed
+- ⚠️ **Minimum Go bumped to 1.25.11** (from 1.25.10) across every module, to
+  build against the patched standard library (GO-2026-5037 `crypto/x509`,
+  GO-2026-5039 `net/textproto`). Patch-level and drop-in — no API or behavior
+  change.
+
+### Build
+- Pin submodule `require` directives to root `v0.5.0` across the workspace
+  (`providers/*`, `memory/*`, `providerset`, `examples`).
+
 ## [0.4.1] - 2026-05-30
 
 Hygiene-only patch. No code change.

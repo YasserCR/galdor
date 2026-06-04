@@ -54,7 +54,7 @@
         {{ range .Timeline.Bars }}
         <a href="/runs/{{ $.RunID }}/spans/{{ .SpanID }}">
           <title>{{ .Tooltip }}</title>
-          <text class="label" x="{{ .LabelX }}" y="{{ .LabelY }}">{{ .Name }}</text>
+          <text class="label" x="{{ .LabelX }}" y="{{ .LabelY }}">{{ .Name }}{{ if .Label }} <tspan class="span-label">· {{ .Label }}</tspan>{{ end }}</text>
           <text class="dur" x="{{ .DurX }}" y="{{ .LabelY }}" text-anchor="end">{{ .Dur }}</text>
           <rect class="bar {{ if .OK }}ok{{ else }}err{{ end }}" x="{{ .X }}" y="{{ .Y }}" width="{{ .W }}" height="11"></rect>
         </a>

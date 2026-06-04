@@ -68,6 +68,9 @@ func (i *instrumentedTool) ExecuteJSON(ctx context.Context, raw json.RawMessage)
 	if runID := resolveRunID(ctx); runID != "" {
 		span.SetAttributes(attribute.String(AttrGaldorRunID, runID))
 	}
+	if label := SpanLabelFromContext(ctx); label != "" {
+		span.SetAttributes(attribute.String(AttrGaldorSpanLabel, label))
+	}
 	defer func() {
 		if err != nil {
 			span.RecordError(err)
