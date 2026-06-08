@@ -288,6 +288,9 @@ table.kv.attrs td, table.kv.attrs th { font-size: 12px; }
 .msg-tool      { border-left-color: #7c3aed; }
 .msg-role { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
 .msg-text { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.55; }
+.reasoning { margin: 0 0 8px; }
+.reasoning summary { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; cursor: pointer; }
+.reasoning-text { color: var(--muted); font-style: italic; padding-left: 8px; border-left: 2px dashed var(--border); margin-top: 4px; }
 .toolcall { margin-top: 8px; font-size: 12px; }
 .toolcall pre { margin: 4px 0 0; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; font-size: 11.5px; font-family: var(--mono); overflow-x: auto; }
 

@@ -194,3 +194,103 @@ func TestPartsToWire_AttachesCacheControlToLastBlock(t *testing.T) {
 		t.Errorf("last block must carry cache_control: %+v", blocks[1])
 	}
 }
+
+// TestPartsToWire_SkipsThinking guarantees a captured reasoning part on
+// an assistant turn can be fed back into a request without error: it is
+// skipped, not rejected.
+func TestPartsToWire_SkipsThinking(t *testing.T) {
+	t.Parallel()
+	out, err := partsToWire([]schema.ContentPart{
+		schema.ThinkingPart("internal reasoning"),
+		schema.TextPart("answer"),
+	}, nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(out) != 1 || out[0].Text != "answer" {
+		t.Fatalf("got %+v, want single text part %q", out, "answer")
+	}
+}
+
+// TestBuildRequest_Reasoning verifies Request.Reasoning maps to
+// Anthropic's thinking config with its constraints (budget floor,
+// max_tokens room, temperature/top_p dropped), and that off = unchanged.
+func TestBuildRequest_Reasoning(t *testing.T) {
+	t.Parallel()
+	temp := 0.7
+	topP := 0.9
+
+	// Off: no thinking, sampling params preserved.
+	off, err := buildRequest(provider.Request{Model: "m", Temperature: &temp, TopP: &topP}, false)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if off.Thinking != nil {
+		t.Errorf("Thinking = %+v, want nil", off.Thinking)
+	}
+	if off.Temperature == nil || off.TopP == nil {
+		t.Error("sampling params should be preserved when reasoning is off")
+	}
+
+	// On, no budget: floor to 1024, max_tokens grown, temp/top_p dropped.
+	mt := 512
+	on, err := buildRequest(provider.Request{
+		Model:       "m",
+		MaxTokens:   &mt,
+		Temperature: &temp,
+		TopP:        &topP,
+		Reasoning:   &provider.ReasoningConfig{Enabled: true},
+	}, false)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if on.Thinking == nil || on.Thinking.Type != "enabled" || on.Thinking.BudgetTokens != 1024 {
+		t.Fatalf("Thinking = %+v, want enabled/1024", on.Thinking)
+	}
+	if on.MaxTokens <= on.Thinking.BudgetTokens {
+		t.Errorf("MaxTokens %d must exceed budget %d", on.MaxTokens, on.Thinking.BudgetTokens)
+	}
+	if on.Temperature != nil || on.TopP != nil {
+		t.Error("temperature/top_p must be dropped when thinking is enabled")
+	}
+
+	// On, explicit budget honored.
+	on2, _ := buildRequest(provider.Request{
+		Model:     "m",
+		Reasoning: &provider.ReasoningConfig{Enabled: true, Budget: 8000},
+	}, false)
+	if on2.Thinking.BudgetTokens != 8000 {
+		t.Errorf("BudgetTokens = %d, want 8000", on2.Thinking.BudgetTokens)
+	}
+}
+
+// TestResponseFromWire_SurfacesThinking verifies a thinking block becomes
+// a thinking part (with signature) while the answer text stays clean.
+func TestResponseFromWire_SurfacesThinking(t *testing.T) {
+	t.Parallel()
+	r := &messageResponse{
+		Role:  "assistant",
+		Model: "claude",
+		Content: []wireContentBlock{
+			{Type: "thinking", Thinking: "let me reason", Signature: "sig-abc"},
+			{Type: "text", Text: "the answer"},
+		},
+		StopReason: "end_turn",
+	}
+	resp := responseFromWire(r, nil)
+	if got := resp.Message.Text(); got != "the answer" {
+		t.Errorf("Text() = %q, want %q", got, "the answer")
+	}
+	var found *schema.ContentPart
+	for i := range resp.Message.Content {
+		if resp.Message.Content[i].Type == schema.ContentTypeThinking {
+			found = &resp.Message.Content[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("no thinking part surfaced")
+	}
+	if found.Text != "let me reason" || found.Signature != "sig-abc" {
+		t.Errorf("thinking part = %+v, want text/signature preserved", found)
+	}
+}

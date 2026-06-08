@@ -262,6 +262,107 @@ func TestStripThinkingBlocks_StreamMultipleBlocks(t *testing.T) {
 	}
 }
 
+// thinkingParts returns the reasoning text of every thinking part on m.
+func thinkingParts(m schema.Message) []string {
+	var out []string
+	for _, p := range m.Content {
+		if p.Type == schema.ContentTypeThinking {
+			out = append(out, p.Text)
+		}
+	}
+	return out
+}
+
+func TestExtractThinkingBlocks_Generate(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		in         string
+		wantText   string
+		wantThinks []string
+	}{
+		{"single block", "<think>reasoning</think>answer", "answer", []string{"reasoning"}},
+		{"passthrough", "no blocks here", "no blocks here", nil},
+		{"mixed blocks", "<think>x</think>actual<thinking>y</thinking>more", "actualmore", []string{"x", "y"}},
+		{"multiline", "<think>line1\nline2</think>final", "final", []string{"line1\nline2"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := provider.ExtractThinkingBlocks(&stubProv{
+				resp: &provider.Response{Message: schema.AssistantMessage(tc.in)},
+			})
+			resp, err := p.Generate(context.Background(), provider.Request{})
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			// Text identical to what StripThinkingBlocks produces.
+			if got := resp.Message.Text(); got != tc.wantText {
+				t.Errorf("Text() = %q, want %q", got, tc.wantText)
+			}
+			got := thinkingParts(resp.Message)
+			if len(got) != len(tc.wantThinks) {
+				t.Fatalf("thinking parts = %v, want %v", got, tc.wantThinks)
+			}
+			for i := range got {
+				if got[i] != tc.wantThinks[i] {
+					t.Errorf("thinking[%d] = %q, want %q", i, got[i], tc.wantThinks[i])
+				}
+			}
+		})
+	}
+}
+
+// TestExtractThinkingBlocks_StreamFinalMessage verifies that when the
+// provider emits a final Message on stop, its reasoning is moved into a
+// thinking part while the live deltas stay clean.
+func TestExtractThinkingBlocks_StreamFinalMessage(t *testing.T) {
+	t.Parallel()
+	inner := &stubProv{streamEv: []provider.Event{
+		{Type: provider.EventContentDelta, ContentDelta: "<think>x</think>hi"},
+		{Type: provider.EventMessageStop, Message: &schema.Message{
+			Role:    schema.RoleAssistant,
+			Content: []schema.ContentPart{schema.TextPart("<think>x</think>hi")},
+		}},
+	}}
+	p := provider.ExtractThinkingBlocks(inner)
+	sr, err := p.Stream(context.Background(), provider.Request{})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	defer sr.Close()
+
+	var deltas string
+	var final *schema.Message
+	for {
+		ev, err := sr.Recv(context.Background())
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("recv: %v", err)
+		}
+		switch ev.Type {
+		case provider.EventContentDelta:
+			deltas += ev.ContentDelta
+		case provider.EventMessageStop:
+			final = ev.Message
+		}
+	}
+	if deltas != "hi" {
+		t.Errorf("live deltas = %q, want %q", deltas, "hi")
+	}
+	if final == nil {
+		t.Fatal("no final message")
+	}
+	if got := final.Text(); got != "hi" {
+		t.Errorf("final Text() = %q, want %q", got, "hi")
+	}
+	if th := thinkingParts(*final); len(th) != 1 || th[0] != "x" {
+		t.Errorf("final thinking = %v, want [x]", th)
+	}
+}
+
 func TestStripThinkingBlocks_PassesNonTextPartsUntouched(t *testing.T) {
 	t.Parallel()
 	inner := &stubProv{resp: &provider.Response{Message: schema.Message{

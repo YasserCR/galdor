@@ -608,3 +608,85 @@ func mustStream(t *testing.T, p *Provider, req provider.Request) provider.Stream
 	}
 	return s
 }
+
+// TestStream_SurfacesReasoning verifies streamed thinking_delta /
+// signature_delta are kept off the live content stream and delivered as
+// a thinking part on the terminal MessageStop.
+func TestStream_SurfacesReasoning(t *testing.T) {
+	t.Parallel()
+	body := strings.Join([]string{
+		"event: message_start",
+		`data: {"type":"message_start","message":{"id":"m","model":"claude-haiku-4-5","usage":{"input_tokens":1,"output_tokens":0}}}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"let me "}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"reason"}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig123"}}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"answer"}}`,
+		"",
+		"event: message_delta",
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`,
+		"",
+		"event: message_stop",
+		`data: {"type":"message_stop"}`,
+		"",
+		"",
+	}, "\n")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	stream := mustStream(t, p, provider.Request{
+		Model:     "claude-haiku-4-5",
+		Messages:  []schema.Message{schema.UserMessage("hi")},
+		Reasoning: &provider.ReasoningConfig{Enabled: true},
+	})
+	defer func() { _ = stream.Close() }()
+
+	var live string
+	var stopMsg *schema.Message
+	for {
+		ev, err := stream.Recv(context.Background())
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Recv: %v", err)
+		}
+		switch ev.Type {
+		case provider.EventContentDelta:
+			live += ev.ContentDelta
+		case provider.EventMessageStop:
+			stopMsg = ev.Message
+		}
+	}
+	if live != "answer" {
+		t.Errorf("live stream = %q, want clean %q", live, "answer")
+	}
+	if stopMsg == nil {
+		t.Fatal("terminal stop carried no Message")
+	}
+	if stopMsg.Text() != "" {
+		t.Errorf("stop Message.Text() = %q, want empty (reasoning-only)", stopMsg.Text())
+	}
+	if len(stopMsg.Content) != 1 || stopMsg.Content[0].Type != schema.ContentTypeThinking ||
+		stopMsg.Content[0].Text != "let me reason" || stopMsg.Content[0].Signature != "sig123" {
+		t.Errorf("reasoning part wrong: %+v", stopMsg.Content)
+	}
+}

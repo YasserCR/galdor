@@ -67,6 +67,23 @@ type streamReader struct {
 	stopped    bool
 	closed     bool
 	pending    []provider.Event
+
+	// reasoning accumulates streamed thought-summary parts so they can
+	// ride the terminal MessageStop as a thinking part; the live stream
+	// stays clean (thought parts are not forwarded as content).
+	reasoning strings.Builder
+}
+
+// stopMessage builds the terminal assistant Message carrying any
+// accumulated reasoning, or nil when none was streamed.
+func (r *streamReader) stopMessage() *schema.Message {
+	if r.reasoning.Len() == 0 {
+		return nil
+	}
+	return &schema.Message{
+		Role:    schema.RoleAssistant,
+		Content: []schema.ContentPart{schema.ThinkingPart(r.reasoning.String())},
+	}
 }
 
 // Recv implements provider.StreamReader.
@@ -100,6 +117,7 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 					StopReason: r.stopReason,
 					Usage:      r.usage,
 					Model:      r.model,
+					Message:    r.stopMessage(),
 				}, nil
 			}
 			return provider.Event{}, io.EOF
@@ -160,7 +178,10 @@ func (r *streamReader) handleFrame(f *generateResponse) {
 					ArgumentsDelta: string(p.FunctionCall.Args),
 				},
 			})
-		case p.Text != "" && !p.Thought:
+		case p.Thought && p.Text != "":
+			// Accumulate reasoning; do not forward it on the live stream.
+			r.reasoning.WriteString(p.Text)
+		case p.Text != "":
 			r.pending = append(r.pending, provider.Event{
 				Type:         provider.EventContentDelta,
 				ContentDelta: p.Text,

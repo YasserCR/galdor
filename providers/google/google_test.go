@@ -418,3 +418,60 @@ func mustStream(t *testing.T, p *Provider, req provider.Request) provider.Stream
 	}
 	return s
 }
+
+// TestStream_SurfacesReasoning verifies streamed thought parts are kept
+// off the live content stream and delivered as a thinking part on the
+// terminal MessageStop.
+func TestStream_SurfacesReasoning(t *testing.T) {
+	t.Parallel()
+	body := strings.Join([]string{
+		`data: {"modelVersion":"gemini-2.5-flash","candidates":[{"content":{"parts":[{"text":"let me ","thought":true}]}}]}`,
+		"",
+		`data: {"candidates":[{"content":{"parts":[{"text":"reason","thought":true}]}}]}`,
+		"",
+		`data: {"candidates":[{"content":{"parts":[{"text":"answer"}]}}]}`,
+		"",
+		`data: {"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1}}`,
+		"",
+		"",
+	}, "\n")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	stream := mustStream(t, p, provider.Request{
+		Model:     "gemini-2.5-flash",
+		Messages:  []schema.Message{schema.UserMessage("hi")},
+		Reasoning: &provider.ReasoningConfig{Enabled: true},
+	})
+	defer func() { _ = stream.Close() }()
+
+	var live string
+	var stopMsg *schema.Message
+	for {
+		ev, err := stream.Recv(context.Background())
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Recv: %v", err)
+		}
+		switch ev.Type {
+		case provider.EventContentDelta:
+			live += ev.ContentDelta
+		case provider.EventMessageStop:
+			stopMsg = ev.Message
+		}
+	}
+	if live != "answer" {
+		t.Errorf("live stream = %q, want clean %q", live, "answer")
+	}
+	if stopMsg == nil || len(stopMsg.Content) != 1 ||
+		stopMsg.Content[0].Type != schema.ContentTypeThinking || stopMsg.Content[0].Text != "let me reason" {
+		t.Fatalf("reasoning part wrong: %+v", stopMsg)
+	}
+}

@@ -3,6 +3,7 @@ package bedrock
 import (
 	"context"
 	"io"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
@@ -59,6 +60,28 @@ type streamReader struct {
 	started      bool
 	stopped      bool
 	closed       bool
+
+	// reasoning accumulates streamed reasoningContent deltas so they can
+	// ride the terminal MessageStop as a thinking part; the live stream
+	// stays clean.
+	reasoning strings.Builder
+	signature strings.Builder
+}
+
+// stopMessage builds the terminal assistant Message carrying any
+// accumulated reasoning, or nil when none was streamed.
+func (r *streamReader) stopMessage() *schema.Message {
+	if r.reasoning.Len() == 0 {
+		return nil
+	}
+	return &schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentPart{{
+			Type:      schema.ContentTypeThinking,
+			Text:      r.reasoning.String(),
+			Signature: r.signature.String(),
+		}},
+	}
 }
 
 // toolBlockState tracks the id+name of a tool_use block across
@@ -109,6 +132,7 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 						StopReason: r.stopReason,
 						Usage:      r.usage,
 						Model:      r.model,
+						Message:    r.stopMessage(),
 					}, nil
 				}
 				return provider.Event{}, io.EOF
@@ -190,6 +214,14 @@ func (r *streamReader) handleEvent(ev brtypes.ConverseStreamOutput) {
 				Type:         provider.EventContentDelta,
 				ContentDelta: d.Value,
 			})
+		case *brtypes.ContentBlockDeltaMemberReasoningContent:
+			// Accumulate reasoning; do not forward it on the live stream.
+			switch rc := d.Value.(type) {
+			case *brtypes.ReasoningContentBlockDeltaMemberText:
+				r.reasoning.WriteString(rc.Value)
+			case *brtypes.ReasoningContentBlockDeltaMemberSignature:
+				r.signature.WriteString(rc.Value)
+			}
 		case *brtypes.ContentBlockDeltaMemberToolUse:
 			idx := aws.ToInt32(e.Value.ContentBlockIndex)
 			st := r.toolByIdx[idx]
@@ -221,6 +253,7 @@ func (r *streamReader) handleEvent(ev brtypes.ConverseStreamOutput) {
 			StopReason: r.stopReason,
 			Usage:      r.usage,
 			Model:      r.model,
+			Message:    r.stopMessage(),
 		}
 		r.stopBuffered = &stop
 

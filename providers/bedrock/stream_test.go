@@ -222,3 +222,71 @@ func TestStream_MessageStartSynthesizedFromContentBlock(t *testing.T) {
 		t.Errorf("first event should be MessageStart, got %+v", events)
 	}
 }
+
+// TestStream_SurfacesReasoning verifies streamed reasoningContent deltas
+// are kept off the live content stream and delivered as a thinking part
+// (with signature) on the terminal MessageStop.
+func TestStream_SurfacesReasoning(t *testing.T) {
+	t.Parallel()
+	ch := make(chan brtypes.ConverseStreamOutput, 8)
+	ch <- &brtypes.ConverseStreamOutputMemberMessageStart{
+		Value: brtypes.MessageStartEvent{Role: brtypes.ConversationRoleAssistant},
+	}
+	ch <- &brtypes.ConverseStreamOutputMemberContentBlockDelta{
+		Value: brtypes.ContentBlockDeltaEvent{
+			ContentBlockIndex: aws.Int32(0),
+			Delta: &brtypes.ContentBlockDeltaMemberReasoningContent{
+				Value: &brtypes.ReasoningContentBlockDeltaMemberText{Value: "let me "},
+			},
+		},
+	}
+	ch <- &brtypes.ConverseStreamOutputMemberContentBlockDelta{
+		Value: brtypes.ContentBlockDeltaEvent{
+			ContentBlockIndex: aws.Int32(0),
+			Delta: &brtypes.ContentBlockDeltaMemberReasoningContent{
+				Value: &brtypes.ReasoningContentBlockDeltaMemberText{Value: "reason"},
+			},
+		},
+	}
+	ch <- &brtypes.ConverseStreamOutputMemberContentBlockDelta{
+		Value: brtypes.ContentBlockDeltaEvent{
+			ContentBlockIndex: aws.Int32(0),
+			Delta: &brtypes.ContentBlockDeltaMemberReasoningContent{
+				Value: &brtypes.ReasoningContentBlockDeltaMemberSignature{Value: "sig123"},
+			},
+		},
+	}
+	ch <- &brtypes.ConverseStreamOutputMemberContentBlockDelta{
+		Value: brtypes.ContentBlockDeltaEvent{
+			ContentBlockIndex: aws.Int32(1),
+			Delta:             &brtypes.ContentBlockDeltaMemberText{Value: "answer"},
+		},
+	}
+	ch <- &brtypes.ConverseStreamOutputMemberMessageStop{
+		Value: brtypes.MessageStopEvent{StopReason: brtypes.StopReasonEndTurn},
+	}
+	close(ch)
+
+	r := newTestStreamReader(ch)
+	defer r.Close()
+	events := drain(t, r)
+
+	var live string
+	var stopMsg *schema.Message
+	for i := range events {
+		switch events[i].Type {
+		case provider.EventContentDelta:
+			live += events[i].ContentDelta
+		case provider.EventMessageStop:
+			stopMsg = events[i].Message
+		}
+	}
+	if live != "answer" {
+		t.Errorf("live stream = %q, want clean %q", live, "answer")
+	}
+	if stopMsg == nil || len(stopMsg.Content) != 1 ||
+		stopMsg.Content[0].Type != schema.ContentTypeThinking ||
+		stopMsg.Content[0].Text != "let me reason" || stopMsg.Content[0].Signature != "sig123" {
+		t.Fatalf("reasoning part wrong: %+v", stopMsg)
+	}
+}

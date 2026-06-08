@@ -249,3 +249,34 @@ func TestHandleRunSteps_LinkedFromRunDetail(t *testing.T) {
 		t.Error("run detail page should link to the steps view")
 	}
 }
+
+// TestRenderTurn_SurfacesReasoning verifies a thinking part lands on the
+// turn's Reasoning field while Text stays the clean answer.
+func TestRenderTurn_SurfacesReasoning(t *testing.T) {
+	t.Parallel()
+	completion := `{"role":"assistant","content":[{"type":"thinking","text":"let me think"},{"type":"text","text":"the answer"}]}`
+	turn := decodeCompletion(completion)
+	if turn.Text != "the answer" {
+		t.Errorf("Text = %q, want %q", turn.Text, "the answer")
+	}
+	if turn.Reasoning != "let me think" {
+		t.Errorf("Reasoning = %q, want %q", turn.Reasoning, "let me think")
+	}
+}
+
+// TestDecodeMessages_SurfacesReasoning verifies the span-detail view
+// pulls thinking parts into ReasoningParts, separate from TextParts.
+func TestDecodeMessages_SurfacesReasoning(t *testing.T) {
+	t.Parallel()
+	raw := `[{"role":"assistant","content":[{"type":"thinking","text":"reasoning"},{"type":"text","text":"answer"}]}]`
+	msgs := decodeMessages(raw)
+	if len(msgs) != 1 {
+		t.Fatalf("messages = %d", len(msgs))
+	}
+	if len(msgs[0].TextParts) != 1 || msgs[0].TextParts[0] != "answer" {
+		t.Errorf("TextParts = %v, want [answer]", msgs[0].TextParts)
+	}
+	if len(msgs[0].ReasoningParts) != 1 || msgs[0].ReasoningParts[0] != "reasoning" {
+		t.Errorf("ReasoningParts = %v, want [reasoning]", msgs[0].ReasoningParts)
+	}
+}

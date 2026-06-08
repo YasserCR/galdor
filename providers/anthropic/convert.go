@@ -31,6 +31,24 @@ func buildRequest(req provider.Request, stream bool) (*messageRequest, error) {
 		Stream:        stream,
 	}
 
+	if rc := req.Reasoning; rc != nil && rc.Enabled {
+		// Anthropic is budget-based. budget_tokens must be >= 1024 and
+		// strictly less than max_tokens; default to the minimum and grow
+		// max_tokens if it can't fit both the reasoning and an answer.
+		budget := rc.Budget
+		if budget < 1024 {
+			budget = 1024
+		}
+		if out.MaxTokens <= budget {
+			out.MaxTokens = budget + maxTokens
+		}
+		out.Thinking = &wireThinking{Type: "enabled", BudgetTokens: budget}
+		// Extended thinking is incompatible with temperature / top_p
+		// tuning — drop them so the request isn't rejected.
+		out.Temperature = nil
+		out.TopP = nil
+	}
+
 	for _, m := range req.Messages {
 		switch m.Role {
 		case schema.RoleSystem:
@@ -134,6 +152,14 @@ func partsToWire(parts []schema.ContentPart, cc *schema.CacheControl) ([]wireCon
 				return nil, err
 			}
 			out = append(out, wireContentBlock{Type: "image", Source: src})
+		case schema.ContentTypeThinking:
+			// Reasoning parts are model output. Anthropic does accept
+			// thinking blocks back (with their signature) for extended-
+			// thinking continuations, but resending one without a valid
+			// signature is rejected — so for now we skip them. This
+			// keeps a captured assistant turn safe to feed back; native
+			// thinking round-trip is a separate, later step.
+			continue
 		default:
 			return nil, fmt.Errorf("%w: unsupported content type %q", provider.ErrInvalidRequest, p.Type)
 		}
@@ -200,6 +226,17 @@ func responseFromWire(r *messageResponse, raw []byte) *provider.Response {
 				Name:      b.Name,
 				Arguments: b.Input,
 			})
+		case "thinking":
+			// Extended-thinking block (returned only when Request.Reasoning
+			// asked for it). Keep the signature for a future round-trip;
+			// Message.Text() skips this part, so the answer stays clean.
+			if b.Thinking != "" {
+				msg.Content = append(msg.Content, schema.ContentPart{
+					Type:      schema.ContentTypeThinking,
+					Text:      b.Thinking,
+					Signature: b.Signature,
+				})
+			}
 		}
 	}
 	return &provider.Response{

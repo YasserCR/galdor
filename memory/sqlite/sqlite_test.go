@@ -152,6 +152,29 @@ func TestRetrieve_VectorCosine(t *testing.T) {
 	}
 }
 
+func TestRetrieve_VectorMetadataFilter(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	// Two topics. The nearest vector to the query lives in topic "b"; the
+	// filter must scope the scan so only topic "a" is considered.
+	_ = s.Add(ctx, []memory.Chunk{
+		{ID: "a1", DocumentID: "d", Text: "x", Embedding: []float32{0.2, 1}, Metadata: map[string]string{"topic": "a"}},
+		{ID: "b1", DocumentID: "d", Text: "y", Embedding: []float32{1, 0}, Metadata: map[string]string{"topic": "b"}},
+	})
+	res, err := s.Retrieve(ctx, memory.Query{
+		Embedding: []float32{1, 0},
+		Filter:    map[string]string{"topic": "a"},
+		K:         5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].Chunk.ID != "a1" {
+		t.Fatalf("vector filter not applied (should only see topic a): %+v", res)
+	}
+}
+
 func TestRetrieve_MetadataFilter(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

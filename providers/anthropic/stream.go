@@ -59,6 +59,29 @@ type streamReader struct {
 	usage   schema.Usage
 	stopped bool
 	closed  bool
+
+	// reasoning accumulates extended-thinking deltas so they can be
+	// attached to the terminal MessageStop as a thinking part (the live
+	// stream stays clean — thinking deltas are not forwarded).
+	reasoning strings.Builder
+	signature strings.Builder
+}
+
+// stopMessage builds the terminal assistant Message carrying any
+// accumulated reasoning, or nil when none was streamed. The text itself
+// rides the content deltas, so this message holds only the thinking part.
+func (r *streamReader) stopMessage() *schema.Message {
+	if r.reasoning.Len() == 0 {
+		return nil
+	}
+	return &schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentPart{{
+			Type:      schema.ContentTypeThinking,
+			Text:      r.reasoning.String(),
+			Signature: r.signature.String(),
+		}},
+	}
 }
 
 // blockState tracks the partial state of a single content block as deltas
@@ -92,9 +115,10 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			if !r.stopped {
 				r.stopped = true
 				return provider.Event{
-					Type:  provider.EventMessageStop,
-					Usage: r.usage,
-					Model: r.model,
+					Type:    provider.EventMessageStop,
+					Usage:   r.usage,
+					Model:   r.model,
+					Message: r.stopMessage(),
 				}, nil
 			}
 			return provider.Event{}, io.EOF
@@ -177,6 +201,8 @@ func (r *streamReader) handleEvent(ev sseEvent) (provider.Event, bool, error) {
 				Type        string `json:"type"`
 				Text        string `json:"text,omitempty"`
 				PartialJSON string `json:"partial_json,omitempty"`
+				Thinking    string `json:"thinking,omitempty"`
+				Signature   string `json:"signature,omitempty"`
 			} `json:"delta"`
 		}
 		if err := json.Unmarshal(ev.Data, &p); err != nil {
@@ -186,6 +212,13 @@ func (r *streamReader) handleEvent(ev sseEvent) (provider.Event, bool, error) {
 		switch p.Delta.Type {
 		case "text_delta":
 			return provider.Event{Type: provider.EventContentDelta, ContentDelta: p.Delta.Text}, true, nil
+		case "thinking_delta":
+			// Accumulate reasoning; do not forward it on the live stream.
+			r.reasoning.WriteString(p.Delta.Thinking)
+			return provider.Event{}, false, nil
+		case "signature_delta":
+			r.signature.WriteString(p.Delta.Signature)
+			return provider.Event{}, false, nil
 		case "input_json_delta":
 			if b == nil {
 				return provider.Event{}, false, nil
@@ -238,6 +271,7 @@ func (r *streamReader) handleEvent(ev sseEvent) (provider.Event, bool, error) {
 			StopReason: normalizeStopReason(p.Delta.StopReason),
 			Usage:      r.usage,
 			Model:      r.model,
+			Message:    r.stopMessage(),
 		}, true, nil
 
 	case "message_stop":
@@ -248,9 +282,10 @@ func (r *streamReader) handleEvent(ev sseEvent) (provider.Event, bool, error) {
 		}
 		r.stopped = true
 		return provider.Event{
-			Type:  provider.EventMessageStop,
-			Usage: r.usage,
-			Model: r.model,
+			Type:    provider.EventMessageStop,
+			Usage:   r.usage,
+			Model:   r.model,
+			Message: r.stopMessage(),
 		}, true, nil
 
 	case "ping":

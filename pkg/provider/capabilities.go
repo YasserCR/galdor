@@ -32,6 +32,10 @@ type Capabilities struct {
 	// VisionInput indicates that image ContentParts may be sent.
 	VisionInput bool
 
+	// Reasoning indicates that the provider can surface native reasoning
+	// / extended thinking when Request.Reasoning is set.
+	Reasoning bool
+
 	// MaxContextTokens is the provider-advertised context window for the
 	// default model. Zero means unknown.
 	MaxContextTokens int
@@ -54,6 +58,7 @@ type Capabilities struct {
 //   - ResponseFormat set but StructuredOutput == false
 //   - Vision image part present but VisionInput == false
 //   - CacheControl hints present but PromptCaching == false
+//   - Reasoning enabled but Reasoning == false
 //
 // Streaming is NOT validated here; Stream returns ErrUnsupported on
 // its own when Capabilities.Streaming is false.
@@ -72,6 +77,10 @@ func (c Capabilities) ValidateRequest(req Request) error {
 	}
 	if hasCacheControl(req.Messages) && !c.PromptCaching {
 		return fmt.Errorf("%w: provider does not support prompt caching but Request.Messages carries CacheControl hints",
+			ErrUnsupported)
+	}
+	if req.Reasoning != nil && req.Reasoning.Enabled && !c.Reasoning {
+		return fmt.Errorf("%w: provider does not support reasoning but Request.Reasoning is enabled",
 			ErrUnsupported)
 	}
 	return nil

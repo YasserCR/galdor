@@ -70,6 +70,7 @@ func (p *Provider) Capabilities() provider.Capabilities {
 		StructuredOutput: false,
 		PromptCaching:    false,
 		VisionInput:      true,
+		Reasoning:        true,
 		MaxContextTokens: 200_000,
 	}
 }

@@ -74,6 +74,12 @@
 {{ define "message" }}
 <article class="msg msg-{{ .Role }}">
   <header class="msg-role">{{ .Role }}</header>
+  {{ range .ReasoningParts }}
+    <details class="reasoning" open>
+      <summary>reasoning</summary>
+      <pre class="msg-text reasoning-text">{{ . }}</pre>
+    </details>
+  {{ end }}
   {{ range .TextParts }}<pre class="msg-text">{{ . }}</pre>{{ end }}
   {{ range .ToolCalls }}
     <div class="toolcall">

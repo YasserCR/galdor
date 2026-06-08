@@ -17,7 +17,16 @@ type messageRequest struct {
 	Stream        bool              `json:"stream,omitempty"`
 	Tools         []wireTool        `json:"tools,omitempty"`
 	ToolChoice    *wireToolChoice   `json:"tool_choice,omitempty"`
+	Thinking      *wireThinking     `json:"thinking,omitempty"`
 	Metadata      *wireMetadata     `json:"metadata,omitempty"`
+}
+
+// wireThinking enables Anthropic extended thinking. Type is "enabled";
+// BudgetTokens caps the reasoning tokens and must be >= 1024 and less
+// than max_tokens.
+type wireThinking struct {
+	Type         string `json:"type"`
+	BudgetTokens int    `json:"budget_tokens"`
 }
 
 type wireSystemBlock struct {
@@ -46,6 +55,11 @@ type wireContentBlock struct {
 	ID    string          `json:"id,omitempty"`
 	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
+
+	// type=thinking (assistant -> caller): the reasoning text plus an
+	// opaque signature that Anthropic requires echoed back to continue.
+	Thinking  string `json:"thinking,omitempty"`
+	Signature string `json:"signature,omitempty"`
 
 	// type=tool_result (caller -> assistant)
 	ToolUseID string             `json:"tool_use_id,omitempty"`

@@ -127,9 +127,20 @@ func buildGenerationConfig(req provider.Request) *wireGenerationCfg {
 			cfg.ResponseSchema = rf.Schema
 		}
 	}
+	if rc := req.Reasoning; rc != nil && rc.Enabled {
+		// Gemini is budget-based: ask for thought summaries and, when a
+		// budget is given, cap the reasoning tokens. Effort is ignored.
+		tc := &wireThinkingCfg{IncludeThoughts: true}
+		if rc.Budget > 0 {
+			b := rc.Budget
+			tc.ThinkingBudget = &b
+		}
+		cfg.ThinkingConfig = tc
+	}
 	// Return nil when nothing was set, to keep the request body small.
 	if cfg.Temperature == nil && cfg.TopP == nil && cfg.MaxOutputTokens == nil &&
-		len(cfg.StopSequences) == 0 && cfg.ResponseMIMEType == "" && len(cfg.ResponseSchema) == 0 {
+		len(cfg.StopSequences) == 0 && cfg.ResponseMIMEType == "" && len(cfg.ResponseSchema) == 0 &&
+		cfg.ThinkingConfig == nil {
 		return nil
 	}
 	return cfg
@@ -153,6 +164,12 @@ func partsToWire(parts []schema.ContentPart) ([]wirePart, error) {
 				return nil, err
 			}
 			out = append(out, wirePart{InlineData: blob})
+		case schema.ContentTypeThinking:
+			// Reasoning parts are model output, not input: never echo
+			// them back on the request (Gemini has no inbound thought
+			// part, and resending would be rejected). Skipping keeps a
+			// captured assistant turn safe to feed into a later call.
+			continue
 		default:
 			return nil, fmt.Errorf("%w: unsupported content type %q", provider.ErrInvalidRequest, p.Type)
 		}
@@ -235,10 +252,12 @@ func responseFromWire(r *generateResponse, raw []byte) *provider.Response {
 					Name:      p.FunctionCall.Name,
 					Arguments: p.FunctionCall.Args,
 				})
-			case p.Text != "" && !p.Thought:
-				// Thought parts are omitted from msg.Content to keep the
-				// reply free of internal reasoning. They are still
-				// reported in Usage.OutputTokens via thoughtsTokenCount.
+			case p.Thought && p.Text != "":
+				// Thought summaries (returned only when Request.Reasoning
+				// asked for them) are surfaced as a separate thinking
+				// part. Message.Text() skips it, so the reply stays clean.
+				msg.Content = append(msg.Content, schema.ThinkingPart(p.Text))
+			case p.Text != "":
 				msg.Content = append(msg.Content, schema.TextPart(p.Text))
 			}
 		}

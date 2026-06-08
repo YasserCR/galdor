@@ -319,3 +319,89 @@ func TestResponseFromWire_ThoughtPartsExcluded(t *testing.T) {
 		t.Errorf("OutputTokens = %d, want 8 (candidates+thoughts)", resp.Usage.OutputTokens)
 	}
 }
+
+// TestPartsToWire_SkipsThinking guarantees a captured reasoning part on
+// an assistant turn can be fed back into a request without error: it is
+// skipped, not rejected.
+func TestPartsToWire_SkipsThinking(t *testing.T) {
+	t.Parallel()
+	out, err := partsToWire([]schema.ContentPart{
+		schema.ThinkingPart("internal reasoning"),
+		schema.TextPart("answer"),
+	})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(out) != 1 || out[0].Text != "answer" {
+		t.Fatalf("got %+v, want single text part %q", out, "answer")
+	}
+}
+
+// TestBuildGenerationConfig_Reasoning verifies Request.Reasoning maps to
+// Gemini's thinkingConfig (includeThoughts + optional budget), and that
+// leaving it off keeps thinkingConfig nil — identical to prior behavior.
+func TestBuildGenerationConfig_Reasoning(t *testing.T) {
+	t.Parallel()
+
+	// Off by default: no thinkingConfig, nil generationConfig.
+	if cfg := buildGenerationConfig(provider.Request{}); cfg != nil {
+		t.Errorf("no-reasoning request produced cfg %+v, want nil", cfg)
+	}
+
+	// Enabled without a budget: includeThoughts true, budget unset.
+	cfg := buildGenerationConfig(provider.Request{
+		Reasoning: &provider.ReasoningConfig{Enabled: true},
+	})
+	if cfg == nil || cfg.ThinkingConfig == nil {
+		t.Fatalf("reasoning request produced %+v, want thinkingConfig", cfg)
+	}
+	if !cfg.ThinkingConfig.IncludeThoughts {
+		t.Error("IncludeThoughts = false, want true")
+	}
+	if cfg.ThinkingConfig.ThinkingBudget != nil {
+		t.Errorf("ThinkingBudget = %v, want nil (provider default)", *cfg.ThinkingConfig.ThinkingBudget)
+	}
+
+	// Enabled with a budget: budget forwarded.
+	cfg = buildGenerationConfig(provider.Request{
+		Reasoning: &provider.ReasoningConfig{Enabled: true, Budget: 2048},
+	})
+	if cfg.ThinkingConfig.ThinkingBudget == nil || *cfg.ThinkingConfig.ThinkingBudget != 2048 {
+		t.Errorf("ThinkingBudget = %v, want 2048", cfg.ThinkingConfig.ThinkingBudget)
+	}
+
+	// Enabled:false is treated as off.
+	if cfg := buildGenerationConfig(provider.Request{
+		Reasoning: &provider.ReasoningConfig{Enabled: false},
+	}); cfg != nil {
+		t.Errorf("disabled reasoning produced cfg %+v, want nil", cfg)
+	}
+}
+
+// TestResponseFromWire_SurfacesThought verifies a thought part becomes a
+// thinking part while the answer text stays clean.
+func TestResponseFromWire_SurfacesThought(t *testing.T) {
+	t.Parallel()
+	r := &generateResponse{
+		Candidates: []wireCandidate{{
+			Content: wireContent{Parts: []wirePart{
+				{Text: "step-by-step reasoning", Thought: true},
+				{Text: "the final answer"},
+			}},
+			FinishReason: "STOP",
+		}},
+	}
+	resp := responseFromWire(r, nil)
+	if got := resp.Message.Text(); got != "the final answer" {
+		t.Errorf("Text() = %q, want %q", got, "the final answer")
+	}
+	var thinks []string
+	for _, p := range resp.Message.Content {
+		if p.Type == schema.ContentTypeThinking {
+			thinks = append(thinks, p.Text)
+		}
+	}
+	if len(thinks) != 1 || thinks[0] != "step-by-step reasoning" {
+		t.Errorf("thinking parts = %v, want [step-by-step reasoning]", thinks)
+	}
+}

@@ -9,6 +9,16 @@ const (
 
 	// ContentTypeImage is an image, either inline (Data + Media) or by URL.
 	ContentTypeImage ContentType = "image"
+
+	// ContentTypeThinking is a model reasoning / chain-of-thought
+	// fragment. It is kept separate from ContentTypeText so that
+	// Message.Text() — and every downstream consumer that reads it —
+	// ignores reasoning by default, while observability and UIs can
+	// surface it deliberately. Providers populate it from inline
+	// <think> markers (via provider.ExtractThinkingBlocks) or from
+	// native reasoning blocks (Gemini thoughts, Anthropic extended
+	// thinking, etc.).
+	ContentTypeThinking ContentType = "thinking"
 )
 
 // ContentPart is a single fragment of a Message's body. A Message can carry
@@ -23,6 +33,12 @@ type ContentPart struct {
 
 	// Image is populated when Type == ContentTypeImage.
 	Image *ImageContent `json:"image,omitempty"`
+
+	// Signature is an opaque provider token some models attach to a
+	// reasoning block (e.g. Anthropic extended thinking) and require
+	// echoed back verbatim on a follow-up turn. Populated only on
+	// ContentTypeThinking parts; empty otherwise.
+	Signature string `json:"signature,omitempty"`
 }
 
 // ImageContent describes an image attachment. Provide either URL or Data;
@@ -36,6 +52,13 @@ type ImageContent struct {
 // TextPart returns a ContentPart holding the given text.
 func TextPart(text string) ContentPart {
 	return ContentPart{Type: ContentTypeText, Text: text}
+}
+
+// ThinkingPart returns a ContentPart holding model reasoning text.
+// Message.Text() skips it, so adding one never changes the textual
+// answer seen by downstream consumers.
+func ThinkingPart(text string) ContentPart {
+	return ContentPart{Type: ContentTypeThinking, Text: text}
 }
 
 // ImagePartURL returns a ContentPart referencing an image by URL.

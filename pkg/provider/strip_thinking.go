@@ -12,7 +12,10 @@ import (
 // <thinking>...</thinking> block. Non-greedy so multiple blocks in
 // the same string strip independently; case-insensitive and
 // dot-matches-newline because models emit multi-line reasoning.
-var thinkBlockRe = regexp.MustCompile(`(?is)<(think|thinking)\b[^>]*>.*?</(think|thinking)>`)
+// Group 1 captures the inner reasoning text so ExtractThinkingBlocks
+// can keep it; StripThinkingBlocks ignores the group and just deletes
+// the whole match.
+var thinkBlockRe = regexp.MustCompile(`(?is)<(?:think|thinking)\b[^>]*>(.*?)</(?:think|thinking)>`)
 
 // openThinkRe matches the start of a thinking block; used by the
 // streaming wrapper to detect when to start buffering. The closing
@@ -30,10 +33,14 @@ var openThinkRe = regexp.MustCompile(`(?is)<(think|thinking)\b[^>]*>`)
 // after a stripped block is trimmed only when the strip actually
 // changed the string, so passthrough text keeps its exact shape.
 //
-// The middleware does NOT touch the Anthropic `thinking` structured
-// content-part shape — that's already a separate part type and is
-// handled at the schema layer. This wrapper only strips inline text
-// markers.
+// This wrapper only handles inline <think> text markers. Structured
+// reasoning parts (schema.ContentTypeThinking, e.g. Anthropic extended
+// thinking or Gemini thoughts) are left untouched — they are surfaced
+// at the provider layer, not here.
+//
+// To KEEP the reasoning instead of discarding it (capturing it as a
+// schema.ContentTypeThinking part for observability), use
+// ExtractThinkingBlocks.
 //
 // Streaming: the returned Provider's Stream wraps the underlying
 // StreamReader. Once it sees a `<think>` open tag in a delta, it
@@ -51,8 +58,34 @@ func StripThinkingBlocks(p Provider) Provider {
 	return &stripThinkingProvider{inner: p}
 }
 
+// ExtractThinkingBlocks wraps p like StripThinkingBlocks but, instead
+// of discarding the inline <think>...</think> reasoning, MOVES it into
+// a separate schema.ContentTypeThinking part on the response message.
+//
+// The text parts end up identical to what StripThinkingBlocks would
+// produce (reasoning removed), so Message.Text() — and every consumer
+// that reads it — is unaffected; the reasoning is merely preserved as
+// an extra, non-text part for observability or UIs to surface.
+//
+// Streaming: live content deltas are stripped exactly as
+// StripThinkingBlocks does (so downstream stays clean), and on the
+// terminal event the reasoning is moved into a thinking part IF the
+// underlying provider populates the final Message. Providers that emit
+// no final Message on stop (only deltas) cannot have their streamed
+// reasoning captured this way — surfacing reasoning live is a separate
+// concern (a dedicated stream event), out of scope here.
+func ExtractThinkingBlocks(p Provider) Provider {
+	if p == nil {
+		panic("provider: ExtractThinkingBlocks inner cannot be nil")
+	}
+	return &stripThinkingProvider{inner: p, collect: true}
+}
+
 type stripThinkingProvider struct {
 	inner Provider
+	// collect moves reasoning into a thinking part instead of
+	// discarding it (ExtractThinkingBlocks vs StripThinkingBlocks).
+	collect bool
 }
 
 func (s *stripThinkingProvider) Name() string               { return s.inner.Name() }
@@ -63,7 +96,11 @@ func (s *stripThinkingProvider) Generate(ctx context.Context, req Request) (*Res
 	if err != nil || resp == nil {
 		return resp, err
 	}
-	stripMessage(&resp.Message)
+	if s.collect {
+		extractMessage(&resp.Message)
+	} else {
+		stripMessage(&resp.Message)
+	}
 	return resp, nil
 }
 
@@ -72,7 +109,7 @@ func (s *stripThinkingProvider) Stream(ctx context.Context, req Request) (Stream
 	if err != nil {
 		return sr, err
 	}
-	return &stripThinkingStream{inner: sr}, nil
+	return &stripThinkingStream{inner: sr, collect: s.collect}, nil
 }
 
 // stripMessage rewrites every text part of m, dropping inline
@@ -101,6 +138,47 @@ func stripText(in string) (string, bool) {
 	return strings.TrimSpace(out), true
 }
 
+// extractMessage rewrites every text part of m, moving the inline
+// reasoning out of the text and appending it as separate thinking
+// parts. The text parts are left exactly as stripMessage would leave
+// them, so Message.Text() is unchanged.
+func extractMessage(m *schema.Message) {
+	var thinks []string
+	for i, p := range m.Content {
+		if p.Type != schema.ContentTypeText {
+			continue
+		}
+		if cleaned, th, changed := extractText(p.Text); changed {
+			m.Content[i].Text = cleaned
+			thinks = append(thinks, th...)
+		}
+	}
+	for _, t := range thinks {
+		if t = strings.TrimSpace(t); t != "" {
+			m.Content = append(m.Content, schema.ThinkingPart(t))
+		}
+	}
+}
+
+// extractText returns the input with all complete think blocks removed
+// (like stripText) plus the reasoning text captured from each block.
+// The third return reports whether the input was modified.
+func extractText(in string) (string, []string, bool) {
+	if !strings.ContainsAny(in, "<") {
+		return in, nil, false
+	}
+	matches := thinkBlockRe.FindAllStringSubmatch(in, -1)
+	if len(matches) == 0 {
+		return in, nil, false
+	}
+	thinks := make([]string, 0, len(matches))
+	for _, m := range matches {
+		thinks = append(thinks, m[1]) // group 1 = inner reasoning
+	}
+	out := thinkBlockRe.ReplaceAllString(in, "")
+	return strings.TrimSpace(out), thinks, true
+}
+
 // stripThinkingStream wraps a StreamReader and rewrites
 // EventContentDelta payloads on the fly.
 //
@@ -119,6 +197,12 @@ func stripText(in string) (string, bool) {
 //     discarded.
 type stripThinkingStream struct {
 	inner StreamReader
+
+	// collect, when true, also rewrites the terminal Message so its
+	// reasoning is moved into a thinking part (ExtractThinkingBlocks).
+	// It has no effect on the live delta stream, which is stripped
+	// identically either way.
+	collect bool
 
 	// buf holds either (a) the tail of forwarded text that might be
 	// the prefix of an opening tag, or (b) the accumulated text
@@ -162,6 +246,16 @@ func (s *stripThinkingStream) Recv(ctx context.Context) (Event, error) {
 			ev.ContentDelta = out
 			return ev, nil
 		case EventMessageStop:
+			// In extract mode, move the reasoning out of the terminal
+			// message's text into a thinking part (when the provider
+			// populates a final Message). Copy the Content slice so we
+			// never mutate the provider's own data.
+			if s.collect && ev.Message != nil {
+				cp := *ev.Message
+				cp.Content = append([]schema.ContentPart(nil), ev.Message.Content...)
+				extractMessage(&cp)
+				ev.Message = &cp
+			}
 			// Flush whatever the buffer still holds. If we were
 			// outside a think block, the bytes were just a non-tag
 			// lookahead and must be emitted. If we were inside, the

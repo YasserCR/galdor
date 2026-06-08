@@ -30,6 +30,15 @@ const (
 	AttrGenAIPrompt     = "gen_ai.prompt"
 	AttrGenAICompletion = "gen_ai.completion"
 
+	// gen_ai.reasoning — the model's reasoning / chain-of-thought,
+	// emitted only when the caller opts in via WithCaptureReasoning.
+	// JSON-encoded array of the thinking parts on the response message
+	// (populated by provider.ExtractThinkingBlocks or native reasoning
+	// providers). Independent of gen_ai.completion so reasoning can be
+	// captured without the full prompt/answer, or vice versa. Off by
+	// default — reasoning is often more sensitive than the answer.
+	AttrGenAIReasoning = "gen_ai.reasoning"
+
 	// galdor.* — framework-specific dimensions.
 	AttrGaldorRunID     = "galdor.run.id"
 	AttrGaldorNode      = "galdor.node.name"

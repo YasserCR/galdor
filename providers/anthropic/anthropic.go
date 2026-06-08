@@ -89,6 +89,7 @@ func (p *Provider) Capabilities() provider.Capabilities {
 		StructuredOutput: false, // No JSON-mode parity yet; tools cover the common case.
 		PromptCaching:    true,
 		VisionInput:      true,
+		Reasoning:        true,
 		MaxContextTokens: 200_000,
 	}
 }

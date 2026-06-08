@@ -19,6 +19,37 @@ func TestTextPart(t *testing.T) {
 	}
 }
 
+func TestThinkingPart(t *testing.T) {
+	t.Parallel()
+	p := ThinkingPart("because X then Y")
+	if p.Type != ContentTypeThinking {
+		t.Errorf("Type = %q, want %q", p.Type, ContentTypeThinking)
+	}
+	if p.Text != "because X then Y" {
+		t.Errorf("Text = %q", p.Text)
+	}
+	if p.Image != nil {
+		t.Errorf("Image must be nil for a thinking part")
+	}
+}
+
+// TestText_SkipsThinkingParts is the core non-breaking guarantee:
+// reasoning never leaks into Message.Text(), so downstream consumers
+// that read the text are unaffected by reasoning capture.
+func TestText_SkipsThinkingParts(t *testing.T) {
+	t.Parallel()
+	m := Message{
+		Role: RoleAssistant,
+		Content: []ContentPart{
+			ThinkingPart("internal reasoning"),
+			TextPart("visible answer"),
+		},
+	}
+	if got := m.Text(); got != "visible answer" {
+		t.Errorf("Text() = %q, want %q", got, "visible answer")
+	}
+}
+
 func TestImagePartURL(t *testing.T) {
 	t.Parallel()
 	p := ImagePartURL("https://example.com/x.png")

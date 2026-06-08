@@ -307,3 +307,80 @@ func TestDecodeContent_Empty(t *testing.T) {
 		t.Errorf("decodeContent(nil) = %q, %v", s, err)
 	}
 }
+
+// TestPartsToWire_SkipsThinking guarantees a captured reasoning part on
+// an assistant turn can be fed back into a request without error: it is
+// skipped, not rejected.
+func TestPartsToWire_SkipsThinking(t *testing.T) {
+	t.Parallel()
+	out, err := partsToWire([]schema.ContentPart{
+		schema.ThinkingPart("internal reasoning"),
+		schema.TextPart("answer"),
+	})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(out) != 1 || out[0].Text != "answer" {
+		t.Fatalf("got %+v, want single text part %q", out, "answer")
+	}
+}
+
+// TestBuildRequest_Reasoning verifies Request.Reasoning maps to OpenAI's
+// reasoning_effort (defaulting to medium), and off = no field.
+func TestBuildRequest_Reasoning(t *testing.T) {
+	t.Parallel()
+
+	off, err := buildRequest(provider.Request{Model: "m"}, false)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if off.ReasoningEffort != "" {
+		t.Errorf("ReasoningEffort = %q, want empty", off.ReasoningEffort)
+	}
+
+	def, _ := buildRequest(provider.Request{
+		Model:     "m",
+		Reasoning: &provider.ReasoningConfig{Enabled: true},
+	}, false)
+	if def.ReasoningEffort != "medium" {
+		t.Errorf("ReasoningEffort = %q, want medium (default)", def.ReasoningEffort)
+	}
+
+	hi, _ := buildRequest(provider.Request{
+		Model:     "m",
+		Reasoning: &provider.ReasoningConfig{Enabled: true, Effort: provider.ReasoningEffortHigh},
+	}, false)
+	if hi.ReasoningEffort != "high" {
+		t.Errorf("ReasoningEffort = %q, want high", hi.ReasoningEffort)
+	}
+}
+
+// TestResponseFromWire_SurfacesReasoningContent verifies reasoning_content
+// becomes a thinking part while the answer text stays clean.
+func TestResponseFromWire_SurfacesReasoningContent(t *testing.T) {
+	t.Parallel()
+	r := &chatResponse{
+		Model: "deepseek-reasoner",
+		Choices: []wireChoice{{
+			Message: wireMessage{
+				Role:             "assistant",
+				Content:          json.RawMessage(`"the final answer"`),
+				ReasoningContent: "chain of thought",
+			},
+			FinishReason: "stop",
+		}},
+	}
+	resp := responseFromWire(r, nil)
+	if got := resp.Message.Text(); got != "the final answer" {
+		t.Errorf("Text() = %q, want %q", got, "the final answer")
+	}
+	var thinks []string
+	for _, p := range resp.Message.Content {
+		if p.Type == schema.ContentTypeThinking {
+			thinks = append(thinks, p.Text)
+		}
+	}
+	if len(thinks) != 1 || thinks[0] != "chain of thought" {
+		t.Errorf("thinking = %v, want [chain of thought]", thinks)
+	}
+}

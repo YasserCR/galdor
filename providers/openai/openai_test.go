@@ -417,3 +417,62 @@ func mustStream(t *testing.T, p *Provider, req provider.Request) provider.Stream
 	}
 	return s
 }
+
+// TestStream_SurfacesReasoning verifies streamed reasoning_content (e.g.
+// DeepSeek) is kept off the live content stream and delivered as a
+// thinking part on the terminal MessageStop.
+func TestStream_SurfacesReasoning(t *testing.T) {
+	t.Parallel()
+	body := strings.Join([]string{
+		`data: {"model":"deepseek-reasoner","choices":[{"delta":{"role":"assistant","reasoning_content":"think "}}]}`,
+		"",
+		`data: {"choices":[{"delta":{"reasoning_content":"more"}}]}`,
+		"",
+		`data: {"choices":[{"delta":{"content":"answer"}}]}`,
+		"",
+		`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+		"",
+	}, "\n")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	stream := mustStream(t, p, provider.Request{
+		Model:     "deepseek-reasoner",
+		Messages:  []schema.Message{schema.UserMessage("hi")},
+		Reasoning: &provider.ReasoningConfig{Enabled: true},
+	})
+	defer func() { _ = stream.Close() }()
+
+	var live string
+	var stopMsg *schema.Message
+	for {
+		ev, err := stream.Recv(context.Background())
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Recv: %v", err)
+		}
+		switch ev.Type {
+		case provider.EventContentDelta:
+			live += ev.ContentDelta
+		case provider.EventMessageStop:
+			stopMsg = ev.Message
+		}
+	}
+	if live != "answer" {
+		t.Errorf("live stream = %q, want clean %q", live, "answer")
+	}
+	if stopMsg == nil || len(stopMsg.Content) != 1 ||
+		stopMsg.Content[0].Type != schema.ContentTypeThinking || stopMsg.Content[0].Text != "think more" {
+		t.Fatalf("reasoning part wrong: %+v", stopMsg)
+	}
+}

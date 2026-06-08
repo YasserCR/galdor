@@ -36,6 +36,14 @@ type Request struct {
 	// text. Honored when the provider advertises StructuredOutput.
 	ResponseFormat *ResponseFormat
 
+	// Reasoning enables the model's native reasoning / extended thinking
+	// for this call. nil means "off" (the default — identical to a
+	// provider that never reasoned). Honored when the provider advertises
+	// Reasoning; each adapter maps the fields it understands and ignores
+	// the rest (e.g. token-budget providers ignore Effort, effort-based
+	// providers ignore Budget).
+	Reasoning *ReasoningConfig
+
 	// Metadata carries opaque key/value pairs forwarded to the provider
 	// (e.g., user IDs for abuse tracking). Keys with no provider mapping
 	// are ignored.
@@ -54,6 +62,38 @@ const (
 
 	// ToolChoiceRequired forces the model to call at least one tool.
 	ToolChoiceRequired ToolChoice = "required"
+)
+
+// ReasoningConfig requests the model's native reasoning / extended
+// thinking. Providers express reasoning differently — some take a token
+// budget (Gemini, Anthropic, Bedrock), others an effort level (OpenAI
+// o-series) — so this carries both; each adapter uses what it supports
+// and ignores the rest. The resulting reasoning is surfaced as
+// schema.ContentTypeThinking parts on the response message.
+type ReasoningConfig struct {
+	// Enabled turns native reasoning on. A zero-value ReasoningConfig
+	// (Enabled false) is treated as "off", same as a nil *ReasoningConfig.
+	Enabled bool
+
+	// Budget caps the reasoning tokens for budget-based providers
+	// (Gemini, Anthropic, Bedrock). 0 means "use the provider default".
+	// Ignored by effort-based providers.
+	Budget int
+
+	// Effort selects a reasoning intensity for effort-based providers
+	// (OpenAI o-series). Empty means "use the provider default".
+	// Ignored by budget-based providers.
+	Effort ReasoningEffort
+}
+
+// ReasoningEffort is an effort level for effort-based reasoning models.
+type ReasoningEffort string
+
+// Variants of ReasoningEffort.
+const (
+	ReasoningEffortLow    ReasoningEffort = "low"
+	ReasoningEffortMedium ReasoningEffort = "medium"
+	ReasoningEffortHigh   ReasoningEffort = "high"
 )
 
 // ResponseFormat describes a desired output shape.

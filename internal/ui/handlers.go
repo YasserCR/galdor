@@ -558,9 +558,10 @@ type spanAttribute struct {
 // We deliberately flatten ContentParts into strings so the template
 // doesn't need to know about the schema types.
 type renderedMessage struct {
-	Role      string
-	TextParts []string
-	ToolCalls []renderedToolCall
+	Role           string
+	TextParts      []string
+	ReasoningParts []string
+	ToolCalls      []renderedToolCall
 }
 
 type renderedToolCall struct {
@@ -617,7 +618,28 @@ func buildSpanPage(sp store.Span, runID, dbPath string) spanPageData {
 			out.Completion = &msgs[0]
 		}
 	}
+	// Reasoning lives in its own attribute (gen_ai.completion stays clean).
+	// Attach it to the completion message so the template can show it.
+	if raw, ok := sp.Attributes[observability.AttrGenAIReasoning].(string); ok && raw != "" {
+		reasoning := decodeReasoning(raw)
+		if len(reasoning) > 0 {
+			if out.Completion == nil {
+				out.Completion = &renderedMessage{Role: "assistant"}
+			}
+			out.Completion.ReasoningParts = append(out.Completion.ReasoningParts, reasoning...)
+		}
+	}
 	return out
+}
+
+// decodeReasoning parses the JSON string array stored under
+// gen_ai.reasoning. Best-effort: malformed input yields nil.
+func decodeReasoning(raw string) []string {
+	var parts []string
+	if err := json.Unmarshal([]byte(raw), &parts); err != nil {
+		return nil
+	}
+	return parts
 }
 
 // decodeMessages parses the JSON-encoded message list that
@@ -634,8 +656,11 @@ func decodeMessages(raw string) []renderedMessage {
 	for _, m := range msgs {
 		rm := renderedMessage{Role: string(m.Role)}
 		for _, p := range m.Content {
-			if p.Type == schema.ContentTypeText && p.Text != "" {
+			switch {
+			case p.Type == schema.ContentTypeText && p.Text != "":
 				rm.TextParts = append(rm.TextParts, p.Text)
+			case p.Type == schema.ContentTypeThinking && p.Text != "":
+				rm.ReasoningParts = append(rm.ReasoningParts, p.Text)
 			}
 		}
 		for _, c := range m.ToolCalls {

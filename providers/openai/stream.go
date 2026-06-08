@@ -68,6 +68,23 @@ type streamReader struct {
 	stopped    bool
 	closed     bool
 	pending    []provider.Event
+
+	// reasoning accumulates reasoning_content deltas (OpenAI-compatible
+	// models like DeepSeek) so they can ride the terminal MessageStop as
+	// a thinking part; the live stream stays clean.
+	reasoning strings.Builder
+}
+
+// stopMessage builds the terminal assistant Message carrying any
+// accumulated reasoning, or nil when none was streamed.
+func (r *streamReader) stopMessage() *schema.Message {
+	if r.reasoning.Len() == 0 {
+		return nil
+	}
+	return &schema.Message{
+		Role:    schema.RoleAssistant,
+		Content: []schema.ContentPart{schema.ThinkingPart(r.reasoning.String())},
+	}
 }
 
 // toolState tracks the resolved ID and name for a tool_calls[].index across
@@ -112,6 +129,7 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 					StopReason: r.stopReason,
 					Usage:      r.usage,
 					Model:      r.model,
+					Message:    r.stopMessage(),
 				}, nil
 			}
 			return provider.Event{}, io.EOF
@@ -133,6 +151,7 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 				StopReason: r.stopReason,
 				Usage:      r.usage,
 				Model:      r.model,
+				Message:    r.stopMessage(),
 			}, nil
 		}
 
@@ -184,6 +203,11 @@ func (r *streamReader) handleChunk(c *chatChunk) {
 		return
 	}
 	ch := c.Choices[0]
+
+	if ch.Delta.ReasoningContent != "" {
+		// Accumulate reasoning; do not forward it on the live stream.
+		r.reasoning.WriteString(ch.Delta.ReasoningContent)
+	}
 
 	if ch.Delta.Content != "" {
 		r.pending = append(r.pending, provider.Event{

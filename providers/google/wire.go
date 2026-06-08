@@ -44,8 +44,8 @@ type wirePart struct {
 	// Function response from the caller back to the model.
 	FunctionResponse *wireFunctionResponse `json:"functionResponse,omitempty"`
 
-	// Thought summary part (Gemini 2.5 thinking models). Surfaced in
-	// responses but not modeled in galdor's schema yet.
+	// Thought summary part (Gemini 2.5 thinking models). When true, the
+	// part's Text is surfaced as a schema.ContentTypeThinking part.
 	Thought bool `json:"thought,omitempty"`
 }
 
@@ -89,13 +89,22 @@ type wireFCCfg struct {
 }
 
 type wireGenerationCfg struct {
-	Temperature      *float64        `json:"temperature,omitempty"`
-	TopP             *float64        `json:"topP,omitempty"`
-	TopK             *int            `json:"topK,omitempty"`
-	MaxOutputTokens  *int            `json:"maxOutputTokens,omitempty"`
-	StopSequences    []string        `json:"stopSequences,omitempty"`
-	ResponseMIMEType string          `json:"responseMimeType,omitempty"`
-	ResponseSchema   json.RawMessage `json:"responseSchema,omitempty"`
+	Temperature      *float64         `json:"temperature,omitempty"`
+	TopP             *float64         `json:"topP,omitempty"`
+	TopK             *int             `json:"topK,omitempty"`
+	MaxOutputTokens  *int             `json:"maxOutputTokens,omitempty"`
+	StopSequences    []string         `json:"stopSequences,omitempty"`
+	ResponseMIMEType string           `json:"responseMimeType,omitempty"`
+	ResponseSchema   json.RawMessage  `json:"responseSchema,omitempty"`
+	ThinkingConfig   *wireThinkingCfg `json:"thinkingConfig,omitempty"`
+}
+
+// wireThinkingCfg controls Gemini 2.5 thinking. IncludeThoughts asks
+// the model to return its thought summaries; ThinkingBudget caps the
+// reasoning tokens (omitted = the model's dynamic default).
+type wireThinkingCfg struct {
+	IncludeThoughts bool `json:"includeThoughts,omitempty"`
+	ThinkingBudget  *int `json:"thinkingBudget,omitempty"`
 }
 
 type wireSafety struct {

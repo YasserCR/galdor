@@ -83,8 +83,9 @@ type providerCallView struct {
 // tool results are folded into Text with a small prefix so the
 // template doesn't need to know about all the shapes.
 type renderedTurn struct {
-	Role string
-	Text string
+	Role      string
+	Text      string
+	Reasoning string
 }
 
 type toolCallView struct {
@@ -193,7 +194,27 @@ func providerCallToView(sp store.Span) providerCallView {
 		out.Completion = &t
 		out.HasCaptured = true
 	}
+	// Reasoning lives in its own attribute (completion stays clean).
+	if raw := stringAttr(sp.Attributes, observability.AttrGenAIReasoning); raw != "" {
+		if r := joinReasoning(raw); r != "" {
+			if out.Completion == nil {
+				out.Completion = &renderedTurn{Role: "assistant"}
+			}
+			out.Completion.Reasoning = r
+			out.HasCaptured = true
+		}
+	}
 	return out
+}
+
+// joinReasoning parses the gen_ai.reasoning JSON string array into a
+// single newline-joined block. Best-effort: malformed input yields "".
+func joinReasoning(raw string) string {
+	var parts []string
+	if err := json.Unmarshal([]byte(raw), &parts); err != nil {
+		return ""
+	}
+	return strings.Join(parts, "\n")
 }
 
 func toolCallToView(sp store.Span) toolCallView {
@@ -257,7 +278,18 @@ func renderTurn(m schema.Message) renderedTurn {
 		}
 		fmt.Fprintf(&b, "← result for %s", m.ToolCallID)
 	}
-	return renderedTurn{Role: string(m.Role), Text: b.String()}
+	// Reasoning parts are skipped by Message.Text(); collect them
+	// separately so the steps view can show what the model thought.
+	var reasoning strings.Builder
+	for _, p := range m.Content {
+		if p.Type == schema.ContentTypeThinking && p.Text != "" {
+			if reasoning.Len() > 0 {
+				reasoning.WriteString("\n")
+			}
+			reasoning.WriteString(p.Text)
+		}
+	}
+	return renderedTurn{Role: string(m.Role), Text: b.String(), Reasoning: reasoning.String()}
 }
 
 func firstNonEmpty(s ...string) string {

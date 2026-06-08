@@ -18,6 +18,7 @@ type chatRequest struct {
 	Tools            []wireTool      `json:"tools,omitempty"`
 	ToolChoice       json.RawMessage `json:"tool_choice,omitempty"`
 	ResponseFormat   *wireRespFormat `json:"response_format,omitempty"`
+	ReasoningEffort  string          `json:"reasoning_effort,omitempty"`
 	User             string          `json:"user,omitempty"`
 	ParallelToolCall *bool           `json:"parallel_tool_calls,omitempty"`
 }
@@ -37,6 +38,12 @@ type wireMessage struct {
 	Name       string          `json:"name,omitempty"`
 	ToolCalls  []wireToolCall  `json:"tool_calls,omitempty"`
 	ToolCallID string          `json:"tool_call_id,omitempty"`
+
+	// ReasoningContent carries the model's reasoning on responses from
+	// OpenAI-compatible reasoning models (e.g. DeepSeek-R1). OpenAI's own
+	// API hides reasoning, so this is empty there. Request-only on the
+	// way out (never sent); surfaced as a thinking part on the way in.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 // wireContentPart is one entry in the array form of message content.
@@ -135,9 +142,10 @@ type chunkChoice struct {
 }
 
 type chunkDelta struct {
-	Role      string         `json:"role,omitempty"`
-	Content   string         `json:"content,omitempty"`
-	ToolCalls []wireToolCall `json:"tool_calls,omitempty"`
+	Role             string         `json:"role,omitempty"`
+	Content          string         `json:"content,omitempty"`
+	ReasoningContent string         `json:"reasoning_content,omitempty"`
+	ToolCalls        []wireToolCall `json:"tool_calls,omitempty"`
 }
 
 // errorResponse is the body shape OpenAI returns on 4xx/5xx.

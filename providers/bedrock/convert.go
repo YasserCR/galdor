@@ -86,6 +86,34 @@ func buildConverseInput(req provider.Request) (*bedrockruntime.ConverseInput, er
 
 	in.InferenceConfig = buildInferenceConfig(req)
 
+	if rc := req.Reasoning; rc != nil && rc.Enabled {
+		// Bedrock is budget-based (reasoning is a Claude-on-Bedrock
+		// feature): pass reasoning_config via additionalModelRequestFields.
+		// budget_tokens must be >= 1024 and below max_tokens, and reasoning
+		// is incompatible with temperature / top_p tuning.
+		budget := rc.Budget
+		if budget < 1024 {
+			budget = 1024
+		}
+		if in.InferenceConfig == nil {
+			in.InferenceConfig = &brtypes.InferenceConfiguration{}
+		}
+		maxT := budget + 1024
+		if in.InferenceConfig.MaxTokens != nil && int(*in.InferenceConfig.MaxTokens) > budget {
+			maxT = int(*in.InferenceConfig.MaxTokens)
+		}
+		mt := clampInt32(maxT)
+		in.InferenceConfig.MaxTokens = &mt
+		in.InferenceConfig.Temperature = nil
+		in.InferenceConfig.TopP = nil
+		in.AdditionalModelRequestFields = bedrockdoc.NewLazyDocument(map[string]any{
+			"reasoning_config": map[string]any{
+				"type":          "enabled",
+				"budget_tokens": budget,
+			},
+		})
+	}
+
 	if len(req.Tools) > 0 {
 		tc, err := buildToolConfig(req.Tools, req.ToolChoice)
 		if err != nil {
@@ -216,6 +244,11 @@ func partsToBlocks(parts []schema.ContentPart) ([]brtypes.ContentBlock, error) {
 					Source: &brtypes.ImageSourceMemberBytes{Value: p.Image.Data},
 				},
 			})
+		case schema.ContentTypeThinking:
+			// Reasoning parts are model output, not input: never echo
+			// them back on the request. Skipping keeps a captured
+			// assistant turn safe to feed into a later call.
+			continue
 		default:
 			return nil, fmt.Errorf("%w: unsupported content type %q", provider.ErrInvalidRequest, p.Type)
 		}
@@ -288,6 +321,19 @@ func responseFromConverse(out *bedrockruntime.ConverseOutput, raw []byte) *provi
 					Name:      aws.ToString(v.Value.Name),
 					Arguments: args,
 				})
+			case *brtypes.ContentBlockMemberReasoningContent:
+				// Extended-thinking block (returned only when
+				// Request.Reasoning asked for it). Surface the text variant
+				// with its signature; Message.Text() skips this part.
+				if rt, ok := v.Value.(*brtypes.ReasoningContentBlockMemberReasoningText); ok {
+					if text := aws.ToString(rt.Value.Text); text != "" {
+						msg.Content = append(msg.Content, schema.ContentPart{
+							Type:      schema.ContentTypeThinking,
+							Text:      text,
+							Signature: aws.ToString(rt.Value.Signature),
+						})
+					}
+				}
 			}
 		}
 	}

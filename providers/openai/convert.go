@@ -60,6 +60,16 @@ func buildRequest(req provider.Request, stream bool) (*chatRequest, error) {
 		out.ResponseFormat = rf
 	}
 
+	if rc := req.Reasoning; rc != nil && rc.Enabled {
+		// OpenAI is effort-based (o-series): map the effort level,
+		// defaulting to medium. Budget is ignored.
+		effort := string(rc.Effort)
+		if effort == "" {
+			effort = string(provider.ReasoningEffortMedium)
+		}
+		out.ReasoningEffort = effort
+	}
+
 	if uid, ok := req.Metadata["user_id"]; ok && uid != "" {
 		out.User = uid
 	}
@@ -159,6 +169,11 @@ func partsToWire(parts []schema.ContentPart) ([]wireContentPart, error) {
 				return nil, err
 			}
 			out = append(out, wireContentPart{Type: "image_url", ImageURL: &wireImageURL{URL: url}})
+		case schema.ContentTypeThinking:
+			// Reasoning parts are model output, not input: never echo
+			// them back on the request. Skipping keeps a captured
+			// assistant turn safe to feed into a later call.
+			continue
 		default:
 			return nil, fmt.Errorf("%w: unsupported content type %q", provider.ErrInvalidRequest, p.Type)
 		}
@@ -226,6 +241,11 @@ func responseFromWire(r *chatResponse, raw []byte) *provider.Response {
 		c := r.Choices[0]
 		stopReason = normalizeFinishReason(c.FinishReason)
 
+		if c.Message.ReasoningContent != "" {
+			// Reasoning from an OpenAI-compatible model (e.g. DeepSeek).
+			// Message.Text() skips it, so the answer stays clean.
+			msg.Content = append(msg.Content, schema.ThinkingPart(c.Message.ReasoningContent))
+		}
 		if len(c.Message.Content) > 0 {
 			text, err := decodeContent(c.Message.Content)
 			if err == nil && text != "" {

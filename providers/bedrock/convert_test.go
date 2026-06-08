@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	brtypes "github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
@@ -485,3 +486,113 @@ func TestEncodeToolInput_Nil(t *testing.T) {
 // produce documents on the response decode path.
 
 func strPtr(s string) *string { return &s }
+
+// TestPartsToBlocks_SkipsThinking guarantees a captured reasoning part
+// on an assistant turn can be fed back into a request without error: it
+// is skipped, not rejected.
+func TestPartsToBlocks_SkipsThinking(t *testing.T) {
+	t.Parallel()
+	out, err := partsToBlocks([]schema.ContentPart{
+		schema.ThinkingPart("internal reasoning"),
+		schema.TextPart("answer"),
+	})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("got %d blocks, want 1 (thinking skipped)", len(out))
+	}
+}
+
+// TestBuildConverseInput_Reasoning verifies Request.Reasoning maps to
+// Bedrock's reasoning_config (additionalModelRequestFields) with its
+// constraints, and that off leaves the request unchanged.
+func TestBuildConverseInput_Reasoning(t *testing.T) {
+	t.Parallel()
+
+	// Off: no additional fields.
+	off, err := buildConverseInput(provider.Request{Model: "m"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if off.AdditionalModelRequestFields != nil {
+		t.Error("AdditionalModelRequestFields should be nil when reasoning is off")
+	}
+
+	// On: reasoning_config present, max_tokens room, temp/top_p dropped.
+	temp := 0.7
+	on, err := buildConverseInput(provider.Request{
+		Model:       "m",
+		Temperature: &temp,
+		Reasoning:   &provider.ReasoningConfig{Enabled: true, Budget: 4096},
+	})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if on.AdditionalModelRequestFields == nil {
+		t.Fatal("AdditionalModelRequestFields should be set when reasoning is on")
+	}
+	b, err := on.AdditionalModelRequestFields.MarshalSmithyDocument()
+	if err != nil {
+		t.Fatalf("marshal fields: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(b, &fields); err != nil {
+		t.Fatalf("unmarshal fields: %v", err)
+	}
+	rc, ok := fields["reasoning_config"].(map[string]any)
+	if !ok {
+		t.Fatalf("reasoning_config missing: %+v", fields)
+	}
+	if rc["type"] != "enabled" {
+		t.Errorf("reasoning_config.type = %v, want enabled", rc["type"])
+	}
+	if on.InferenceConfig == nil || on.InferenceConfig.MaxTokens == nil ||
+		int(*on.InferenceConfig.MaxTokens) <= 4096 {
+		t.Errorf("max_tokens must exceed budget; got %+v", on.InferenceConfig)
+	}
+	if on.InferenceConfig.Temperature != nil || on.InferenceConfig.TopP != nil {
+		t.Error("temperature/top_p must be dropped when reasoning is on")
+	}
+}
+
+// TestResponseFromConverse_SurfacesReasoning verifies a reasoning block
+// becomes a thinking part (with signature) while the answer stays clean.
+func TestResponseFromConverse_SurfacesReasoning(t *testing.T) {
+	t.Parallel()
+	out := &bedrockruntime.ConverseOutput{
+		Output: &brtypes.ConverseOutputMemberMessage{
+			Value: brtypes.Message{
+				Role: brtypes.ConversationRoleAssistant,
+				Content: []brtypes.ContentBlock{
+					&brtypes.ContentBlockMemberReasoningContent{
+						Value: &brtypes.ReasoningContentBlockMemberReasoningText{
+							Value: brtypes.ReasoningTextBlock{
+								Text:      aws.String("internal reasoning"),
+								Signature: aws.String("sig-xyz"),
+							},
+						},
+					},
+					&brtypes.ContentBlockMemberText{Value: "the answer"},
+				},
+			},
+		},
+		StopReason: brtypes.StopReasonEndTurn,
+	}
+	resp := responseFromConverse(out, nil)
+	if got := resp.Message.Text(); got != "the answer" {
+		t.Errorf("Text() = %q, want %q", got, "the answer")
+	}
+	var found *schema.ContentPart
+	for i := range resp.Message.Content {
+		if resp.Message.Content[i].Type == schema.ContentTypeThinking {
+			found = &resp.Message.Content[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("no thinking part surfaced")
+	}
+	if found.Text != "internal reasoning" || found.Signature != "sig-xyz" {
+		t.Errorf("thinking part = %+v, want text/signature preserved", found)
+	}
+}

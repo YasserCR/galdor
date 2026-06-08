@@ -167,14 +167,16 @@ func (s *Store) lexicalRetrieve(ctx context.Context, q memory.Query, k int) ([]m
 	return results, rows.Err()
 }
 
-// vectorRetrieve ranks chunks by cosine similarity. NOTE: this is an
-// O(N) full-table scan — every row's embedding blob is read and scored
-// in Go on each call, because SQLite has no native vector index. It is
-// fine for the small single-process corpora this backend targets; for
-// large corpora use the pgvector or qdrant backend, which push the
+// vectorRetrieve ranks chunks by cosine similarity. The metadata filter is
+// pushed into SQL (see filterSQL), so only the matching subset — e.g. a single
+// topic — is read and scored, rather than the whole table. Within that subset
+// the scoring is still a brute-force cosine pass in Go: SQLite has no native
+// vector index, so this targets small/medium single-process corpora. For large,
+// unfiltered corpora use the pgvector or qdrant backend, which push the
 // nearest-neighbor search into an indexed store.
 func (s *Store) vectorRetrieve(ctx context.Context, q memory.Query, k int) ([]memory.Result, error) {
-	rows, err := s.db.QueryContext(ctx, scanAllSQL)
+	where, args := filterSQL("metadata", q.Filter)
+	rows, err := s.db.QueryContext(ctx, vectorScanSQL(where), args...)
 	if err != nil {
 		return nil, fmt.Errorf("memory/sqlite: scan query: %w", err)
 	}
@@ -191,9 +193,6 @@ func (s *Store) vectorRetrieve(ctx context.Context, q memory.Query, k int) ([]me
 			return nil, err
 		}
 		c.Embedding = decodeEmbedding(embedBlob)
-		if !matchesFilter(c.Metadata, q.Filter) {
-			continue
-		}
 		if len(c.Embedding) == 0 {
 			continue
 		}
@@ -255,6 +254,45 @@ func matchesFilter(meta, filter map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// filterSQL builds an AND-chain of `json_extract(<col>, ?) = ?` predicates that
+// push a metadata equality filter down into SQLite, together with the bound
+// arguments. Keys are sorted so the generated SQL is deterministic. The JSON
+// path and the value are BOUND parameters (never interpolated), so the filter
+// is injection-safe; only the column name — a caller-supplied package constant
+// ("metadata" or "c.metadata") — is concatenated. Returns ("", nil) for an
+// empty filter.
+func filterSQL(col string, filter map[string]string) (string, []any) {
+	if len(filter) == 0 {
+		return "", nil
+	}
+	keys := make([]string, 0, len(filter))
+	for k := range filter {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	args := make([]any, 0, 2*len(keys))
+	for _, k := range keys {
+		b.WriteString(" AND json_extract(")
+		b.WriteString(col)
+		b.WriteString(", ?) = ?")
+		args = append(args, "$."+k, filter[k])
+	}
+	return b.String(), args
+}
+
+// vectorScanSQL returns the chunk scan used by vectorRetrieve, with the metadata
+// filter (built by filterSQL) pushed into the WHERE clause so only the matching
+// subset is read. The fragment is assembled from package constants plus filterSQL's
+// constant predicates — no caller data reaches the SQL string.
+func vectorScanSQL(where string) string {
+	const base = `SELECT id, document_id, idx, text, embedding, metadata FROM chunks`
+	if where == "" {
+		return base
+	}
+	return base + " WHERE 1=1" + where
 }
 
 func decodeMeta(raw string, out *map[string]string) error {
@@ -359,9 +397,4 @@ JOIN chunks c ON c.rowid = chunks_fts.rowid
 WHERE chunks_fts MATCH ?
 ORDER BY score ASC
 LIMIT ?
-`
-
-const scanAllSQL = `
-SELECT id, document_id, idx, text, embedding, metadata
-FROM chunks
 `
