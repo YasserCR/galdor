@@ -11,6 +11,41 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-08
+
+Model reasoning capture across every provider, plus a rustic in-SQLite vector
+search for test environments. Additive and non-breaking — with no opt-in, every
+provider behaves exactly as before. Green under `go test -race`, golangci-lint
+v2.12.2, govulncheck and gosec across all nine modules.
+
+### Added
+- **Reasoning capture** (opt-in): a new `schema.ContentTypeThinking` content
+  part — with a `ThinkingPart` helper and a `Signature` field — carries model
+  chain-of-thought as a first-class, non-text part. `Message.Text()` skips it,
+  so every downstream consumer that reads the text is unaffected.
+  - `provider.ExtractThinkingBlocks` preserves inline `<think>` reasoning as a
+    thinking part instead of discarding it like `StripThinkingBlocks` (which is
+    unchanged).
+  - `provider.Request.Reasoning` (`ReasoningConfig`: `Enabled` / `Budget` /
+    `Effort`) turns on a model's native reasoning per call, advertised via
+    `Capabilities.Reasoning` and validated by `ValidateRequest`.
+  - All four providers surface native reasoning, in both `Generate` and
+    streaming: Gemini thought summaries, Anthropic extended thinking (with
+    signature), OpenAI / DeepSeek `reasoning_content`, and Bedrock
+    `reasoningContent`. The request path now tolerates thinking parts fed back
+    on a later turn.
+  - `observability.WithCaptureReasoning` records reasoning under a dedicated
+    `gen_ai.reasoning` span attribute, independent of `WithCaptureContent`;
+    `gen_ai.completion` stays clean. The `scry` dashboard renders reasoning in
+    the span detail and steps views.
+- **In-SQLite vector search** (`memory/sqlite`): a rustic, brute-force vector
+  search intended for test environments — exercise the RAG stack without an
+  external vector store.
+
+### Build
+- Pin submodule `require` directives to root `v0.6.0` across the workspace
+  (`providers/*`, `memory/*`, `providerset`, `examples`).
+
 ## [0.5.0] - 2026-06-03
 
 Bedrock embeddings, per-span labels for observability, and a Go toolchain
