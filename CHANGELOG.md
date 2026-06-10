@@ -11,6 +11,25 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-06-10
+
+A follow-up to v0.6.1 that softens the read-side database handling for the
+live-watch commands. No API changes.
+
+### Changed
+- **`galdor ui` and `scry tail` no longer error on a missing database.**
+  v0.6.1 made every read command fail when `--db` didn't exist (to catch a
+  mistyped path), but the live-watch commands may legitimately start before
+  the writing process has created the store. They now create a missing
+  database (and its parent directory) and watch it fill up, printing a
+  one-line notice so a typo is still visible. The one-shot inspect commands
+  (`scry list` / `show` / `stats` / `replay`) keep the strict
+  "database does not exist" error from v0.6.1.
+
+### Build
+- Submodule `require` pins bumped from v0.6.1 to v0.6.2 across providers/*,
+  memory/*, providerset and examples. No go.sum churn.
+
 ## [0.6.1] - 2026-06-10
 
 Audit-driven correctness, reliability and security fixes. All changes are
@@ -409,7 +428,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/YasserCR/galdor/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/YasserCR/galdor/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/YasserCR/galdor/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/YasserCR/galdor/compare/v0.4.1...v0.5.0
