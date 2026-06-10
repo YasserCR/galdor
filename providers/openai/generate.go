@@ -50,5 +50,5 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 			Message:  "decode response: " + err.Error(),
 		})
 	}
-	return responseFromWire(&msg, raw), nil
+	return responseFromWire(&msg, raw)
 }

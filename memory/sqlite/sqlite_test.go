@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -259,5 +260,64 @@ func TestRetrieve_RejectsEmptyQuery(t *testing.T) {
 	s := newTestStore(t)
 	if _, err := s.Retrieve(context.Background(), memory.Query{}); err == nil {
 		t.Fatal("expected error on empty query")
+	}
+}
+
+// Regression (audit low): the FTS5 external-content index keys on the chunks
+// rowid; with an implicit (TEXT PRIMARY KEY) rowid, VACUUM renumbers rows and
+// desyncs the index. The schema now aliases rowid to a stable INTEGER PRIMARY
+// KEY, so a lexical query still finds the right chunk after a VACUUM.
+func TestRetrieve_LexicalSurvivesVACUUM(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "m.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// Add several chunks, then delete an early one to create a rowid gap that
+	// VACUUM will compact (renumbering later rows under the old schema).
+	if err = s.Add(ctx, []memory.Chunk{
+		{ID: "a", DocumentID: "d", Index: 0, Text: "alpha alpha"},
+		{ID: "b", DocumentID: "d", Index: 1, Text: "bravo bravo"},
+		{ID: "c", DocumentID: "d", Index: 2, Text: "charlie charlie unicorn"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the whole document (a, b, c), then re-add only b and c so a's
+	// rowid slot becomes a gap that VACUUM compacts.
+	if err = s.Delete(ctx, "d"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Add(ctx, []memory.Chunk{
+		{ID: "b", DocumentID: "d2", Index: 0, Text: "bravo bravo"},
+		{ID: "c", DocumentID: "d2", Index: 1, Text: "charlie charlie unicorn"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+
+	// VACUUM via a separate raw connection (driver already registered).
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = raw.Exec("VACUUM"); err != nil {
+		t.Fatal(err)
+	}
+	_ = raw.Close()
+
+	// Reopen and confirm FTS still finds the unique term in the right chunk.
+	s2, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s2.Close() }()
+	res, err := s2.Retrieve(ctx, memory.Query{Text: "unicorn", K: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) == 0 || res[0].Chunk.ID != "c" {
+		t.Fatalf("FTS desynced after VACUUM: got %+v, want chunk c", res)
 	}
 }

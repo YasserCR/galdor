@@ -66,9 +66,12 @@ type RunOptions[S any] struct {
 
 	// NodeTimeout, when > 0, caps the wall time of any single node
 	// call. Each node receives a derived child context with this
-	// deadline. Useful for "kill a stuck node" patterns — though
-	// the run terminates with the node's error regardless; survival
-	// requires the caller to retry.
+	// deadline. Cancellation is COOPERATIVE: the deadline cancels the
+	// node's context, but a node that ignores ctx keeps running until it
+	// returns — Go cannot forcibly kill a goroutine. The budget is only
+	// enforced for nodes that honor ctx.Done() (or call ctx-aware I/O).
+	// When the deadline fires the run terminates with the node's error
+	// (context.DeadlineExceeded); survival requires the caller to retry.
 	NodeTimeout time.Duration
 
 	// Logger, when non-nil, receives operational events the
@@ -345,6 +348,7 @@ func (r *Runnable[S]) runLoop(
 	bypassInterrupt bool,
 ) (final S, retErr error) {
 	state := initial
+	start := time.Now()
 
 	// Run-level timeout: derive a deadline-bound child context.
 	// Hooks see the bounded context too, so any spans they create
@@ -370,6 +374,13 @@ func (r *Runnable[S]) runLoop(
 
 	for step := startStep; ; step++ {
 		if err := ctx.Err(); err != nil {
+			// Per the RunOptions.Timeout contract, a run-level deadline is
+			// surfaced as context.DeadlineExceeded wrapped with the elapsed
+			// time. A caller-cancelled or caller-deadline ctx is returned
+			// verbatim (we only owe the elapsed-time wrap for OUR timeout).
+			if opts.Timeout > 0 && errors.Is(err, context.DeadlineExceeded) {
+				return state, fmt.Errorf("graph: run timed out after %s: %w", time.Since(start), err)
+			}
 			return state, err
 		}
 		if next == END {

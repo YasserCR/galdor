@@ -60,6 +60,24 @@ type Scorer interface {
 	Score(ctx context.Context, c Case, actual string) (Score, error)
 }
 
+// Named wraps any Scorer to report a different Name(), so two scorers that
+// would otherwise collide (same underlying type/name) can coexist in one
+// Config.Scorers. Works for every scorer type, unlike LLMJudge.NameOverride
+// which only the judge exposes.
+func Named(name string, s Scorer) Scorer {
+	return namedScorer{name: name, inner: s}
+}
+
+type namedScorer struct {
+	name  string
+	inner Scorer
+}
+
+func (n namedScorer) Name() string { return n.name }
+func (n namedScorer) Score(ctx context.Context, c Case, actual string) (Score, error) {
+	return n.inner.Score(ctx, c, actual)
+}
+
 // CaseResult is the per-case slice of a Report.
 type CaseResult struct {
 	Case     Case             `json:"case"`

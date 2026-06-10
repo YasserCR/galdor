@@ -329,7 +329,7 @@ func decodeToolArgs(raw json.RawMessage) (bedrockdoc.Interface, error) {
 
 // responseFromConverse collapses a non-streaming ConverseOutput into a
 // galdor provider.Response.
-func responseFromConverse(out *bedrockruntime.ConverseOutput, raw []byte) *provider.Response {
+func responseFromConverse(out *bedrockruntime.ConverseOutput, raw []byte) (*provider.Response, error) {
 	msg := schema.Message{Role: schema.RoleAssistant}
 	stopReason := normalizeStopReason(string(out.StopReason))
 
@@ -341,7 +341,16 @@ func responseFromConverse(out *bedrockruntime.ConverseOutput, raw []byte) *provi
 					msg.Content = append(msg.Content, schema.TextPart(v.Value))
 				}
 			case *brtypes.ContentBlockMemberToolUse:
-				args, _ := encodeToolInput(v.Value.Input)
+				// Don't swallow a tool-input decode failure: a silently
+				// empty `{}` would make the model call a tool with no args.
+				args, err := encodeToolInput(v.Value.Input)
+				if err != nil {
+					return nil, provider.Classify(&provider.APIError{
+						Provider: providerName,
+						Kind:     provider.ErrServer,
+						Message:  "decode tool_use input: " + err.Error(),
+					})
+				}
 				msg.ToolCalls = append(msg.ToolCalls, schema.ToolCall{
 					ID:        aws.ToString(v.Value.ToolUseId),
 					Name:      aws.ToString(v.Value.Name),
@@ -382,7 +391,7 @@ func responseFromConverse(out *bedrockruntime.ConverseOutput, raw []byte) *provi
 		Usage:       usage,
 		ProviderRaw: raw,
 	}
-	return resp
+	return resp, nil
 }
 
 func encodeToolInput(doc bedrockdoc.Interface) (json.RawMessage, error) {

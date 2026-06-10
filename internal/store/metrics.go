@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 )
 
@@ -172,23 +174,27 @@ func statsFromSamples(key string, samples []rowSample) Stats {
 // slice using the nearest-rank method (the simplest definition;
 // matches how most ops dashboards present these numbers).
 func percentile(sorted []int64, p float64) int64 {
-	if len(sorted) == 0 {
+	n := len(sorted)
+	if n == 0 {
 		return 0
 	}
 	if p <= 0 {
 		return sorted[0]
 	}
 	if p >= 1 {
-		return sorted[len(sorted)-1]
+		return sorted[n-1]
 	}
-	idx := int(float64(len(sorted)-1) * p)
-	if idx < 0 {
-		idx = 0
+	// Nearest-rank: the smallest 1-based rank whose value is >= p of the
+	// data is ceil(p*n). The old `int((n-1)*p)` truncated toward the low
+	// end, so e.g. P95/P99 of two samples returned the MINIMUM.
+	rank := int(math.Ceil(p * float64(n)))
+	if rank < 1 {
+		rank = 1
 	}
-	if idx >= len(sorted) {
-		idx = len(sorted) - 1
+	if rank > n {
+		rank = n
 	}
-	return sorted[idx]
+	return sorted[rank-1]
 }
 
 // SpansSince returns spans ingested after the given rowid cursor, in
@@ -350,33 +356,20 @@ func indexOf(haystack, needle string) int {
 	return -1
 }
 
-// unescapeJSONString handles the subset of JSON escapes that
-// realistic attribute strings produce: \\, \", \n, \t, \r.
+// unescapeJSONString decodes the JSON escapes in s (the raw inner content of
+// a JSON string, between its quotes). It defers to encoding/json so EVERY
+// escape is handled — including \uXXXX and surrogate pairs, which the old
+// hand-rolled version dropped, splitting otherwise-identical stat groups
+// (e.g. a model name with a non-ASCII character) into separate buckets.
 func unescapeJSONString(s string) string {
 	if indexOf(s, `\`) < 0 {
 		return s
 	}
-	out := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		if s[i] != '\\' || i+1 >= len(s) {
-			out = append(out, s[i])
-			continue
-		}
-		i++
-		switch s[i] {
-		case '"', '\\', '/':
-			out = append(out, s[i])
-		case 'n':
-			out = append(out, '\n')
-		case 't':
-			out = append(out, '\t')
-		case 'r':
-			out = append(out, '\r')
-		default:
-			out = append(out, '\\', s[i])
-		}
+	var out string
+	if err := json.Unmarshal([]byte(`"`+s+`"`), &out); err == nil {
+		return out
 	}
-	return string(out)
+	return s // malformed escape: fall back to the raw form rather than lose it
 }
 
 // parseIntPrefix reads a leading integer (handles negatives and a

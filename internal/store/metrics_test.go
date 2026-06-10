@@ -290,10 +290,40 @@ func TestUnescapeJSONString(t *testing.T) {
 		`line\nbreak`:    "line\nbreak",
 		`tab\there`:      "tab\there",
 		`back\\slash`:    `back\slash`,
+		// Regression (audit low): \uXXXX escapes must be decoded, not left
+		// literal — otherwise two equal values serialized differently split
+		// into separate stat groups.
+		`caf\u00e9`:         "caf\u00e9",
+		`emoji\ud83d\ude00`: "emoji\U0001F600",
 	}
 	for in, want := range cases {
 		if got := unescapeJSONString(in); got != want {
 			t.Errorf("unescape(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Regression (audit low): percentile must use true nearest-rank. The old
+// truncating index returned the MINIMUM for high percentiles of small
+// samples (e.g. P95/P99 of two values).
+func TestPercentile_NearestRankSmallSamples(t *testing.T) {
+	t.Parallel()
+	two := []int64{10, 100} // sorted
+	if got := percentile(two, 0.95); got != 100 {
+		t.Errorf("P95 of [10,100] = %d, want 100 (nearest-rank, not the min)", got)
+	}
+	if got := percentile(two, 0.99); got != 100 {
+		t.Errorf("P99 of [10,100] = %d, want 100", got)
+	}
+	if got := percentile(two, 0.50); got != 10 {
+		t.Errorf("P50 of [10,100] = %d, want 10", got)
+	}
+	// Larger sample sanity: P50 of 1..10 is the 5th value (nearest-rank).
+	ten := []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	if got := percentile(ten, 0.50); got != 5 {
+		t.Errorf("P50 of 1..10 = %d, want 5", got)
+	}
+	if got := percentile(ten, 1.0); got != 10 {
+		t.Errorf("P100 = %d, want 10", got)
 	}
 }

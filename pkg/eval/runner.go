@@ -25,9 +25,12 @@ type Config struct {
 	// Default 4. Set to 1 for fully sequential execution.
 	Parallel int
 
-	// MinPass is the threshold used by Report.Meets and
-	// RunAndExit. Optional; defaults to 1.0 (all cases must pass).
-	MinPass float64
+	// MinPass is the pass-rate threshold (in [0,1]) used by RunAndExit.
+	// nil means "use the default" (1.0 — every case must pass). A non-nil
+	// pointer is honored literally, so MinPass = eval.Threshold(0) expresses
+	// "accept any pass rate" (report-only), which a bare 0 could not. Values
+	// outside [0,1] are rejected by RunAndExit as a setup error.
+	MinPass *float64
 
 	// TimeoutPerCase, when > 0, derives a per-case context with
 	// that deadline. A timeout counts as an error (not a fail) so
@@ -55,7 +58,7 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	for _, s := range cfg.Scorers {
 		name := s.Name()
 		if _, dup := seenNames[name]; dup {
-			return nil, fmt.Errorf("eval: duplicate scorer name %q (set NameOverride to disambiguate)", name)
+			return nil, fmt.Errorf("eval: duplicate scorer name %q (wrap one with eval.Named to disambiguate)", name)
 		}
 		seenNames[name] = struct{}{}
 	}

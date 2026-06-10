@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -144,12 +145,15 @@ func (i *instrumentedProvider) Stream(ctx context.Context, req provider.Request)
 		span.End()
 		return nil, err
 	}
-	return &instrumentedStream{
+	is := &instrumentedStream{
 		inner:            reader,
 		span:             span,
 		captureContent:   i.opts.captureContent,
 		captureReasoning: i.opts.captureReasoning,
-	}, nil
+		done:             make(chan struct{}),
+	}
+	go is.watchAbandon(ctx)
+	return is, nil
 }
 
 // instrumentedStream wraps a StreamReader so the span ends only when
@@ -169,7 +173,33 @@ type instrumentedStream struct {
 		usage   schema.Usage
 		hasStop bool
 	}
-	ended bool
+	mu    sync.Mutex    // guards ended (Recv/Close vs the ctx watcher)
+	ended bool          // span already ended
+	done  chan struct{} // closed when the span ends; stops the ctx watcher
+}
+
+// watchAbandon ends the span if ctx is cancelled before the stream is drained
+// or closed. Without this, a consumer that walks away from the stream (never
+// reaching EOF, never calling Close) leaks an open span forever. The
+// cancellation path records the error and ends the span WITHOUT touching the
+// content buffers (which only the consumer goroutine mutates), so it stays
+// race-free against an in-flight Recv.
+func (s *instrumentedStream) watchAbandon(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		s.mu.Lock()
+		if s.ended {
+			s.mu.Unlock()
+			return
+		}
+		s.ended = true
+		close(s.done)
+		s.mu.Unlock()
+		s.span.RecordError(ctx.Err())
+		s.span.SetStatus(codes.Error, ctx.Err().Error())
+		s.span.End()
+	case <-s.done:
+	}
 }
 
 func (s *instrumentedStream) Recv(ctx context.Context) (provider.Event, error) {
@@ -247,10 +277,14 @@ func messageHasNonThinking(m *schema.Message) bool {
 }
 
 func (s *instrumentedStream) endSpan(err error) {
+	s.mu.Lock()
 	if s.ended {
+		s.mu.Unlock()
 		return
 	}
 	s.ended = true
+	close(s.done) // stop the abandonment watcher
+	s.mu.Unlock()
 	if err != nil {
 		s.span.RecordError(err)
 		s.span.SetStatus(codes.Error, err.Error())

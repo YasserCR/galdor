@@ -145,7 +145,40 @@ func (w *Window) Snapshot(ctx context.Context) ([]schema.Message, error) {
 		newMsgs = append(newMsgs, body[drop:]...)
 		w.messages = newMsgs
 	}
+	// The eviction prefix was planned against the OLD summary, but folding in
+	// the new summary grows w.summary and can push the snapshot back over the
+	// caps. Enforce them again against the post-fold state, dropping more of
+	// the oldest kept messages if needed so the returned snapshot honors
+	// MaxTokens / MaxMessages. (These extra drops aren't summarized this
+	// round; the next Snapshot will fold them if a Summarizer is set.)
+	w.enforceCapsLocked()
 	return w.buildSnapshotLocked(), nil
+}
+
+// enforceCapsLocked drops the oldest non-system messages until the snapshot
+// fits the configured caps, or only the (un-droppable) system + summary
+// remain. Caller must hold w.mu.
+func (w *Window) enforceCapsLocked() {
+	if w.MaxMessages <= 0 && w.MaxTokens <= 0 {
+		return
+	}
+	sys, start := w.evictionPlanLocked()
+	if start == 0 {
+		return
+	}
+	body := w.messages
+	if sys != nil {
+		body = body[1:]
+	}
+	if start > len(body) {
+		start = len(body)
+	}
+	out := make([]schema.Message, 0, 1+len(body)-start)
+	if sys != nil {
+		out = append(out, w.messages[0])
+	}
+	out = append(out, body[start:]...)
+	w.messages = out
 }
 
 // evictionPlanLocked returns the leading system message (if any) and how

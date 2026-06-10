@@ -92,9 +92,29 @@ var ErrCheckpointNotFound = errors.New("graph: checkpoint not found")
 // checkpoint in memory. History per RunID is preserved (latest is
 // also accessible via Load); see History for time-travel-style
 // access. Safe for concurrent use.
+//
+// Note: history is UNBOUNDED. A long-running graph saves one (deep-copied)
+// checkpoint per step, so memory grows with the step count. For long or
+// unbounded runs where you only need recent resume points, use
+// NewMemoryCheckpointerWithLimit to cap retention.
 func NewMemoryCheckpointer[S any]() *MemoryCheckpointer[S] {
 	return &MemoryCheckpointer[S]{
 		history: map[string][]Checkpoint[S]{},
+	}
+}
+
+// NewMemoryCheckpointerWithLimit is like NewMemoryCheckpointer but caps
+// the per-RunID history to the most recent limit checkpoints (limit <= 0
+// means unbounded, identical to NewMemoryCheckpointer). Load still returns
+// the latest checkpoint; only older history beyond the cap is discarded, so
+// time-travel via History is limited to the retained window.
+func NewMemoryCheckpointerWithLimit[S any](limit int) *MemoryCheckpointer[S] {
+	if limit < 0 {
+		limit = 0
+	}
+	return &MemoryCheckpointer[S]{
+		history: map[string][]Checkpoint[S]{},
+		limit:   limit,
 	}
 }
 
@@ -106,6 +126,9 @@ func NewMemoryCheckpointer[S any]() *MemoryCheckpointer[S] {
 type MemoryCheckpointer[S any] struct {
 	mu      sync.RWMutex
 	history map[string][]Checkpoint[S]
+	// limit caps the retained history per RunID (0 = unbounded). When set,
+	// Save keeps only the most recent limit checkpoints.
+	limit int
 }
 
 // Save appends a snapshot of ck to the history for ck.RunID. The State
@@ -120,6 +143,15 @@ func (m *MemoryCheckpointer[S]) Save(_ context.Context, ck Checkpoint[S]) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.history[ck.RunID] = append(m.history[ck.RunID], ck)
+	// Trim to the most recent `limit` checkpoints when a cap is set, so a
+	// long run can't grow history without bound. Copy into a fresh backing
+	// array to release the dropped checkpoints (and their cloned state) for
+	// GC instead of pinning them behind a slice header.
+	if h := m.history[ck.RunID]; m.limit > 0 && len(h) > m.limit {
+		trimmed := make([]Checkpoint[S], m.limit)
+		copy(trimmed, h[len(h)-m.limit:])
+		m.history[ck.RunID] = trimmed
+	}
 	return nil
 }
 
@@ -197,7 +229,7 @@ func (m *MemoryCheckpointer[S]) Load(_ context.Context, runID string) (Checkpoin
 
 // History returns the full ordered slice of Checkpoints saved for
 // runID. The returned slice is a copy; mutating it does not affect
-// the underlying store. Useful for tests and Phase 9 time-travel.
+// the underlying store. Useful for tests and time-travel inspection.
 func (m *MemoryCheckpointer[S]) History(runID string) []Checkpoint[S] {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

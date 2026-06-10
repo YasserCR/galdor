@@ -37,6 +37,13 @@ func Open(path string) (*Store, error) {
 	// SQLite is happiest with a single writer; cap connections so
 	// concurrent Add calls don't surface SQLITE_BUSY noise.
 	db.SetMaxOpenConns(1)
+	// For a ":memory:" database each connection is a SEPARATE, empty DB, so
+	// if the pool ever drops the single connection the data vanishes and the
+	// next query hits a fresh, schema-less one. Pin the connection open:
+	// keep it idle and never expire it. (Harmless for file-backed DBs too.)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxIdleTime(0)
+	db.SetConnMaxLifetime(0)
 
 	if _, err := db.Exec(schemaSQL); err != nil {
 		_ = db.Close()
@@ -364,7 +371,12 @@ func cosine(a, b []float32) (float32, error) {
 
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS chunks (
-    id          TEXT PRIMARY KEY,
+    -- seq aliases the rowid via INTEGER PRIMARY KEY so it is STABLE across a
+    -- VACUUM. The FTS5 external-content index below keys on this rowid; an
+    -- implicit (TEXT PRIMARY KEY) rowid can be renumbered by VACUUM, which
+    -- would silently desync the FTS index from the chunks table.
+    seq         INTEGER PRIMARY KEY,
+    id          TEXT NOT NULL UNIQUE,
     document_id TEXT NOT NULL,
     idx         INTEGER NOT NULL,
     text        TEXT NOT NULL,

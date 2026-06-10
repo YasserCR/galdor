@@ -12,6 +12,15 @@ import (
 // shape.
 const ProtocolVersion = "2024-11-05"
 
+// supportedProtocolVersions is the set of MCP revisions this server will
+// negotiate. The server echoes the client's requested version only when it
+// appears here; otherwise it answers with its own ProtocolVersion (the spec's
+// "I don't speak that — here's what I do speak" response) rather than blindly
+// claiming support for whatever the client asked.
+var supportedProtocolVersions = map[string]bool{
+	ProtocolVersion: true,
+}
+
 // JSON-RPC 2.0 method names we implement.
 const (
 	MethodInitialize  = "initialize"

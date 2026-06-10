@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
+	"time"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 )
@@ -48,10 +48,8 @@ func normalizeHTTPError(resp *http.Response) error {
 		}
 	}
 
-	if ra := resp.Header.Get("retry-after"); ra != "" {
-		if v, err := strconv.Atoi(ra); err == nil {
-			apiErr.RetryAfter = v
-		}
+	if v, ok := provider.ParseRetryAfter(resp.Header.Get("retry-after"), time.Now()); ok {
+		apiErr.RetryAfter = v
 	}
 	return provider.Classify(apiErr)
 }

@@ -25,8 +25,8 @@
 //	    Name: "galdor-helper", URL: "https://example.com/a2a", Version: "0.1",
 //	}, a2a.HandlerFunc(func(ctx context.Context, t *a2a.Task) error {
 //	    // Run the user's ReAct agent / Supervisor / Swarm here.
-//	    t.Append(a2a.AssistantText("answer"))
-//	    t.Status = a2a.TaskCompleted
+//	    t.Append(a2a.AgentText("answer"))
+//	    t.Status.State = a2a.TaskCompleted
 //	    return nil
 //	}))
 //	http.Handle("/", srv)

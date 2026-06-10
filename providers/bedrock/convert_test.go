@@ -579,7 +579,10 @@ func TestResponseFromConverse_SurfacesReasoning(t *testing.T) {
 		},
 		StopReason: brtypes.StopReasonEndTurn,
 	}
-	resp := responseFromConverse(out, nil)
+	resp, err := responseFromConverse(out, nil)
+	if err != nil {
+		t.Fatalf("responseFromConverse: %v", err)
+	}
 	if got := resp.Message.Text(); got != "the answer" {
 		t.Errorf("Text() = %q, want %q", got, "the answer")
 	}

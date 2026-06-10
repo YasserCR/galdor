@@ -45,6 +45,10 @@ func (s *InMemoryStore) Add(_ context.Context, chunks []Chunk) error {
 		if c.ID == "" {
 			c.ID = uuid.NewString()
 		}
+		// Store an independent copy: the caller may mutate or reuse the
+		// Embedding slice / Metadata map after Add returns, which would
+		// otherwise silently corrupt what we hold.
+		c = cloneChunk(c)
 		if idx, ok := s.byID[c.ID]; ok {
 			s.chunks[idx] = c
 			continue
@@ -53,6 +57,22 @@ func (s *InMemoryStore) Add(_ context.Context, chunks []Chunk) error {
 		s.chunks = append(s.chunks, c)
 	}
 	return nil
+}
+
+// cloneChunk returns a deep copy of c whose reference-typed fields
+// (Embedding, Metadata) don't alias the caller's backing storage.
+func cloneChunk(c Chunk) Chunk {
+	if c.Embedding != nil {
+		c.Embedding = append([]float32(nil), c.Embedding...)
+	}
+	if c.Metadata != nil {
+		m := make(map[string]string, len(c.Metadata))
+		for k, v := range c.Metadata {
+			m[k] = v
+		}
+		c.Metadata = m
+	}
+	return c
 }
 
 // Retrieve returns the top-K chunks for q in descending score order.
@@ -105,7 +125,9 @@ func (s *InMemoryStore) Retrieve(_ context.Context, q Query) ([]Result, error) {
 		} else if score <= 0 {
 			continue
 		}
-		results = append(results, Result{Chunk: c, Score: score})
+		// Return an independent copy so a caller mutating the result's
+		// Embedding/Metadata can't corrupt the stored chunk.
+		results = append(results, Result{Chunk: cloneChunk(c), Score: score})
 	}
 	sort.SliceStable(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score

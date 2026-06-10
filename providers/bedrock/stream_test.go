@@ -43,6 +43,38 @@ func drain(t *testing.T, r *streamReader) []provider.Event {
 	}
 }
 
+// Regression (audit low): the streamReader's model must be propagated to
+// every emitted event so per-model cost lookups on the stream work. It used
+// to stay "" because the Stream constructor never set it.
+func TestStream_PropagatesModelToEvents(t *testing.T) {
+	t.Parallel()
+	ch := make(chan brtypes.ConverseStreamOutput, 4)
+	ch <- &brtypes.ConverseStreamOutputMemberMessageStart{
+		Value: brtypes.MessageStartEvent{Role: brtypes.ConversationRoleAssistant},
+	}
+	ch <- &brtypes.ConverseStreamOutputMemberContentBlockDelta{
+		Value: brtypes.ContentBlockDeltaEvent{
+			ContentBlockIndex: aws.Int32(0),
+			Delta:             &brtypes.ContentBlockDeltaMemberText{Value: "hi"},
+		},
+	}
+	close(ch)
+	r := newTestStreamReader(ch)
+	r.model = "anthropic.claude-3-haiku" // what the Stream constructor now sets from req.Model
+	saw := false
+	for _, ev := range drain(t, r) {
+		if ev.Type == provider.EventMessageStart || ev.Type == provider.EventMessageStop {
+			saw = true
+			if ev.Model != "anthropic.claude-3-haiku" {
+				t.Errorf("event %v Model = %q, want the stream's model", ev.Type, ev.Model)
+			}
+		}
+	}
+	if !saw {
+		t.Fatal("no start/stop event observed")
+	}
+}
+
 func TestStream_TextHappyPath(t *testing.T) {
 	t.Parallel()
 	ch := make(chan brtypes.ConverseStreamOutput, 8)

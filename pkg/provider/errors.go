@@ -1,6 +1,12 @@
 package provider
 
-import "errors"
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
 
 // Sentinel errors returned by Provider implementations. Callers match them
 // with errors.Is so adapters can wrap them with context-specific detail.
@@ -173,6 +179,35 @@ func Classify(apiErr *APIError) error {
 	default:
 		return apiErr
 	}
+}
+
+// ParseRetryAfter parses an HTTP Retry-After header value. Per RFC 7231 it
+// may be either a non-negative number of seconds ("120") or an HTTP-date
+// ("Wed, 21 Oct 2015 07:28:00 GMT"); both forms are handled. For the date
+// form the delay is the difference from now, floored at 0 (a past date means
+// "retry now"). now is injected for testability; pass time.Now() in
+// production. The bool is false when the value is empty or unparseable, so
+// the caller leaves RetryAfter unset and falls back to its own backoff.
+func ParseRetryAfter(value string, now time.Time) (int, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if secs, err := strconv.Atoi(value); err == nil {
+		if secs < 0 {
+			return 0, false
+		}
+		return secs, true
+	}
+	if t, err := http.ParseTime(value); err == nil {
+		d := t.Sub(now)
+		if d < 0 {
+			return 0, true // date in the past → retry immediately
+		}
+		// Round up so we never retry a hair before the server's window.
+		return int((d + time.Second - 1) / time.Second), true
+	}
+	return 0, false
 }
 
 // BadOutputError signals that the provider returned successfully but

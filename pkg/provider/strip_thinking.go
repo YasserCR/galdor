@@ -246,14 +246,20 @@ func (s *stripThinkingStream) Recv(ctx context.Context) (Event, error) {
 			ev.ContentDelta = out
 			return ev, nil
 		case EventMessageStop:
-			// In extract mode, move the reasoning out of the terminal
-			// message's text into a thinking part (when the provider
-			// populates a final Message). Copy the Content slice so we
-			// never mutate the provider's own data.
-			if s.collect && ev.Message != nil {
+			// Process the terminal message the same way as the delta stream:
+			// in extract mode move the reasoning into a thinking part, in
+			// strip mode delete it. Without this, a provider that populates a
+			// final Message would leak the <think> blocks through
+			// MessageStop.Message even though the live deltas were stripped.
+			// Copy the Content slice so we never mutate the provider's data.
+			if ev.Message != nil {
 				cp := *ev.Message
 				cp.Content = append([]schema.ContentPart(nil), ev.Message.Content...)
-				extractMessage(&cp)
+				if s.collect {
+					extractMessage(&cp)
+				} else {
+					stripMessage(&cp)
+				}
 				ev.Message = &cp
 			}
 			// Flush whatever the buffer still holds. If we were
@@ -368,15 +374,25 @@ func splitSafePrefix(in string) (string, string) {
 	lt := strings.ToLower(tail)
 	const t1 = "<think"
 	const t2 = "<thinking"
-	if !strings.HasPrefix(t1, lt) && !strings.HasPrefix(t2, lt) &&
-		!strings.HasPrefix(lt, t1) {
+	// prefixOfTag: tail is a (shorter) prefix of an open tag, e.g. "<thi".
+	prefixOfTag := strings.HasPrefix(t1, lt) || strings.HasPrefix(t2, lt)
+	// startsTag: tail begins a real open tag, e.g. "<think" / "<thinking..."
+	startsTag := strings.HasPrefix(lt, t1)
+	if !prefixOfTag && !startsTag {
 		// Definitely not the start of a thinking tag prefix; emit all.
 		return in, ""
 	}
-	// Cap held-back tail length defensively.
+	// An open tag whose '>' hasn't arrived yet may carry an arbitrarily long
+	// attribute list ("<think data-x=\"…\""). Hold the WHOLE tail back
+	// regardless of length until the tag closes, so a tag split across deltas
+	// can't leak its opening bytes. (The 16-byte cap below only bounded the
+	// short ambiguous-prefix case and dropped longer attribute-bearing tags.)
+	if startsTag && !strings.Contains(tail, ">") {
+		return in[:idx], tail
+	}
+	// Cap the held-back tail for the short ambiguous-prefix case: a tail this
+	// long that isn't an open tag start would already have been emitted above.
 	if len(tail) > maxOpenTagLen {
-		// The tail is long enough that if it were going to be a
-		// thinking tag, the regex would have matched it already.
 		return in, ""
 	}
 	return in[:idx], tail

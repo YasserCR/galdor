@@ -25,7 +25,9 @@ type HTTPGetOut struct {
 	ContentType string `json:"content_type,omitempty"`
 	Body        string `json:"body"`
 	Truncated   bool   `json:"truncated,omitempty"`
-	URL         string `json:"url"`
+	// URL is the FINAL url after any redirects, not the requested one, so
+	// the caller (and the model) can see where the bytes actually came from.
+	URL string `json:"url"`
 }
 
 // HTTPGetOptions tunes the http_get tool's safety profile. Defaults
@@ -187,11 +189,19 @@ func (c httpGetConfig) run(ctx context.Context, in HTTPGetIn) (HTTPGetOut, error
 		truncated = true
 	}
 
+	// Report the final URL after redirects (resp.Request is the last
+	// request in the chain). Fall back to the requested URL if, for any
+	// reason, the client didn't populate it.
+	finalURL := u.String()
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
+	}
+
 	return HTTPGetOut{
 		Status:      resp.StatusCode,
 		ContentType: resp.Header.Get("content-type"),
 		Body:        string(buf),
 		Truncated:   truncated,
-		URL:         u.String(),
+		URL:         finalURL,
 	}, nil
 }

@@ -221,3 +221,29 @@ func textOrEmpty(r *provider.Response) string {
 	}
 	return r.Message.Text()
 }
+
+// Regression (audit low): the per-call response copy must be DEEP. A caller
+// mutating the returned Message.Content slice must not poison a later replay
+// of the same scripted response (here, the same step after Reset).
+func TestGenerate_DeepCopiesResponseAcrossReplays(t *testing.T) {
+	p := New(Responses("original"))
+	ctx := context.Background()
+
+	first, err := p.Generate(ctx, provider.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mutate the returned copy aggressively.
+	first.Message.Content[0] = schema.TextPart("TAMPERED")
+	first.Message.Content = append(first.Message.Content, schema.TextPart("extra"))
+
+	// Replay the same scripted step.
+	p.Reset()
+	second, err := p.Generate(ctx, provider.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Message.Text() != "original" {
+		t.Errorf("scripted response poisoned across replays: %q", second.Message.Text())
+	}
+}

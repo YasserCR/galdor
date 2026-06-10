@@ -405,3 +405,45 @@ func TestStripThinkingBlocks_PreservesCJK(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// Regression (audit low): in strip mode the terminal MessageStop.Message must
+// also have <think> blocks removed. A provider that populates a final Message
+// used to leak the reasoning through it even though the live deltas were
+// stripped.
+func TestStripThinkingBlocks_StripsMessageStopMessage(t *testing.T) {
+	t.Parallel()
+	final := &schema.Message{
+		Role:    schema.RoleAssistant,
+		Content: []schema.ContentPart{schema.TextPart("<think>secret</think>visible answer")},
+	}
+	inner := &stubProv{streamEv: []provider.Event{
+		{Type: provider.EventContentDelta, ContentDelta: "visible answer"},
+		{Type: provider.EventMessageStop, Message: final},
+	}}
+	p := provider.StripThinkingBlocks(inner)
+	sr, err := p.Stream(context.Background(), provider.Request{})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	defer sr.Close()
+	var stopMsg *schema.Message
+	for {
+		ev, err := sr.Recv(context.Background())
+		if err != nil {
+			break
+		}
+		if ev.Type == provider.EventMessageStop {
+			stopMsg = ev.Message
+		}
+	}
+	if stopMsg == nil {
+		t.Fatal("no MessageStop with Message observed")
+	}
+	if got := stopMsg.Text(); got != "visible answer" {
+		t.Errorf("MessageStop.Message.Text() = %q, want %q (reasoning must be stripped)", got, "visible answer")
+	}
+	// The provider's original message must not be mutated.
+	if final.Text() != "<think>secret</think>visible answer" {
+		t.Errorf("the inner provider's Message was mutated: %q", final.Text())
+	}
+}

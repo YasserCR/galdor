@@ -3,6 +3,7 @@ package graph_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,39 @@ func TestInvokeWith_RunTimeoutAborts(t *testing.T) {
 	}
 	if elapsed > 200*time.Millisecond {
 		t.Errorf("run took %v, expected ~50ms", elapsed)
+	}
+}
+
+func TestInvokeWith_RunTimeoutErrorIsWrappedWithElapsed(t *testing.T) {
+	t.Parallel()
+	// The RunOptions.Timeout doc promises the run returns
+	// context.DeadlineExceeded WRAPPED with the elapsed time. A node that
+	// ignores ctx and overruns the budget makes the loop-top guard (not the
+	// node) surface the deadline — exactly the path that used to return the
+	// bare error. errors.Is must still match, and the message must carry the
+	// elapsed time.
+	ignoresCtx := func(_ context.Context, s tState) (tState, error) {
+		time.Sleep(40 * time.Millisecond) // longer than Timeout, ignores cancellation
+		return s, nil
+	}
+	g := graph.New[tState]().
+		AddNode("a", ignoresCtx).
+		AddNode("b", ignoresCtx).
+		AddEdge(graph.START, "a").
+		AddEdge("a", "b").
+		AddEdge("b", graph.END)
+	r, err := g.Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.InvokeWith(context.Background(), tState{}, graph.RunOptions[tState]{
+		Timeout: 20 * time.Millisecond,
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want errors.Is DeadlineExceeded", err)
+	}
+	if !strings.Contains(err.Error(), "timed out after") {
+		t.Errorf("err = %q, want it wrapped with the elapsed time per the Timeout doc", err.Error())
 	}
 }
 

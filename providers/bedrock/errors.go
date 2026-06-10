@@ -3,7 +3,7 @@ package bedrock
 import (
 	"context"
 	"errors"
-	"strconv"
+	"time"
 
 	brtypes "github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	smithy "github.com/aws/smithy-go"
@@ -95,10 +95,8 @@ func normalizeAWSError(err error) error {
 	// fall back to galdor's generic schedule, unlike the HTTP adapters.
 	var respErr *smithyhttp.ResponseError
 	if errors.As(err, &respErr) && respErr.Response != nil {
-		if ra := respErr.Response.Header.Get("Retry-After"); ra != "" {
-			if secs, convErr := strconv.Atoi(ra); convErr == nil && secs > 0 {
-				apiErr.RetryAfter = secs
-			}
+		if secs, ok := provider.ParseRetryAfter(respErr.Response.Header.Get("Retry-After"), time.Now()); ok && secs > 0 {
+			apiErr.RetryAfter = secs
 		}
 	}
 

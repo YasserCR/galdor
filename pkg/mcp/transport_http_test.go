@@ -422,27 +422,43 @@ func TestStreamableHTTP_OversizeBodyRejected(t *testing.T) {
 	}
 }
 
-func TestStreamableHTTP_InitializeEchoesClientVersion(t *testing.T) {
+func TestStreamableHTTP_InitializeNegotiatesProtocolVersion(t *testing.T) {
 	t.Parallel()
 	baseURL, _, stop := startStreamableServer(t)
 	defer stop()
 
+	decodeVersion := func(t *testing.T, body []byte) string {
+		t.Helper()
+		var msg struct {
+			Result struct {
+				ProtocolVersion string `json:"protocolVersion"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(body, &msg); err != nil {
+			t.Fatalf("decode: %v -- %s", err, body)
+		}
+		return msg.Result.ProtocolVersion
+	}
+
+	// A supported version is echoed back.
 	c := newStreamableClient(baseURL)
-	// Request a non-default protocol version; the server should echo it.
-	status, _, body := c.do(t, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2099-01-01","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`))
+	status, _, body := c.do(t, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"`+mcp.ProtocolVersion+`","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`))
 	if status != http.StatusOK {
 		t.Fatalf("init status = %d", status)
 	}
-	var msg struct {
-		Result struct {
-			ProtocolVersion string `json:"protocolVersion"`
-		} `json:"result"`
+	if got := decodeVersion(t, body); got != mcp.ProtocolVersion {
+		t.Errorf("supported version = %q, want %q", got, mcp.ProtocolVersion)
 	}
-	if err := json.Unmarshal(body, &msg); err != nil {
-		t.Fatalf("decode: %v -- %s", err, body)
+
+	// An UNSUPPORTED version must NOT be echoed; the server answers with its
+	// own version instead of claiming support for something it can't speak.
+	c2 := newStreamableClient(baseURL)
+	status, _, body = c2.do(t, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2099-01-01","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`))
+	if status != http.StatusOK {
+		t.Fatalf("init status = %d", status)
 	}
-	if msg.Result.ProtocolVersion != "2099-01-01" {
-		t.Errorf("echoed version = %q, want 2099-01-01", msg.Result.ProtocolVersion)
+	if got := decodeVersion(t, body); got != mcp.ProtocolVersion {
+		t.Errorf("unsupported version should be renegotiated to %q, got %q", mcp.ProtocolVersion, got)
 	}
 }
 
@@ -489,5 +505,31 @@ func TestStreamableHTTP_ParallelClientsViaSerialization(t *testing.T) {
 	close(errs)
 	for e := range errs {
 		t.Error(e)
+	}
+}
+
+// Regression (audit low): the MCP server must reject a request whose
+// "jsonrpc" field isn't "2.0" (the A2A server already does).
+func TestStreamableHTTP_RejectsBadJSONRPCVersion(t *testing.T) {
+	t.Parallel()
+	baseURL, _, stop := startStreamableServer(t)
+	defer stop()
+
+	c := newStreamableClient(baseURL)
+	// Initialize first so we have a session.
+	c.do(t, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"`+mcp.ProtocolVersion+`","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`))
+	// Now send a request with the wrong jsonrpc version.
+	_, _, body := c.do(t, []byte(`{"jsonrpc":"1.0","id":2,"method":"tools/list"}`))
+	var msg struct {
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &msg); err != nil {
+		t.Fatalf("decode: %v -- %s", err, body)
+	}
+	if msg.Error == nil || msg.Error.Code != -32600 {
+		t.Fatalf("want an invalid-request (-32600) error, got %s", body)
 	}
 }

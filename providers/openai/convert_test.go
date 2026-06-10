@@ -370,7 +370,10 @@ func TestResponseFromWire_SurfacesReasoningContent(t *testing.T) {
 			FinishReason: "stop",
 		}},
 	}
-	resp := responseFromWire(r, nil)
+	resp, err := responseFromWire(r, nil)
+	if err != nil {
+		t.Fatalf("responseFromWire: %v", err)
+	}
 	if got := resp.Message.Text(); got != "the final answer" {
 		t.Errorf("Text() = %q, want %q", got, "the final answer")
 	}

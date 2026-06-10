@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -119,16 +120,21 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 	if err != nil {
 		return nil, fmt.Errorf("google: marshal embed request: %w", err)
 	}
-	url := fmt.Sprintf("%s/%s:batchEmbedContents", e.baseURL, modelPath)
-	if e.apiKey != "" {
-		url += "?key=" + e.apiKey
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
+	// Path-escape the model segment (modelPath is "models/<model>") so an
+	// unusual model id can't inject extra path/query into the request URL.
+	escapedModel := "models/" + neturl.PathEscape(strings.TrimPrefix(modelPath, "models/"))
+	reqURL := fmt.Sprintf("%s/%s:batchEmbedContents", e.baseURL, escapedModel)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	// Send the key in the header (like the chat client), NOT as a ?key=
+	// query parameter — query strings leak into proxy and server access logs.
+	if e.apiKey != "" {
+		req.Header.Set("x-goog-api-key", e.apiKey)
+	}
 	if e.userAgent != "" {
 		req.Header.Set("User-Agent", e.userAgent)
 	}

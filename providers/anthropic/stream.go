@@ -105,8 +105,15 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 		if err := ctx.Err(); err != nil {
 			return provider.Event{}, err
 		}
+		stop := r.watchCtx(ctx)
 		ev, ok, err := r.scanner.next(ctx)
+		stop()
 		if err != nil {
+			// Our own watcher may have closed the body to unblock a stuck
+			// read; surface the cancellation, not the resulting read error.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return provider.Event{}, ctxErr
+			}
 			return provider.Event{}, err
 		}
 		if !ok {
@@ -134,6 +141,22 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			return out, nil
 		}
 	}
+}
+
+// watchCtx starts a goroutine that closes the response body if ctx is
+// cancelled, unblocking a Scan() that is stuck on a slow/idle connection so
+// the per-call ctx is honored mid-read (not just between frames). The
+// returned func stops the watcher and must be called once the read returns.
+func (r *streamReader) watchCtx(ctx context.Context) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = r.body.Close()
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
 }
 
 // Close implements provider.StreamReader.

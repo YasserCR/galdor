@@ -70,6 +70,13 @@ func (cfg RetryConfig) withDefaults() RetryConfig {
 	if cfg.Multiplier == 0 {
 		cfg.Multiplier = 2.0
 	}
+	// A Multiplier below 1 is nonsensical for backoff: negatives make the
+	// delay flip sign each step (a sign-flipped Duration sleeps 0 → hot
+	// retry loop) and a fraction shrinks the delay toward zero. Clamp to
+	// the fixed-interval floor (1.0); callers wanting fixed backoff pass 1.0.
+	if cfg.Multiplier < 1 {
+		cfg.Multiplier = 1
+	}
 	if cfg.Jitter == 0 {
 		cfg.Jitter = 0.25
 	}
@@ -127,15 +134,20 @@ type retryProvider struct {
 	cfg   RetryConfig
 }
 
-// Name implements Provider. Prefix added so trace consumers can
-// distinguish a wrapped provider from the raw one.
+// Name implements Provider. The wrapper is transparent: it returns the
+// inner provider's name verbatim so trace consumers see the underlying
+// provider, not the retry decorator.
 func (r *retryProvider) Name() string { return r.inner.Name() }
 
 // Capabilities passes through unchanged.
 func (r *retryProvider) Capabilities() Capabilities { return r.inner.Capabilities() }
 
-// Generate retries on transient errors. Returns the last response /
-// error pair seen when attempts are exhausted.
+// Generate retries on transient errors. A non-retryable error is returned
+// immediately with whatever response the inner provider produced. When all
+// attempts are exhausted it returns a nil response and an error wrapping the
+// last transient failure (errors.Is/As against the underlying error still
+// work). It also gives up early — before exhausting attempts — when a
+// server's Retry-After exceeds MaxDelay (see nextDelay).
 func (r *retryProvider) Generate(ctx context.Context, req Request) (*Response, error) {
 	var lastErr error
 	for attempt := 1; attempt <= r.cfg.MaxAttempts; attempt++ {
@@ -232,13 +244,21 @@ func (r *retryProvider) nextDelay(attempt int, err error) (time.Duration, bool) 
 		}
 		return jittered, true
 	}
-	// Exponential schedule: jitter both ways, cap at MaxDelay.
+	// Exponential schedule: jitter both ways, cap at MaxDelay. Saturate at
+	// MaxDelay during the climb so a large attempt count can't overflow the
+	// float→Duration conversion into a negative value (which would sleep 0
+	// and spin). Multiplier is clamped >= 1 in withDefaults, so f only grows.
+	maxF := float64(r.cfg.MaxDelay)
 	f := float64(r.cfg.InitialDelay)
 	for i := 1; i < attempt; i++ {
 		f *= r.cfg.Multiplier
+		if f >= maxF {
+			f = maxF
+			break
+		}
 	}
 	d := applyJitter(time.Duration(f), r.cfg.Jitter)
-	if d > r.cfg.MaxDelay {
+	if d < 0 || d > r.cfg.MaxDelay {
 		d = r.cfg.MaxDelay
 	}
 	return d, true

@@ -239,7 +239,11 @@ var judgeScoreOutOf = regexp.MustCompile(`(\d{1,3})\s*(?:/\s*100|%)`)
 // judgeIntToken matches standalone integer tokens (not glued to other
 // digits or to a slash, e.g. not the "2" in "v2" — but "scored 88" or
 // "answer: 88." both qualify).
-var judgeIntToken = regexp.MustCompile(`\d+`)
+// judgeIntToken matches a STANDALONE integer run. The \b anchors exclude
+// digits embedded in a word ("v2", "gpt4", "Option2") — without them \d+
+// matched those too, contradicting the doc above and turning "Option 2" / a
+// model name into a bogus score.
+var judgeIntToken = regexp.MustCompile(`\b\d+\b`)
 
 // parseJudgeScore extracts the judge's intended score in [0, 100] from
 // raw. The judge is instructed to reply with a bare integer, so:

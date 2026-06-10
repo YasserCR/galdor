@@ -60,8 +60,17 @@ func (r *Report) WriteJSON(w io.Writer) error {
 // as an Errored case, so one bad case fails its run rather than
 // aborting the whole batch.
 func RunAndExit(ctx context.Context, cfg Config) {
-	if cfg.MinPass == 0 {
-		cfg.MinPass = 1.0
+	// Resolve the threshold: nil -> default 1.0; otherwise honor it literally
+	// (including 0 for report-only). Reject out-of-range values as a setup
+	// error rather than silently accepting a negative (which would pass any
+	// run) or an impossible >1 threshold (which would fail every run).
+	threshold := 1.0
+	if cfg.MinPass != nil {
+		threshold = *cfg.MinPass
+		if threshold < 0 || threshold > 1 {
+			_, _ = fmt.Fprintf(os.Stderr, "eval: setup error: MinPass %.2f out of range [0,1]\n", threshold)
+			os.Exit(2)
+		}
 	}
 	report, err := Run(ctx, cfg)
 	if err != nil {
@@ -69,13 +78,18 @@ func RunAndExit(ctx context.Context, cfg Config) {
 		os.Exit(2)
 	}
 	report.PrintSummary(os.Stderr)
-	if !report.Meets(cfg.MinPass) {
+	if !report.Meets(threshold) {
 		_, _ = fmt.Fprintf(os.Stderr, "eval: pass rate %.1f%% < threshold %.1f%%\n",
-			report.PassRate()*100, cfg.MinPass*100)
+			report.PassRate()*100, threshold*100)
 		os.Exit(1)
 	}
 	os.Exit(0)
 }
+
+// Threshold returns a pointer to v for use as Config.MinPass. It makes
+// expressing an explicit threshold (including 0 for report-only) a one-liner:
+// cfg.MinPass = eval.Threshold(0.9).
+func Threshold(v float64) *float64 { return &v }
 
 func sortedAggregateNames(r *Report) []string {
 	names := make([]string, 0, len(r.Aggregates))

@@ -39,6 +39,9 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.S
 		out:       out,
 		events:    out.GetStream().Events(),
 		toolByIdx: map[int32]*toolBlockState{},
+		// Populate the model so every emitted chunk carries it; without this
+		// it stays "" and per-model cost lookups on the stream break.
+		model: req.Model,
 	}, nil
 }
 

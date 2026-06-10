@@ -17,7 +17,7 @@
 //
 // Each node is `func(ctx context.Context, state S) (S, error)`. The
 // node returns the next state — galdor treats the state as immutable
-// across hops, which makes time-travel debugging (Phase 9) tractable.
+// across hops, which makes time-travel debugging tractable.
 // Concurrency, cancellation and the streaming event channel are
 // driven by `context.Context` (see ADR-005 for the rationale).
 //

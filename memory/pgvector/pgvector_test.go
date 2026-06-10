@@ -26,7 +26,10 @@ func TestParseVector_Roundtrip(t *testing.T) {
 	t.Parallel()
 	in := []float32{0.1, -0.25, 3.14159, 0}
 	s := formatVector(in)
-	out := parseVector(s)
+	out, err := parseVector(s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(out) != len(in) {
 		t.Fatalf("len = %d, want %d", len(out), len(in))
 	}
@@ -39,21 +42,23 @@ func TestParseVector_Roundtrip(t *testing.T) {
 
 func TestParseVector_Empty(t *testing.T) {
 	t.Parallel()
-	if got := parseVector("[]"); got != nil {
-		t.Errorf("expected nil for empty literal, got %+v", got)
-	}
-	if got := parseVector(""); got != nil {
-		t.Errorf("expected nil for empty string, got %+v", got)
+	// Empty forms are legitimately "no vector": nil, NO error.
+	for _, s := range []string{"[]", ""} {
+		got, err := parseVector(s)
+		if got != nil || err != nil {
+			t.Errorf("parseVector(%q) = (%v, %v), want (nil, nil)", s, got, err)
+		}
 	}
 }
 
 func TestParseVector_RejectsMalformed(t *testing.T) {
 	t.Parallel()
-	if got := parseVector("[1,abc,3]"); got != nil {
-		t.Errorf("expected nil on parse error, got %+v", got)
-	}
-	if got := parseVector("not a vector"); got != nil {
-		t.Errorf("expected nil for unbracketed input, got %+v", got)
+	// Malformed input must ERROR, not silently yield nil.
+	for _, s := range []string{"[1,abc,3]", "not a vector"} {
+		got, err := parseVector(s)
+		if err == nil {
+			t.Errorf("parseVector(%q) = (%v, nil), want an error", s, got)
+		}
 	}
 }
 

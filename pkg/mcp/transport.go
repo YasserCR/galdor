@@ -21,7 +21,14 @@ const maxMessageBytes = 4 << 20
 // requires; callers exchange decoded JSON-RPC messages with the peer
 // via Send and Recv.
 //
-// All methods must be safe to call from different goroutines.
+// Concurrency contract:
+//   - Send is safe for concurrent use (frames are written atomically), so
+//     the Client can multiplex many in-flight requests.
+//   - Close is safe to call from any goroutine, including concurrently with
+//     a blocked Recv (it unblocks it).
+//   - Recv is single-consumer: call it from ONE goroutine at a time.
+//     Concurrent Recv calls would interleave frame reads. The stdio
+//     transport in particular does not synchronize concurrent readers.
 type Transport interface {
 	// Send serializes a message and writes one frame to the peer.
 	// Returns an error if the medium is closed or the encoding fails.

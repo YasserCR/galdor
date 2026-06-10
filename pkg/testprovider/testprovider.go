@@ -154,10 +154,22 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 	if s.err != nil {
 		return nil, s.err
 	}
-	// Defensive copy so callers mutating the response don't poison
-	// later replays of the same script.
-	cp := *s.response
-	return &cp, nil
+	// Defensive DEEP copy so callers mutating the response — including its
+	// Message.Content / ToolCalls slices or ProviderRaw — don't poison later
+	// replays of the same script. A shallow `*s.response` shared those slices.
+	return cloneResponse(s.response), nil
+}
+
+// cloneResponse returns an independent copy of r whose slice-typed fields
+// don't alias the original.
+func cloneResponse(r *provider.Response) *provider.Response {
+	cp := *r
+	cp.Message.Content = append([]schema.ContentPart(nil), r.Message.Content...)
+	cp.Message.ToolCalls = append([]schema.ToolCall(nil), r.Message.ToolCalls...)
+	if r.ProviderRaw != nil {
+		cp.ProviderRaw = append([]byte(nil), r.ProviderRaw...)
+	}
+	return &cp
 }
 
 // Stream implements provider.Provider by replaying the next scripted

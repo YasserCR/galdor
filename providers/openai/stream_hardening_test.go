@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
@@ -20,6 +21,67 @@ func sseServer(t *testing.T, frames ...string) *httptest.Server {
 		w.Header().Set("content-type", "text/event-stream")
 		_, _ = io.WriteString(w, body)
 	}))
+}
+
+// Regression (audit low): a per-call ctx cancellation must unblock a Recv
+// that is stuck waiting on a slow/idle connection, not just be noticed
+// between frames. The server sends one frame then hangs forever; cancelling
+// the ctx mid-read must return promptly with the cancellation error.
+func TestStream_RecvHonorsCtxMidRead(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		fl, _ := w.(http.Flusher)
+		_, _ = io.WriteString(w, `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}`+"\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
+		// Hang until the test is done (or the request ctx is cancelled),
+		// so the next Recv blocks on an idle connection.
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	p := newTestProvider(t, srv)
+	sr := mustStream(t, p, provider.Request{
+		Model: "gpt-4o-mini", Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	defer func() { _ = sr.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Drain until we block, then cancel from another goroutine.
+	go func() {
+		// Give the first (buffered) event time to be consumed, then cancel.
+		for i := 0; i < 1000; i++ {
+			_ = i
+		}
+		cancel()
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		for {
+			_, err := sr.Recv(ctx)
+			if err != nil {
+				done <- err
+				return
+			}
+		}
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Recv returned %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Recv did not return after ctx cancellation — blocked read ignored the per-call ctx")
+	}
 }
 
 // Regression for audit H6: an error frame streamed mid-response must

@@ -12,6 +12,33 @@ type sliceState struct {
 	Items []int
 }
 
+// TestMemoryCheckpointer_HistoryCap bounds retained history: with a limit
+// of 3, saving 10 checkpoints keeps only the most recent 3 (Load still
+// returns the latest). Guards against unbounded O(steps) growth.
+func TestMemoryCheckpointer_HistoryCap(t *testing.T) {
+	t.Parallel()
+	cp := NewMemoryCheckpointerWithLimit[sliceState](3)
+	ctx := context.Background()
+	for step := 1; step <= 10; step++ {
+		if err := cp.Save(ctx, Checkpoint[sliceState]{
+			RunID: "r", Step: step, Node: "a", State: sliceState{Items: []int{step}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := cp.History("r")
+	if len(h) != 3 {
+		t.Fatalf("history len = %d, want 3 (capped)", len(h))
+	}
+	if h[0].Step != 8 || h[2].Step != 10 {
+		t.Errorf("retained steps = [%d..%d], want the most recent [8..10]", h[0].Step, h[2].Step)
+	}
+	latest, ok, err := cp.Load(ctx, "r")
+	if err != nil || !ok || latest.Step != 10 {
+		t.Errorf("Load = (step %d, ok %v, err %v), want latest step 10", latest.Step, ok, err)
+	}
+}
+
 // TestMemoryCheckpointer_SaveSnapshotsState is the regression for
 // checkpoint state aliasing: Save must capture an independent snapshot so
 // a later in-place mutation of the live state cannot corrupt an

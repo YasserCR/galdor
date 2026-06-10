@@ -112,10 +112,11 @@ const swarmTrapNode = "__swarm_trap__"
 // handoffToolName is the synthetic tool name generated for handoffs.
 func handoffToolName(target string) string { return handoffPrefix + target }
 
-// handoffInput is the (empty) input schema we generate for handoff
-// tools. We accept an optional "task" string so the relinquishing
-// LLM can summarize what the receiving agent should do; the
-// framework appends it to the shared history as a system note.
+// handoffInput is the input schema we generate for handoff tools. We accept
+// an optional "task" string so the relinquishing LLM can summarize what the
+// receiving agent should do. It is surfaced in the handoff tool's RESULT
+// message ("Control handed off to <name>. Task: <task>"), which lands in the
+// shared history the receiving agent reads — not as a separate system note.
 type handoffInput struct {
 	Task string `json:"task,omitempty" jsonschema:"Optional brief description of what the receiving agent should do next"`
 }

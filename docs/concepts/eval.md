@@ -38,7 +38,7 @@ type Config struct {
     Subject        Subject
     Scorers        []Scorer
     Parallel       int           // default 4
-    MinPass        float64       // default 1.0 in RunAndExit
+    MinPass        *float64      // nil = default 1.0; eval.Threshold(0.9) to set
     TimeoutPerCase time.Duration
 }
 ```
@@ -96,7 +96,7 @@ func main() {
                 Rubric: "Answer is factually correct."},
         },
         Parallel:       4,
-        MinPass:        0.9,
+        MinPass:        eval.Threshold(0.9),
         TimeoutPerCase: 30 * time.Second,
     }
 
@@ -162,7 +162,7 @@ Per-scorer `Aggregate` carries `Mean`, `Pass`, `Fail`. The `Version` field is st
 - A scorer that returns an error degrades to `{Value: 0, Pass: false}` with the error in `Explanation`. The case still produces a result; the report stays well-formed.
 - `Regex` is a pointer (`*Regex`) because it memoizes the compiled pattern. The value form won't compile against `Scorer`.
 - `LLMJudge.PassThreshold` defaults to 0.7. `MaxTokens` defaults to 32 — enough for a number plus a short rationale. Bump it if your rubric prompts the judge to explain itself first.
-- `RunAndExit` defaults `MinPass` to 1.0 when zero — strictest setting. Set it explicitly (e.g., 0.9) for realistic agent eval.
+- `RunAndExit` treats a nil `MinPass` as 1.0 (strictest). Set it with `eval.Threshold(0.9)` for realistic agent eval, or `eval.Threshold(0)` for report-only (never fails on pass rate). Values outside [0,1] are a setup error.
 - `TimeoutPerCase` counts a hit as an *error*, not a *fail*, so it can be diagnosed separately from a wrong answer.
 - The runner doesn't recover panics inside `Subject`. Wrap your subject if your agent can panic; `go test`'s harness recovers at the test boundary.
 

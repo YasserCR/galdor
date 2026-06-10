@@ -201,6 +201,21 @@ func (s *Server) handleTasksSend(ctx context.Context, req rpcMessage) rpcMessage
 			"task is in a terminal state and cannot be continued", string(state))
 	}
 	e.task.Append(p.Message)
+	// Honor an updated SessionID / Metadata sent with a continuing message —
+	// on REUSE these were previously dropped (only the creation-time values
+	// survived). Metadata is merged (new keys win); SessionID is updated when
+	// the client supplies one.
+	if p.SessionID != "" {
+		e.task.SessionID = p.SessionID
+	}
+	if len(p.Metadata) > 0 {
+		if e.task.Metadata == nil {
+			e.task.Metadata = make(map[string]any, len(p.Metadata))
+		}
+		for k, v := range p.Metadata {
+			e.task.Metadata[k] = v
+		}
+	}
 	e.task.Status.State = TaskWorking
 	e.task.Status.Timestamp = time.Now().UTC()
 	e.updated = time.Now().UTC()

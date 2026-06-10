@@ -11,6 +11,73 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-10
+
+Pre-alpha audit cleanup: the ~45 low-severity findings from the audit's §4,
+swept across every subsystem. Each fix landed with a regression test
+(reproduced failing first where a failure was reproducible; the rest are
+documented as defensive hardening). A handful change observable behavior —
+they're called out below. Green under `go test -race`, golangci-lint v2.12.2,
+gosec and govulncheck across all nine modules (go1.25.11).
+
+### Changed
+- **Retry hardening.** A negative/zero `Multiplier` is clamped to the
+  fixed-interval floor (1.0) and the exponential schedule saturates at
+  `MaxDelay`, so a hostile config can no longer produce a negative delay that
+  spins in a hot retry loop. Provider adapters now also parse an HTTP-date
+  `Retry-After` (not just a seconds count).
+- **Anthropic `max_tokens` default raised** from 1024 to
+  `anthropic.DefaultMaxTokens` (4096) — the old default truncated long
+  answers. `provider.Request.MaxTokens` documents the cross-provider
+  asymmetry. Google's embedder now sends the API key in a header (not the
+  `?key=` query string, which leaks into proxy logs), and model ids are
+  path-escaped.
+- **Latency percentiles use true nearest-rank.** `scry stats` P95/P99 of a
+  small sample returned the *minimum* before; they now report the correct
+  high-percentile value.
+- **`eval.Config.MinPass` is now `*float64`.** nil means the 1.0 default;
+  `eval.Threshold(0)` expresses report-only (accept any pass rate), which a
+  bare `0` could not. `RunAndExit` rejects out-of-range thresholds.
+- **MCP version negotiation.** The server echoes a client's requested
+  protocol version only when it supports it (otherwise it answers with its
+  own), and rejects requests whose `jsonrpc` field isn't `"2.0"`. MCP client
+  calls get a default 30s timeout (`WithCallTimeout`) when the caller's
+  context has no deadline.
+- **`galdor scry tail` honors Ctrl-C** (SIGINT is now wired into the command
+  context) and reports the final post-redirect URL from `http_get`.
+
+### Fixed
+- **Data races**: the MCP client's server-info fields, and the
+  instrumented-stream span teardown (which also no longer leaks an open span
+  when a stream is abandoned — the span ends on context cancellation).
+- **Providers**: redacted-thinking blocks round-trip (Anthropic), a tool_use
+  with empty args emits `input: {}`, `cache_control` lands on the last block
+  (including tool calls), Bedrock stream events carry the model, swallowed
+  decode errors in the OpenAI/Bedrock response paths now surface, the
+  Bedrock embedder omits the v2-only fields for Titan v1 and splits Cohere
+  batches at 96, and the SSE readers honor a per-call context mid-read.
+- **Streaming strip**: a `<think>` tag with attributes split across deltas is
+  no longer leaked, and the terminal `MessageStop.Message` is stripped too.
+- **Memory**: `memory/sqlite` pins its `:memory:` connection (data no longer
+  vanishes if the pool drops it) and aliases the FTS rowid to a stable
+  `INTEGER PRIMARY KEY`; `InMemoryStore` deep-copies chunks so it can't alias
+  caller slices/maps; pgvector's `parseVector` errors on malformed input
+  instead of silently returning nil; the `Retriever` errors when the embedder
+  returns ≠1 vectors; the `Window` re-enforces its token cap after
+  summarization.
+- **Graph**: a run-level timeout error is wrapped with the elapsed time per
+  its doc; `MemoryCheckpointer` can cap retained history
+  (`NewMemoryCheckpointerWithLimit`).
+- **eval**: the LLM-judge fallback no longer reads digits embedded in words
+  (a model name like `gpt4`), duplicate scorers can be disambiguated with
+  `eval.Named`, and `testprovider` deep-copies scripted responses.
+- **A2A**: an updated `SessionID` / `Metadata` sent with a continuing message
+  is applied (merged) instead of dropped; the package doc example compiles.
+- **Observability**: `TraceHooks` context keys are distinct types (two
+  pointers to a zero-size struct could share an address); `scry stats`
+  decodes `\uXXXX` escapes when grouping; the dashboard renders templates to
+  a buffer so a mid-render error is a clean 500, not a truncated 200.
+
 ## [0.8.0] - 2026-06-10
 
 `memory.Store` contract consistency and correctness fixes from the pre-alpha
@@ -546,6 +613,7 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
 [Unreleased]: https://github.com/YasserCR/galdor/compare/v0.7.0...HEAD
+[0.9.0]: https://github.com/YasserCR/galdor/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/YasserCR/galdor/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/YasserCR/galdor/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/YasserCR/galdor/compare/v0.6.1...v0.6.2

@@ -97,7 +97,7 @@ func TestNewEmbedder_CohereDimAndType(t *testing.T) {
 
 func TestTitanRequest(t *testing.T) {
 	t.Parallel()
-	b, err := titanRequest("hello world", 1024)
+	b, err := titanRequest("hello world", 1024, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,9 +112,39 @@ func TestTitanRequest(t *testing.T) {
 
 func TestTitanRequest_OmitsZeroDim(t *testing.T) {
 	t.Parallel()
-	b, _ := titanRequest("x", 0)
+	b, _ := titanRequest("x", 0, false)
 	if got := string(b); contains(got, "dimensions") {
 		t.Errorf("expected dimensions omitted when 0, got %s", got)
+	}
+}
+
+// Regression (audit low): Titan v1 rejects the v2-only dimensions/normalize
+// fields, so the v1 request must contain ONLY inputText.
+func TestTitanRequest_V1OmitsV2Fields(t *testing.T) {
+	t.Parallel()
+	b, err := titanRequest("hello", 1024, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	if contains(got, "dimensions") || contains(got, "normalize") {
+		t.Errorf("v1 request must omit dimensions/normalize, got %s", got)
+	}
+	if !contains(got, "inputText") {
+		t.Errorf("v1 request must carry inputText, got %s", got)
+	}
+}
+
+func TestIsTitanV1(t *testing.T) {
+	t.Parallel()
+	for model, want := range map[string]bool{
+		"amazon.titan-embed-text-v1":   true,
+		"amazon.titan-embed-image-v1":  true,
+		"amazon.titan-embed-text-v2:0": false,
+	} {
+		if got := isTitanV1(model); got != want {
+			t.Errorf("isTitanV1(%q) = %v, want %v", model, got, want)
+		}
 	}
 }
 
@@ -168,4 +198,32 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// Regression (audit low): Cohere Embed v3 caps a batch at 96 inputs; larger
+// inputs must be split across requests. chunkStrings is the splitter.
+func TestChunkStrings_CohereBatchLimit(t *testing.T) {
+	t.Parallel()
+	texts := make([]string, 250)
+	chunks := chunkStrings(texts)
+	if len(chunks) != 3 {
+		t.Fatalf("250 texts at batch 96 = %d chunks, want 3", len(chunks))
+	}
+	total := 0
+	for i, c := range chunks {
+		if len(c) > maxCohereBatch {
+			t.Errorf("chunk %d has %d > %d", i, len(c), maxCohereBatch)
+		}
+		total += len(c)
+	}
+	if total != 250 {
+		t.Errorf("chunks cover %d texts, want 250", total)
+	}
+	// Exactly-at-limit and under-limit cases stay single-call.
+	if got := len(chunkStrings(make([]string, 96))); got != 1 {
+		t.Errorf("96 texts = %d chunks, want 1", got)
+	}
+	if got := len(chunkStrings(make([]string, 5))); got != 1 {
+		t.Errorf("5 texts = %d chunks, want 1", got)
+	}
 }

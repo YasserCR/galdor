@@ -9,12 +9,9 @@
 // optionally embedded, and stored in a Store. A Retriever queries the
 // Store at agent time to bring relevant context back into the prompt.
 // Store is an interface; this package ships an in-memory implementation
-// (Memory) for tests, examples and quick prototypes. SQLite + BM25 and
-// external vector backends (pgvector, qdrant, weaviate, chroma) ship as
-// separate modules under memory/<backend>/.
+// (InMemoryStore) for tests, examples and quick prototypes. SQLite + BM25
+// and the external vector backends (pgvector, qdrant) ship as separate
+// modules under memory/<backend>/.
 //
 // Chunking helpers live in subpackage memory/chunk.
-//
-// Status: Phase 6 — Session A (interfaces + short-term + in-mem store +
-// chunkers). SQLite/BM25 and external adapters land in Sessions B and C.
 package memory

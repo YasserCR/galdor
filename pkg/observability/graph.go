@@ -35,8 +35,6 @@ func TraceHooks[S any](tracer trace.Tracer) graph.Hooks[S] {
 	if tracer == nil {
 		panic("observability: nil tracer")
 	}
-	runSpanKey := &spanKey{}
-	nodeSpanKey := &spanKey{}
 
 	return graph.Hooks[S]{
 		BeforeRun: func(ctx context.Context, runID string, _ S) context.Context {
@@ -46,10 +44,10 @@ func TraceHooks[S any](tracer trace.Tracer) graph.Hooks[S] {
 				attribute.String(AttrGaldorRunID, runID),
 				attribute.String(AttrGaldorStateGo, reflect.TypeOf(zero).String()),
 			))
-			return context.WithValue(ctx, runSpanKey, span)
+			return context.WithValue(ctx, runSpanKey{}, span)
 		},
 		AfterRun: func(ctx context.Context, _ string, _ S, err error) {
-			span, ok := ctx.Value(runSpanKey).(trace.Span)
+			span, ok := ctx.Value(runSpanKey{}).(trace.Span)
 			if !ok || span == nil {
 				return
 			}
@@ -65,10 +63,10 @@ func TraceHooks[S any](tracer trace.Tracer) graph.Hooks[S] {
 				attribute.String(AttrGaldorNode, node),
 				attribute.Int(AttrGaldorStep, step),
 			))
-			return context.WithValue(ctx, nodeSpanKey, span)
+			return context.WithValue(ctx, nodeSpanKey{}, span)
 		},
 		AfterNode: func(ctx context.Context, _, _ string, _ int, _ S, err error) {
-			span, ok := ctx.Value(nodeSpanKey).(trace.Span)
+			span, ok := ctx.Value(nodeSpanKey{}).(trace.Span)
 			if !ok || span == nil {
 				return
 			}
@@ -81,6 +79,12 @@ func TraceHooks[S any](tracer trace.Tracer) graph.Hooks[S] {
 	}
 }
 
-// spanKey is the ctx-key type. We make a fresh value per TraceHooks
-// invocation so different hook sets don't collide when nested.
-type spanKey struct{}
+// runSpanKey and nodeSpanKey are DISTINCT ctx-key types. They must be
+// separate types, not two pointers to one zero-size struct: Go may give two
+// distinct zero-size allocations the SAME address, which would collide the
+// run-span and node-span keys. Distinct types compare unequal regardless of
+// size (the interface comparison includes the dynamic type).
+type (
+	runSpanKey  struct{}
+	nodeSpanKey struct{}
+)

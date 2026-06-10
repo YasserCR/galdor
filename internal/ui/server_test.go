@@ -552,3 +552,16 @@ func loopbackReq(method, target string, body io.Reader) *http.Request {
 	r.Host = "127.0.0.1:7777"
 	return r
 }
+
+// Regression (audit low): a template render failure must yield a clean 500,
+// not a 200 with a half-written body. renderTemplate buffers, so an error
+// (here: an unknown template name) is caught before any byte is committed.
+func TestRenderTemplate_FailureIsClean500(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+	rec := httptest.NewRecorder()
+	srv.renderTemplate(rec, "does-not-exist.html", nil)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (a render error must not commit a 200)", rec.Code)
+	}
+}

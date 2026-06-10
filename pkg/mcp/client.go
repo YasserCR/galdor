@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/YasserCR/galdor/internal/jsonschema"
 	"github.com/YasserCR/galdor/pkg/tool"
@@ -28,7 +29,12 @@ type Client struct {
 	closed    chan struct{}
 	recvErr   atomic.Value // error
 
-	info      ClientInfo
+	info        ClientInfo
+	callTimeout time.Duration
+	// srvMu guards the server-reported fields below: they're written once by
+	// Initialize and read by the accessors, potentially from another
+	// goroutine, so the access must be synchronized.
+	srvMu     sync.RWMutex
 	serverCap Capabilities
 	serverInf ServerInfo
 	serverVer string // protocol version reported by the server
@@ -43,6 +49,17 @@ func WithClientInfo(info ClientInfo) ClientOption {
 	return func(c *Client) { c.info = info }
 }
 
+// WithCallTimeout sets the default per-call timeout applied when the caller's
+// context carries no deadline. Without it a stalled server leaves a call
+// blocked forever (a plain context.Background() never fires). A value <= 0
+// disables the default (calls block until the ctx or the connection ends).
+func WithCallTimeout(d time.Duration) ClientOption {
+	return func(c *Client) { c.callTimeout = d }
+}
+
+// defaultCallTimeout bounds a call whose context has no deadline of its own.
+const defaultCallTimeout = 30 * time.Second
+
 // NewClient constructs a Client over t. It does NOT block on the
 // transport; call Initialize to perform the handshake.
 //
@@ -51,9 +68,10 @@ func WithClientInfo(info ClientInfo) ClientOption {
 // when Recv returns io.EOF.
 func NewClient(t Transport, opts ...ClientOption) *Client {
 	c := &Client{
-		t:      t,
-		closed: make(chan struct{}),
-		info:   ClientInfo{Name: "galdor", Version: "0"},
+		t:           t,
+		closed:      make(chan struct{}),
+		info:        ClientInfo{Name: "galdor", Version: "0"},
+		callTimeout: defaultCallTimeout,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -87,9 +105,11 @@ func (c *Client) Initialize(ctx context.Context) error {
 	if err := c.call(ctx, MethodInitialize, params, &out); err != nil {
 		return err
 	}
+	c.srvMu.Lock()
 	c.serverCap = out.Capabilities
 	c.serverInf = out.ServerInfo
 	c.serverVer = out.ProtocolVersion
+	c.srvMu.Unlock()
 	// Spec: clients MUST send `notifications/initialized` after a
 	// successful initialize.
 	return c.notify(ctx, MethodInitialized, struct{}{})
@@ -97,11 +117,19 @@ func (c *Client) Initialize(ctx context.Context) error {
 
 // ServerInfo returns the name/version the server reported during
 // initialize. Empty before Initialize completes.
-func (c *Client) ServerInfo() ServerInfo { return c.serverInf }
+func (c *Client) ServerInfo() ServerInfo {
+	c.srvMu.RLock()
+	defer c.srvMu.RUnlock()
+	return c.serverInf
+}
 
 // ProtocolVersion returns the protocol version the server reported in
 // its initialize response. Empty before Initialize completes.
-func (c *Client) ProtocolVersion() string { return c.serverVer }
+func (c *Client) ProtocolVersion() string {
+	c.srvMu.RLock()
+	defer c.srvMu.RUnlock()
+	return c.serverVer
+}
 
 // ListTools fetches the tool catalog from the server.
 func (c *Client) ListTools(ctx context.Context) ([]ToolDef, error) {
@@ -218,6 +246,15 @@ func concatText(parts []ContentPart) string {
 // call sends a request and blocks until the matching reply arrives
 // or ctx is cancelled.
 func (c *Client) call(ctx context.Context, method string, params, out any) error {
+	// Apply the default timeout when the caller's ctx has no deadline, so a
+	// stalled server can't block the call forever.
+	if c.callTimeout > 0 {
+		if _, ok := ctx.Deadline(); !ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, c.callTimeout)
+			defer cancel()
+		}
+	}
 	id := c.clientID.Add(1)
 	idBytes, _ := json.Marshal(id)
 	rawParams, err := json.Marshal(params)

@@ -100,8 +100,10 @@ func (*Store) Close() error { return nil }
 // Qdrant requires point IDs to be either unsigned ints or UUIDs. To
 // keep galdor's ID model (free-form strings) usable, the user's
 // Chunk.ID is stored as a payload key (`__chunk_id`) and the actual
-// point ID is the SHA-1 of that string formatted as a UUID v5. This
-// makes re-ingestion of the same Chunk.ID idempotent (upsert).
+// point ID is a SHA-256 of that string truncated to 16 bytes and
+// formatted in the 8-4-4-4-12 UUID shape (not a true RFC 4122 v5 UUID —
+// the version/variant bits aren't set; Qdrant only checks the shape).
+// This makes re-ingestion of the same Chunk.ID idempotent (upsert).
 func (s *Store) Add(ctx context.Context, chunks []memory.Chunk) error {
 	if len(chunks) == 0 {
 		return nil

@@ -157,6 +157,12 @@ func (s *Server) dispatchSafe(ctx context.Context, req rpcMessage) (reply rpcMes
 // context; per-call cancellation could be added later by deriving a
 // child context here.
 func (s *Server) dispatch(ctx context.Context, req rpcMessage) rpcMessage {
+	// JSON-RPC 2.0 requires every request to carry `"jsonrpc": "2.0"`.
+	// Reject anything else as an invalid request (the A2A server already
+	// does this; the MCP server must too).
+	if req.JSONRPC != "2.0" {
+		return errorReply(req.ID, ErrCodeInvalidRequest, "invalid request", `"jsonrpc" must be "2.0"`)
+	}
 	switch req.Method {
 	case MethodInitialize:
 		return s.handleInitialize(req)
@@ -170,16 +176,18 @@ func (s *Server) dispatch(ctx context.Context, req rpcMessage) rpcMessage {
 }
 
 func (s *Server) handleInitialize(req rpcMessage) rpcMessage {
-	// Echo the client's requested protocol version when it sends one
-	// so a client pinned to a known revision keeps negotiating at that
-	// level; fall back to our default when the client omits it.
+	// Echo the client's requested protocol version ONLY when we actually
+	// support it (a client pinned to a known revision keeps negotiating at
+	// that level). For an omitted or unsupported version, answer with our own
+	// ProtocolVersion instead of blindly claiming support for whatever the
+	// client asked — the spec's "here's what I speak" negotiation response.
 	var params initializeParams
 	if len(req.Params) > 0 {
 		_ = json.Unmarshal(req.Params, &params)
 	}
-	version := params.ProtocolVersion
-	if version == "" {
-		version = ProtocolVersion
+	version := ProtocolVersion
+	if supportedProtocolVersions[params.ProtocolVersion] {
+		version = params.ProtocolVersion
 	}
 	resp := initializeResult{
 		ProtocolVersion: version,

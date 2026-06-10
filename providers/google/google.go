@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/YasserCR/galdor/pkg/provider"
@@ -113,9 +114,11 @@ func (p *Provider) newRequest(ctx context.Context, method, path string, body io.
 	return req, nil
 }
 
-// modelPath returns the URL path for an operation on a specific model.
+// modelPath returns the URL path for an operation on a specific model. The
+// model is path-escaped so an unusual model id can't inject extra path
+// segments or query into the request URL; op is a fixed internal constant.
 func modelPath(model, op string) string {
-	return fmt.Sprintf("/models/%s:%s", model, op)
+	return fmt.Sprintf("/models/%s:%s", url.PathEscape(model), op)
 }
 
 // String reports a developer-friendly description without leaking the key.

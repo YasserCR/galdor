@@ -27,7 +27,10 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 	// stable, machine-readable form.
 	raw, _ := json.Marshal(out)
 
-	resp := responseFromConverse(out, raw)
+	resp, err := responseFromConverse(out, raw)
+	if err != nil {
+		return nil, err
+	}
 	resp.Model = req.Model
 	// Bedrock's Converse has no "none" tool choice, so the model can still
 	// emit tool_use even when ToolChoiceNone was requested. Honor the

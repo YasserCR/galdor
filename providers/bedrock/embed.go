@@ -118,9 +118,10 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 }
 
 func (e *Embedder) embedTitan(ctx context.Context, texts []string) ([][]float32, error) {
+	v1 := isTitanV1(e.model)
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
-		body, err := titanRequest(t, e.dim)
+		body, err := titanRequest(t, e.dim, v1)
 		if err != nil {
 			return nil, err
 		}
@@ -140,7 +141,39 @@ func (e *Embedder) embedTitan(ctx context.Context, texts []string) ([][]float32,
 	return out, nil
 }
 
+// maxCohereBatch is Cohere Embed v3's per-request limit on the number of
+// input texts. Larger inputs must be split across calls or the API rejects
+// the request.
+const maxCohereBatch = 96
+
 func (e *Embedder) embedCohere(ctx context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, 0, len(texts))
+	for _, batch := range chunkStrings(texts) {
+		vecs, err := e.embedCohereBatch(ctx, batch)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vecs...)
+	}
+	return out, nil
+}
+
+// chunkStrings splits s into consecutive sub-slices of at most maxCohereBatch
+// elements. The sub-slices share s's backing array; callers must not mutate
+// them.
+func chunkStrings(s []string) [][]string {
+	var chunks [][]string
+	for start := 0; start < len(s); start += maxCohereBatch {
+		end := start + maxCohereBatch
+		if end > len(s) {
+			end = len(s)
+		}
+		chunks = append(chunks, s[start:end])
+	}
+	return chunks
+}
+
+func (e *Embedder) embedCohereBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	body, err := cohereRequest(texts, e.cohereInputType)
 	if err != nil {
 		return nil, err
@@ -192,12 +225,34 @@ type titanEmbedRequest struct {
 	Normalize  bool   `json:"normalize"`
 }
 
+// titanV1Request is the Titan v1 wire shape: v1 only understands inputText
+// and REJECTS the v2-only `dimensions` / `normalize` fields, so they must be
+// absent entirely (not just zero-valued).
+type titanV1Request struct {
+	InputText string `json:"inputText"`
+}
+
 type titanEmbedResponse struct {
 	Embedding []float32 `json:"embedding"`
 }
 
-func titanRequest(text string, dim int) ([]byte, error) {
-	b, err := json.Marshal(titanEmbedRequest{InputText: text, Dimensions: dim, Normalize: true})
+// isTitanV1 reports whether a Titan embedding model is the v1 generation,
+// which doesn't support the dimensions/normalize request fields.
+func isTitanV1(model string) bool {
+	return strings.Contains(model, "embed-text-v1") || strings.Contains(model, "embed-image-v1")
+}
+
+func titanRequest(text string, dim int, v1 bool) ([]byte, error) {
+	var (
+		b   []byte
+		err error
+	)
+	if v1 {
+		// v1: only inputText; sending dimensions/normalize errors the API.
+		b, err = json.Marshal(titanV1Request{InputText: text})
+	} else {
+		b, err = json.Marshal(titanEmbedRequest{InputText: text, Dimensions: dim, Normalize: true})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("bedrock: encode titan request: %w", err)
 	}

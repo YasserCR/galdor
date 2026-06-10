@@ -239,3 +239,48 @@ func TestSendTask_AutoCompletesWhenHandlerForgets(t *testing.T) {
 type contextErr string
 
 func (e contextErr) Error() string { return string(e) }
+
+// Regression (audit low): Metadata and SessionID sent with a CONTINUING
+// message (task reuse) must be applied, not dropped — only the creation-time
+// values used to survive.
+func TestSendTask_ReuseAppliesMetadataAndSession(t *testing.T) {
+	t.Parallel()
+	c, cleanup := newTestServer(t, a2a.HandlerFunc(func(_ context.Context, task *a2a.Task) error {
+		userTurns := 0
+		for _, m := range task.History {
+			if m.Role == a2a.RoleUser {
+				userTurns++
+			}
+		}
+		if userTurns == 1 {
+			task.Status.State = a2a.TaskInputRequired
+			return nil
+		}
+		task.Status.State = a2a.TaskCompleted
+		return nil
+	}))
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	first, err := c.SendTask(ctx, a2a.UserText("turn one"),
+		a2a.WithMetadata(map[string]any{"a": "1"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Continue the task with NEW metadata + a session id.
+	second, err := c.SendTask(ctx, a2a.UserText("turn two"),
+		a2a.WithTaskID(first.ID),
+		a2a.WithSessionID("sess-42"),
+		a2a.WithMetadata(map[string]any{"b": "2"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.SessionID != "sess-42" {
+		t.Errorf("SessionID = %q, want sess-42 (reuse must apply it)", second.SessionID)
+	}
+	// Both the original and the continuing metadata must be present (merge).
+	if second.Metadata["a"] != "1" || second.Metadata["b"] != "2" {
+		t.Errorf("Metadata = %+v, want merged {a:1, b:2}", second.Metadata)
+	}
+}

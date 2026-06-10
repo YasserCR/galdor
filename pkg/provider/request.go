@@ -27,7 +27,14 @@ type Request struct {
 	// Sampling parameters.
 	Temperature *float64
 	TopP        *float64
-	MaxTokens   *int
+
+	// MaxTokens caps the output length. When nil, behavior is
+	// provider-dependent: OpenAI, Gemini and Bedrock let the provider's own
+	// default apply (typically the model maximum), while Anthropic's API
+	// REQUIRES the field, so that adapter substitutes a default
+	// (anthropic.DefaultMaxTokens). Set MaxTokens explicitly for consistent
+	// output limits across providers.
+	MaxTokens *int
 
 	// StopSequences are strings that, when emitted, terminate generation.
 	StopSequences []string

@@ -214,16 +214,18 @@ func (s *Server) handleAPISpan(w http.ResponseWriter, r *http.Request) {
 	writeJSONError(w, http.StatusNotFound, fmt.Errorf("span %q not in run %q", spanID, runID))
 }
 
-// renderTemplate executes name and writes it to w. Errors are
-// surfaced as 500s with the error in the body — there is no
-// recovery from a template bug, and hiding it would make debugging
-// harder.
+// renderTemplate executes name into a buffer FIRST, then writes it. Buffering
+// means a template error that fires mid-render (e.g. a nil deref deep in the
+// data) becomes a clean 500 instead of a 200 with a half-written, truncated
+// page — once the first byte is flushed the status is locked at 200.
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
-		// Headers may have been flushed by this point; best effort.
-		_, _ = fmt.Fprintf(w, "\n<!-- template %s: %v -->\n", name, err)
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, name, data); err != nil {
+		s.renderError(w, http.StatusInternalServerError, "template render failed", err)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
 }
 
 // renderError sends a small HTML error page so the dashboard stays

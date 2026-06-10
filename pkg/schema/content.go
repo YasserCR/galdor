@@ -19,6 +19,14 @@ const (
 	// native reasoning blocks (Gemini thoughts, Anthropic extended
 	// thinking, etc.).
 	ContentTypeThinking ContentType = "thinking"
+
+	// ContentTypeRedactedThinking is an ENCRYPTED reasoning block a provider
+	// returns when its safety systems redact the chain-of-thought (Anthropic
+	// "redacted_thinking"). The plaintext is unavailable; the opaque blob is
+	// carried in Signature and must be echoed back verbatim on a follow-up
+	// turn so a Reasoning+tools loop can continue. Like ContentTypeThinking,
+	// it is ignored by Message.Text().
+	ContentTypeRedactedThinking ContentType = "redacted_thinking"
 )
 
 // ContentPart is a single fragment of a Message's body. A Message can carry

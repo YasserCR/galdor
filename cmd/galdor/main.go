@@ -22,6 +22,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 // version is overridden at build time via -ldflags.
@@ -39,7 +41,12 @@ func main() {
 	case "help", "--help", "-h":
 		usage(os.Stdout)
 	case "scry":
-		os.Exit(scry(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
+		// Wire SIGINT/SIGTERM into ctx so `scry tail` stops cleanly on
+		// Ctrl-C (its doc promises this). stop() is called before exit.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		code := scry(ctx, os.Args[2:], os.Stdout, os.Stderr)
+		stop()
+		os.Exit(code)
 	case "ui":
 		os.Exit(runUI(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
 	case

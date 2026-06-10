@@ -61,6 +61,11 @@ type wireContentBlock struct {
 	Thinking  string `json:"thinking,omitempty"`
 	Signature string `json:"signature,omitempty"`
 
+	// type=redacted_thinking (assistant -> caller): an opaque encrypted
+	// reasoning blob with no plaintext. Must be echoed back verbatim to
+	// continue a Reasoning+tools loop.
+	Data string `json:"data,omitempty"`
+
 	// type=tool_result (caller -> assistant)
 	ToolUseID string             `json:"tool_use_id,omitempty"`
 	Content   []wireContentBlock `json:"content,omitempty"`

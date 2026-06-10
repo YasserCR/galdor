@@ -37,6 +37,36 @@ func TestHTTPGet_HappyPath(t *testing.T) {
 	}
 }
 
+func TestHTTPGet_ReportsFinalURLAfterRedirect(t *testing.T) {
+	t.Parallel()
+	// The reported URL must be where the bytes actually came from (the
+	// post-redirect location), not the originally requested URL.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		_, _ = io.WriteString(w, "landed")
+	}))
+	defer srv.Close()
+	host := mustHost(t, srv.URL)
+
+	tt := MustNewHTTPGetTool(HTTPGetOptions{
+		AllowHTTP:    true,
+		AllowedHosts: []string{host},
+	})
+	out, err := tt.Execute(context.Background(), HTTPGetIn{URL: srv.URL + "/start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Body != "landed" {
+		t.Fatalf("body = %q, want the redirect target's body", out.Body)
+	}
+	if !strings.HasSuffix(out.URL, "/final") {
+		t.Errorf("out.URL = %q, want the final post-redirect URL (…/final), not the requested …/start", out.URL)
+	}
+}
+
 func TestHTTPGet_Truncates(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

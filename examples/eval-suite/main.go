@@ -72,7 +72,7 @@ func main() {
 			},
 		},
 		Parallel: 3,
-		MinPass:  0.8,
+		MinPass:  eval.Threshold(0.8),
 	}
 
 	report, err := eval.Run(ctx, cfg)
@@ -85,9 +85,9 @@ func main() {
 	// prints the summary to stderr and exits with status 1 when
 	// PassRate < MinPass. We split it here so the example finishes
 	// with a normal main() return regardless of the verdict.
-	if !report.Meets(cfg.MinPass) {
+	if !report.Meets(*cfg.MinPass) {
 		fmt.Printf("\n%.1f%% < %.1f%% threshold — would exit 1 in CI mode\n",
-			report.PassRate()*100, cfg.MinPass*100)
+			report.PassRate()*100, *cfg.MinPass*100)
 	} else {
 		fmt.Println()
 		fmt.Println("CI gate passed.")

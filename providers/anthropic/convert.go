@@ -2,11 +2,19 @@ package anthropic
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
 )
+
+// DefaultMaxTokens is the max_tokens value this adapter sends when the caller
+// leaves provider.Request.MaxTokens nil. Anthropic's API requires max_tokens,
+// so unlike the other adapters (which let the provider default apply) one must
+// be chosen. 4096 is generous enough not to truncate typical answers; set
+// Request.MaxTokens explicitly for longer outputs or cross-provider parity.
+const DefaultMaxTokens = 4096
 
 // buildRequest translates a galdor provider.Request into the Anthropic
 // wire shape. It hoists the system prompt into the dedicated `system`
@@ -17,7 +25,7 @@ func buildRequest(req provider.Request, stream bool) (*messageRequest, error) {
 		return nil, fmt.Errorf("%w: Model is required", provider.ErrInvalidRequest)
 	}
 
-	maxTokens := 1024
+	maxTokens := DefaultMaxTokens
 	if req.MaxTokens != nil {
 		maxTokens = *req.MaxTokens
 	}
@@ -122,19 +130,38 @@ func userMessageToWire(m schema.Message) (wireMessage, error) {
 }
 
 func assistantMessageToWire(m schema.Message) (wireMessage, error) {
-	blocks, err := partsToWire(m.Content, m.CacheControl)
+	// Convert content WITHOUT applying cache_control yet: tool_use blocks are
+	// appended after, and the cache breakpoint must land on the message's
+	// LAST block so the tool calls are included in the cached prefix.
+	blocks, err := partsToWire(m.Content, nil)
 	if err != nil {
 		return wireMessage{}, err
 	}
 	for _, tc := range m.ToolCalls {
+		// Anthropic requires `input` on every tool_use block. With
+		// omitempty on the field, empty/nil Arguments would drop the key
+		// and the API rejects the turn — emit an empty object instead.
+		input := tc.Arguments
+		if len(input) == 0 {
+			input = json.RawMessage(`{}`)
+		}
 		blocks = append(blocks, wireContentBlock{
 			Type:  "tool_use",
 			ID:    tc.ID,
 			Name:  tc.Name,
-			Input: tc.Arguments,
+			Input: input,
 		})
 	}
+	applyCacheControl(blocks, m.CacheControl)
 	return wireMessage{Role: "assistant", Content: blocks}, nil
+}
+
+// applyCacheControl attaches the cache_control hint to the LAST block, which
+// matches Anthropic's "cache up to and including this point" semantics.
+func applyCacheControl(blocks []wireContentBlock, cc *schema.CacheControl) {
+	if cc != nil && len(blocks) > 0 {
+		blocks[len(blocks)-1].CacheControl = cacheControl(cc)
+	}
 }
 
 func partsToWire(parts []schema.ContentPart, cc *schema.CacheControl) ([]wireContentBlock, error) {
@@ -168,15 +195,21 @@ func partsToWire(parts []schema.ContentPart, cc *schema.CacheControl) ([]wireCon
 				Thinking:  p.Text,
 				Signature: p.Signature,
 			})
+		case schema.ContentTypeRedactedThinking:
+			// Echo the encrypted blob back verbatim (carried in Signature)
+			// so the model can continue. Skip if we somehow have no blob.
+			if p.Signature == "" {
+				continue
+			}
+			out = append(out, wireContentBlock{
+				Type: "redacted_thinking",
+				Data: p.Signature,
+			})
 		default:
 			return nil, fmt.Errorf("%w: unsupported content type %q", provider.ErrInvalidRequest, p.Type)
 		}
 	}
-	// Attach the cache_control hint to the LAST block of the message, which
-	// matches Anthropic's "cache up to this point" semantics.
-	if cc != nil && len(out) > 0 {
-		out[len(out)-1].CacheControl = cacheControl(cc)
-	}
+	applyCacheControl(out, cc)
 	return out, nil
 }
 
@@ -243,6 +276,16 @@ func responseFromWire(r *messageResponse, raw []byte) *provider.Response {
 					Type:      schema.ContentTypeThinking,
 					Text:      b.Thinking,
 					Signature: b.Signature,
+				})
+			}
+		case "redacted_thinking":
+			// Encrypted reasoning with no plaintext. Preserve the opaque blob
+			// (in Signature) so a Reasoning+tools follow-up can echo it back;
+			// dropping it breaks the loop. Message.Text() skips this part.
+			if b.Data != "" {
+				msg.Content = append(msg.Content, schema.ContentPart{
+					Type:      schema.ContentTypeRedactedThinking,
+					Signature: b.Data,
 				})
 			}
 		}

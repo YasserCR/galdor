@@ -68,3 +68,98 @@ func TestAssistantMessageToWire_SkipsUnsignedThinking(t *testing.T) {
 		t.Errorf("want a single text block, got %+v", wm.Content)
 	}
 }
+
+// Regression (audit low): a redacted_thinking block must round-trip. On the
+// way out the opaque blob (carried in Signature) is echoed as a
+// redacted_thinking wire block; on the way in it is preserved rather than
+// dropped, so a Reasoning+tools loop with redacted reasoning can continue.
+func TestRedactedThinking_RoundTrips(t *testing.T) {
+	// Outbound: schema part -> wire block.
+	m := schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentPart{
+			{Type: schema.ContentTypeRedactedThinking, Signature: "ENCRYPTED_BLOB"},
+			schema.TextPart("answer"),
+		},
+	}
+	wm, err := assistantMessageToWire(m)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(wm.Content) != 2 || wm.Content[0].Type != "redacted_thinking" {
+		t.Fatalf("want [redacted_thinking, text], got %+v", wm.Content)
+	}
+	if wm.Content[0].Data != "ENCRYPTED_BLOB" {
+		t.Errorf("redacted blob = %q, want it echoed in Data", wm.Content[0].Data)
+	}
+
+	// Inbound: wire response -> schema part preserved.
+	resp := responseFromWire(&messageResponse{
+		Content: []wireContentBlock{
+			{Type: "redacted_thinking", Data: "ENCRYPTED_BLOB"},
+			{Type: "text", Text: "answer"},
+		},
+	}, nil)
+	var got *schema.ContentPart
+	for i := range resp.Message.Content {
+		if resp.Message.Content[i].Type == schema.ContentTypeRedactedThinking {
+			got = &resp.Message.Content[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("redacted_thinking block was dropped on parse")
+	}
+	if got.Signature != "ENCRYPTED_BLOB" {
+		t.Errorf("preserved blob = %q, want ENCRYPTED_BLOB", got.Signature)
+	}
+	// It must not leak into Text().
+	if resp.Message.Text() != "answer" {
+		t.Errorf("Text() = %q, want just the answer (redacted reasoning excluded)", resp.Message.Text())
+	}
+}
+
+// Regression (audit low): a tool_use with empty arguments must still emit
+// `input: {}` — Anthropic requires the field, and omitempty would drop it.
+func TestAssistantMessageToWire_EmptyToolArgsEmitsEmptyObject(t *testing.T) {
+	m := schema.Message{
+		Role:      schema.RoleAssistant,
+		ToolCalls: []schema.ToolCall{{ID: "tu_1", Name: "now"}}, // nil Arguments
+	}
+	wm, err := assistantMessageToWire(m)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(wm.Content) != 1 || wm.Content[0].Type != "tool_use" {
+		t.Fatalf("want one tool_use block, got %+v", wm.Content)
+	}
+	if string(wm.Content[0].Input) != "{}" {
+		t.Errorf("Input = %q, want %q (Anthropic requires input present)", string(wm.Content[0].Input), "{}")
+	}
+}
+
+// Regression (audit low): a CacheControl hint on an assistant message with
+// tool calls must land on the LAST block (the final tool_use), so the tool
+// calls are inside the cached prefix — not on the last text block before them.
+func TestAssistantMessageToWire_CacheControlIncludesToolUse(t *testing.T) {
+	m := schema.Message{
+		Role:         schema.RoleAssistant,
+		Content:      []schema.ContentPart{schema.TextPart("calling tools")},
+		CacheControl: &schema.CacheControl{},
+		ToolCalls: []schema.ToolCall{
+			{ID: "tu_1", Name: "a", Arguments: []byte(`{}`)},
+			{ID: "tu_2", Name: "b", Arguments: []byte(`{}`)},
+		},
+	}
+	wm, err := assistantMessageToWire(m)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	last := wm.Content[len(wm.Content)-1]
+	if last.Type != "tool_use" || last.CacheControl == nil {
+		t.Errorf("cache_control must be on the last tool_use block; last = %+v", last)
+	}
+	// The earlier text block must NOT carry the breakpoint.
+	if wm.Content[0].CacheControl != nil {
+		t.Error("cache_control must not be on the text block before the tool calls")
+	}
+}

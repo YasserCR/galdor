@@ -137,3 +137,50 @@ func countText(ms []schema.Message) string {
 		return "many"
 	}
 }
+
+// Regression (audit low): a Summarizer that produces a large summary must not
+// push the snapshot back over MaxTokens. Eviction is planned against the old
+// summary, so the post-fold state is re-enforced against the cap.
+func TestWindow_SnapshotRespectsTokenCapAfterSummarization(t *testing.T) {
+	t.Parallel()
+	const maxTokens = 40
+	// Summarizer returns a big summary (~50 tokens, 200 chars) — larger than
+	// the whole cap on its own would allow if messages were also kept.
+	w := &memory.Window{
+		MaxTokens: maxTokens,
+		Summarizer: memory.SummarizerFunc(func(_ context.Context, _ []schema.Message) (string, error) {
+			return strings.Repeat("s", 200), nil
+		}),
+	}
+	big := strings.Repeat("x", 60) // 15 tokens each
+	w.AppendAll([]schema.Message{
+		schema.SystemMessage("sys"),
+		schema.UserMessage(big),
+		schema.AssistantMessage(big),
+		schema.UserMessage(big),
+		schema.AssistantMessage(big),
+	})
+	out, err := w.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Total estimated tokens of the returned snapshot must respect the cap,
+	// EXCEPT that the system + summary are un-droppable; assert the kept
+	// non-system/non-summary message tokens stay bounded by re-enforcement.
+	total := 0
+	for _, m := range out {
+		total += (len(m.Text()) + 3) / 4
+	}
+	// The summary alone is ~50 tokens > cap; the contract is that NO extra
+	// conversation messages are kept once the summary already fills the cap.
+	conversational := 0
+	for _, m := range out {
+		if m.Name == "summary" || m.Role == schema.RoleSystem {
+			continue
+		}
+		conversational++
+	}
+	if conversational != 0 {
+		t.Errorf("summary already exceeds the cap, so no conversation messages should be kept; got %d (snapshot %d msgs, ~%d tokens)", conversational, len(out), total)
+	}
+}

@@ -41,8 +41,13 @@ func TestEmbed_HappyPath(t *testing.T) {
 		if !strings.HasSuffix(r.URL.Path, ":batchEmbedContents") {
 			t.Errorf("path = %q", r.URL.Path)
 		}
-		if r.URL.Query().Get("key") != "test-key" {
-			t.Errorf("key query param missing: %q", r.URL.RawQuery)
+		// Key must travel in the header, never in the query string (query
+		// strings leak into proxy/server access logs).
+		if got := r.Header.Get("x-goog-api-key"); got != "test-key" {
+			t.Errorf("x-goog-api-key header = %q, want test-key", got)
+		}
+		if r.URL.Query().Get("key") != "" {
+			t.Errorf("key must NOT be in the query string, got %q", r.URL.RawQuery)
 		}
 		var body embedBatchRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

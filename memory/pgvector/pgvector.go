@@ -157,15 +157,18 @@ func (s *Store) Retrieve(ctx context.Context, q memory.Query) ([]memory.Result, 
 		var distance float64
 		var metaJSON []byte
 		var embedStr string
-		if err := rows.Scan(&c.ID, &c.DocumentID, &c.Index, &c.Text, &embedStr, &metaJSON, &distance); err != nil {
+		if err = rows.Scan(&c.ID, &c.DocumentID, &c.Index, &c.Text, &embedStr, &metaJSON, &distance); err != nil {
 			return nil, fmt.Errorf("memory/pgvector: scan: %w", err)
 		}
 		if len(metaJSON) > 0 && string(metaJSON) != "{}" {
-			if err := json.Unmarshal(metaJSON, &c.Metadata); err != nil {
+			if err = json.Unmarshal(metaJSON, &c.Metadata); err != nil {
 				return nil, fmt.Errorf("memory/pgvector: decode metadata: %w", err)
 			}
 		}
-		c.Embedding = parseVector(embedStr)
+		c.Embedding, err = parseVector(embedStr)
+		if err != nil {
+			return nil, err
+		}
 		// Convert pgvector cosine distance (0 = identical, 2 = opposite)
 		// to galdor's higher-is-better Score in [-1, 1].
 		score := float32(1.0 - distance)
@@ -272,26 +275,32 @@ func formatVector(v []float32) string {
 }
 
 // parseVector is the inverse of formatVector. It accepts the textual
-// representation pgvector returns when the column is cast to text.
-func parseVector(s string) []float32 {
+// representation pgvector returns when the column is cast to text. An empty
+// input ("", "[]") yields (nil, nil); a MALFORMED input (not bracketed, or a
+// non-numeric element) returns an error rather than silently yielding nil —
+// dropping a corrupt vector without warning hides real data problems.
+func parseVector(s string) ([]float32, error) {
 	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
 	if len(s) < 2 || s[0] != '[' || s[len(s)-1] != ']' {
-		return nil
+		return nil, fmt.Errorf("memory/pgvector: malformed vector literal %q", s)
 	}
 	body := s[1 : len(s)-1]
 	if body == "" {
-		return nil
+		return nil, nil
 	}
 	parts := strings.Split(body, ",")
 	out := make([]float32, 0, len(parts))
 	for _, p := range parts {
 		f, err := strconv.ParseFloat(strings.TrimSpace(p), 32)
 		if err != nil {
-			return nil
+			return nil, fmt.Errorf("memory/pgvector: malformed vector element %q: %w", p, err)
 		}
 		out = append(out, float32(f))
 	}
-	return out
+	return out, nil
 }
 
 // isSafeIdent reports whether s is composed only of lowercase ASCII

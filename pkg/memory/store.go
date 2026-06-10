@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // Store is the long-term memory interface. Implementations may be
@@ -56,9 +57,17 @@ func (r *Retriever) Retrieve(ctx context.Context, q Query) ([]Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(vecs) == 1 {
-			q.Embedding = vecs[0]
+		// Exactly one vector is expected for one input text. Anything else
+		// is an embedder contract violation; surface it instead of silently
+		// forwarding an embedding-less query (which would degrade a vector
+		// search to lexical, or error opaquely in a vector-only store).
+		if len(vecs) != 1 {
+			return nil, fmt.Errorf("memory: embedder returned %d vectors for 1 query text", len(vecs))
 		}
+		if len(vecs[0]) == 0 {
+			return nil, errors.New("memory: embedder returned an empty vector for the query text")
+		}
+		q.Embedding = vecs[0]
 	}
 	if q.K <= 0 {
 		q.K = r.DefaultK
