@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 )
@@ -75,7 +74,7 @@ func New(cfg Config) (*Provider, error) {
 	}
 	p.baseURL = strings.TrimRight(p.baseURL, "/")
 	if p.httpClient == nil {
-		p.httpClient = &http.Client{Timeout: 60 * time.Second}
+		p.httpClient = streamSafeHTTPClient(defaultResponseHeaderTimeout)
 	}
 	return p, nil
 }

@@ -157,7 +157,19 @@ func collectFields(t reflect.Type, out *Schema, seen map[reflect.Type]bool) erro
 				ft = ft.Elem()
 			}
 			if ft.Kind() == reflect.Struct {
-				if err := collectFields(ft, out, seen); err != nil {
+				// Embedded-field promotion recurses straight into
+				// collectFields rather than through buildSchema, so it
+				// must apply the same cycle guard here — otherwise a
+				// struct that (transitively) embeds itself, e.g. an
+				// exported `*Self`, overflows the stack and aborts the
+				// process instead of returning the documented error.
+				if seen[ft] {
+					return fmt.Errorf("jsonschema: recursive type %s not supported", ft.String())
+				}
+				seen[ft] = true
+				err := collectFields(ft, out, seen)
+				delete(seen, ft)
+				if err != nil {
 					return err
 				}
 				continue

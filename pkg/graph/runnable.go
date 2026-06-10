@@ -247,7 +247,10 @@ func (r *Runnable[S]) resolveNext(current string, state S) (string, error) {
 		return next, nil
 	}
 	if router, ok := r.conditionalEdges[current]; ok {
-		out := router(state)
+		out, perr := safeRouter(router, state)
+		if perr != nil {
+			return "", fmt.Errorf("router from %q: %w", current, perr)
+		}
 		if out == "" {
 			return "", fmt.Errorf("%w: from %q", ErrEmptyRouterResult, current)
 		}

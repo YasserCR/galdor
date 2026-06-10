@@ -26,14 +26,11 @@ func scryReplay(ctx context.Context, args []string, w io.Writer, errW io.Writer)
 	db := fs.String("db", "", "path to the span store")
 	out := fs.String("o", "", "write the recording to this JSON fixture file (default: print summary only)")
 	note := fs.String("note", "", "free-form note saved on the fixture (e.g., dataset version)")
-	if err := fs.Parse(args); err != nil {
+	runID, err := parseRunIDArg(fs, args)
+	if err != nil {
+		_, _ = fmt.Fprintf(errW, "usage: galdor scry replay <run-id> [--db PATH] [-o FILE] [--note TEXT]\n  %v\n", err)
 		return 64
 	}
-	if fs.NArg() != 1 {
-		_, _ = fmt.Fprintln(errW, "usage: galdor scry replay <run-id> [--db PATH] [-o FILE] [--note TEXT]")
-		return 64
-	}
-	runID := fs.Arg(0)
 
 	path, err := resolveDBPath(*db)
 	if err != nil {

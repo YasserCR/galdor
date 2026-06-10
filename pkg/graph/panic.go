@@ -23,6 +23,20 @@ func safeCallNode[S any](fn NodeFunc[S], ctx context.Context, state S) (out S, e
 	return fn(ctx, state)
 }
 
+// safeRouter invokes a conditional-edge Router under a recover() guard,
+// converting a panic into a *PanicError. Routers are user code; without
+// this a panicking router escapes resolveNext and crashes the process
+// on the synchronous Invoke path (runStream has its own backstop, but
+// Invoke does not). Mirrors safeCallNode.
+func safeRouter[S any](router Router[S], state S) (out string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &PanicError{Value: r, Stack: captureStack()}
+		}
+	}()
+	return router(state), nil
+}
+
 // PanicError wraps a recovered panic so the runtime can surface it
 // as an ordinary error instead of crashing the process. The Value
 // is whatever the user code passed to panic(); Stack is a snapshot

@@ -133,6 +133,32 @@ func buildConverseInput(req provider.Request) (*bedrockruntime.ConverseInput, er
 	return in, nil
 }
 
+// buildConverseStreamInput translates a galdor request into the SDK's
+// ConverseStreamInput. It reuses buildConverseInput and copies EVERY
+// populated field across: ConverseInput and ConverseStreamInput are
+// distinct SDK structs with the same field set, so a hand-written subset
+// copy silently drops whatever it forgets. The original copied only five
+// fields, dropping AdditionalModelRequestFields (which carries
+// reasoning_config) and RequestMetadata — so streaming reasoning was
+// disabled while its side effects (nulled temperature/top_p, inflated
+// max_tokens) still applied. Keep this in lockstep with the fields
+// buildConverseInput sets.
+func buildConverseStreamInput(req provider.Request) (*bedrockruntime.ConverseStreamInput, error) {
+	in, err := buildConverseInput(req)
+	if err != nil {
+		return nil, err
+	}
+	return &bedrockruntime.ConverseStreamInput{
+		ModelId:                      in.ModelId,
+		Messages:                     in.Messages,
+		System:                       in.System,
+		InferenceConfig:              in.InferenceConfig,
+		ToolConfig:                   in.ToolConfig,
+		AdditionalModelRequestFields: in.AdditionalModelRequestFields,
+		RequestMetadata:              in.RequestMetadata,
+	}, nil
+}
+
 // clampInt32 reduces a Go int to the int32 range, saturating at the
 // boundaries. Used for Bedrock wire fields that take int32.
 func clampInt32(v int) int32 {

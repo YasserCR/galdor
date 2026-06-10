@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,15 +134,40 @@ func TestScry_ListJSON(t *testing.T) {
 
 func TestScry_ListEmpty(t *testing.T) {
 	t.Parallel()
-	// Open an empty DB by pointing at a fresh path.
-	dir := t.TempDir()
-	db := filepath.Join(dir, "empty.db")
+	// An existing but empty DB shows "no runs". (A non-existent path is a
+	// different case — see TestScry_MissingDBErrors.)
+	db := filepath.Join(t.TempDir(), "empty.db")
+	s, err := store.Open(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+
 	var out, errOut bytes.Buffer
 	if code := scry(context.Background(), []string{"list", "--db", db}, &out, &errOut); code != 0 {
 		t.Fatalf("code = %d, err = %s", code, errOut.String())
 	}
 	if !strings.Contains(out.String(), "no runs recorded") {
 		t.Errorf("out = %q", out.String())
+	}
+}
+
+// Regression for audit M22: a mistyped --db must NOT silently create an
+// empty database and report "no runs" — a read command must fail clearly
+// and leave no file behind.
+func TestScry_MissingDBErrors(t *testing.T) {
+	t.Parallel()
+	db := filepath.Join(t.TempDir(), "does-not-exist.db")
+	var out, errOut bytes.Buffer
+	code := scry(context.Background(), []string{"list", "--db", db}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for a missing DB, got 0 (regression of M22); out=%q", out.String())
+	}
+	if !strings.Contains(errOut.String(), "does not exist") {
+		t.Errorf("expected a 'does not exist' error, got: %s", errOut.String())
+	}
+	if _, err := os.Stat(db); err == nil {
+		t.Error("a read command created the database file (regression of M22)")
 	}
 }
 
@@ -182,6 +208,29 @@ func TestScry_ShowJSON(t *testing.T) {
 	}
 	if len(spans) != 3 {
 		t.Errorf("spans = %d", len(spans))
+	}
+}
+
+// Regression for audit H14: flags placed AFTER the <run-id> must be
+// honored. The documented usage is `scry show <run-id> [--db PATH]`, but
+// stdlib flag stops at the first positional, so before the fix `--db`
+// here was silently ignored and the command read the default database
+// (the wrong one) instead of the seeded temp DB.
+func TestScry_ShowFlagsAfterRunID(t *testing.T) {
+	t.Parallel()
+	db := seedDB(t)
+	var out, errOut bytes.Buffer
+	// run-id first, then the flags — the shape the usage string documents.
+	code := scry(context.Background(), []string{"show", "run-A", "--db", db, "--format", "json"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("code = %d, err = %s (flags after run-id were dropped — regression of H14)", code, errOut.String())
+	}
+	var spans []store.Span
+	if err := json.Unmarshal(out.Bytes(), &spans); err != nil {
+		t.Fatalf("json: %v (output: %s)", err, out.String())
+	}
+	if len(spans) != 3 {
+		t.Errorf("spans = %d, want 3 (did --db point at the seeded DB?)", len(spans))
 	}
 }
 

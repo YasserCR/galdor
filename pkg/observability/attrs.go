@@ -30,6 +30,15 @@ const (
 	AttrGenAIPrompt     = "gen_ai.prompt"
 	AttrGenAICompletion = "gen_ai.completion"
 
+	// gen_ai.request.tools / gen_ai.request.tool_choice — the tool
+	// surface the request advertised, captured alongside content. The
+	// replay fingerprint folds in tools + tool_choice, so without these
+	// a recorded fixture for a tool-using agent can never match a live
+	// run (its tools are non-empty, the recording's were not). Emitted
+	// only when the request carried tools / a non-default choice.
+	AttrGenAIRequestTools      = "gen_ai.request.tools"
+	AttrGenAIRequestToolChoice = "gen_ai.request.tool_choice"
+
 	// gen_ai.reasoning — the model's reasoning / chain-of-thought,
 	// emitted only when the caller opts in via WithCaptureReasoning.
 	// JSON-encoded array of the thinking parts on the response message

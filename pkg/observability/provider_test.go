@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -80,6 +81,42 @@ func TestInstrumentProvider_GenerateHappyPath(t *testing.T) {
 	}
 	if !hasIntAttr(got.Attributes, AttrGenAIUsageInputTokens, 10) {
 		t.Errorf("missing input tokens attr: %+v", got.Attributes)
+	}
+}
+
+// Regression for audit H12: with content capture on, the span must
+// record the request's tools + tool_choice. The replay fingerprint folds
+// them in, so a fixture missing them can never match a live tool-using
+// run. Before the fix only the prompt was captured.
+func TestInstrumentProvider_CapturesToolsForReplay(t *testing.T) {
+	t.Parallel()
+	exp, tp := newRecorder(t)
+	tr := tp.Tracer("test")
+
+	p := InstrumentProvider(fakeProvider{
+		resp: &provider.Response{Message: schema.AssistantMessage("hi"), Model: "m"},
+	}, tr, WithCaptureContent(true))
+
+	req := provider.Request{
+		Model:    "m",
+		Messages: []schema.Message{schema.UserMessage("weather in Quito?")},
+		Tools: []schema.ToolDef{{
+			Name: "weather", Description: "lookup", Schema: json.RawMessage(`{"type":"object"}`),
+		}},
+		ToolChoice: provider.ToolChoiceAuto,
+	}
+	if _, err := p.Generate(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	_ = tp.ForceFlush(context.Background())
+
+	attrs := exp.GetSpans()[0].Attributes
+	toolsJSON, _ := json.Marshal(req.Tools)
+	if !hasAttr(attrs, AttrGenAIRequestTools, string(toolsJSON)) {
+		t.Errorf("span missing captured tools (regression of H12): %+v", attrs)
+	}
+	if !hasAttr(attrs, AttrGenAIRequestToolChoice, "auto") {
+		t.Errorf("span missing captured tool_choice: %+v", attrs)
 	}
 }
 

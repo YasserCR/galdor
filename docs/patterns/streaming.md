@@ -17,7 +17,7 @@ galdor exposes two separate streaming surfaces that work at different layers:
 | Layer | API | What flows |
 |---|---|---|
 | Provider | `provider.StreamReader` from `Provider.Stream(ctx, req)` | token deltas (`EventContentDelta`), the terminal `EventMessageStop` with usage |
-| Graph | `<-chan graph.Event[S]` from `Runnable.Stream(ctx, state, opts)` | one event per node hop (`NodeStarted`, `NodeFinished`), terminal `Finished` with the final state |
+| Graph | `<-chan graph.Event[S]` from `Runnable.StreamWith(ctx, state, opts)` (or `Stream(ctx, state)` without options) | one event per node hop (`EventNodeStart`, `EventNodeEnd`), terminal `EventRunEnd` with the final state |
 
 You can use either independently. To plumb LLM tokens **through** the graph to the consumer, you bridge them yourself inside the node body.
 
@@ -111,7 +111,7 @@ The outer caller:
 tokens := make(chan string, 64)
 state := State{Question: q, Tokens: tokens}
 
-events, _ := r.Stream(ctx, state, graph.RunOptions[State]{RunID: runID})
+events := r.StreamWith(ctx, state, graph.RunOptions[State]{RunID: runID})
 
 go func() {
 	for tok := range tokens {
@@ -119,10 +119,10 @@ go func() {
 	}
 }()
 for ev := range events {
-	switch ev.Kind {
-	case graph.EventNodeStarted:
+	switch ev.Type {
+	case graph.EventNodeStart:
 		writeMetadata("node", ev.Node, "started")
-	case graph.EventFinished:
+	case graph.EventRunEnd:
 		writeMetadata("done", ev.State.Answer)
 	}
 }

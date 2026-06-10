@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -85,6 +88,18 @@ func NewSQLiteExporter(path string, opts ...ExporterOption) (*SQLiteExporter, er
 	}
 	if cfg.checkpointInterval < 0 {
 		cfg.checkpointInterval = DefaultCheckpointInterval
+	}
+
+	// Ensure the parent directory exists. The documented default lives
+	// at ~/.galdor/traces.db, which doesn't exist on a fresh machine —
+	// without this, recording to the default path fails with a cryptic
+	// "unable to open database file (14)".
+	if !strings.HasPrefix(path, ":") {
+		if dir := filepath.Dir(path); dir != "" && dir != "." {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				return nil, fmt.Errorf("observability: create span store dir %q: %w", dir, err)
+			}
+		}
 	}
 
 	s, err := store.Open(context.Background(), path)

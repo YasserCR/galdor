@@ -8,12 +8,13 @@ concerns; pick what applies.
 ## Building one static binary
 
 ```bash
-CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o ./myagent ./cmd/myagent
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ./myagent ./cmd/myagent
 ```
 
-`CGO_ENABLED=1` is required by the SQLite-backed memory and
-trace stores; without either, `CGO_ENABLED=0` produces a fully
-static binary.
+No CGO is required. The SQLite-backed memory and trace stores use
+`modernc.org/sqlite`, a pure-Go driver (see ADR-009), so
+`CGO_ENABLED=0` produces a fully static, cross-compilable binary —
+the recommended build for containers and air-gapped targets.
 
 To bundle the `galdor` CLI alongside your agent app, ship the
 prebuilt CLI (`go install
@@ -285,7 +286,7 @@ stream.
 
 ## Quick CI checklist
 
-- [ ] `CGO_ENABLED=1 go build` produces a deployable binary.
+- [ ] `CGO_ENABLED=0 go build` produces a deployable static binary.
 - [ ] `govulncheck ./...` clean.
 - [ ] `gosec ./...` clean (or findings annotated).
 - [ ] Trace exporter pointed at a stable path or OTLP collector.

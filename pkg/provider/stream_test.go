@@ -96,6 +96,51 @@ func TestCollectStream_ToolCallsJoined(t *testing.T) {
 	}
 }
 
+// Regression for audit M9: streamed reasoning rides the terminal
+// MessageStop.Message as a thinking part (with signature). CollectStream
+// must preserve it — before the fix it read only StopReason/Usage/Model
+// and silently dropped the reasoning, the v0.6.0 headline capability.
+func TestCollectStream_PreservesReasoning(t *testing.T) {
+	t.Parallel()
+	r := &fakeStream{events: []Event{
+		{Type: EventMessageStart, Model: "test-model"},
+		{Type: EventContentDelta, ContentDelta: "The answer is 391."},
+		{Type: EventMessageStop, StopReason: schema.StopReasonEndTurn, Message: &schema.Message{
+			Role: schema.RoleAssistant,
+			Content: []schema.ContentPart{{
+				Type:      schema.ContentTypeThinking,
+				Text:      "17 * 23 = 391",
+				Signature: "sig-abc",
+			}},
+		}},
+	}}
+	resp, err := CollectStream(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The text answer is preserved unchanged.
+	if resp.Message.Text() != "The answer is 391." {
+		t.Errorf("Text = %q", resp.Message.Text())
+	}
+	// The thinking part survives, with its signature, ordered before text.
+	var think *schema.ContentPart
+	for i := range resp.Message.Content {
+		if resp.Message.Content[i].Type == schema.ContentTypeThinking {
+			think = &resp.Message.Content[i]
+			break
+		}
+	}
+	if think == nil {
+		t.Fatal("reasoning dropped by CollectStream (regression of M9)")
+	}
+	if think.Text != "17 * 23 = 391" || think.Signature != "sig-abc" {
+		t.Errorf("thinking part = %+v", *think)
+	}
+	if resp.Message.Content[0].Type != schema.ContentTypeThinking {
+		t.Error("thinking part should precede the text part")
+	}
+}
+
 func TestCollectStream_NilReader(t *testing.T) {
 	t.Parallel()
 	if _, err := CollectStream(context.Background(), nil); err == nil {

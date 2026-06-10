@@ -67,7 +67,7 @@ func LoadFromStore(ctx context.Context, dbPath, runID string) (Recording, error)
 	if runID == "" {
 		return Recording{}, errors.New("replay: runID is empty")
 	}
-	s, err := store.Open(ctx, dbPath)
+	s, err := store.OpenExisting(ctx, dbPath)
 	if err != nil {
 		return Recording{}, fmt.Errorf("replay: open store: %w", err)
 	}
@@ -136,12 +136,25 @@ func callFromSpan(sp store.Span) (RecordedCall, error) {
 			OutputTokens: intAttr(sp.Attributes, observability.AttrGenAIUsageOutputTokens),
 		},
 	}
-	return RecordedCall{
+	call := RecordedCall{
 		SpanID:   sp.SpanID,
 		Model:    stringAttr(sp.Attributes, observability.AttrGenAIRequestModel),
 		Prompt:   prompt,
 		Response: resp,
-	}, nil
+	}
+	// Tools + tool_choice are folded into the fingerprint, so a fixture
+	// for a tool-using agent must carry them back or it can never match
+	// a live run. Absent attributes leave the zero values, which match a
+	// live request that advertised no tools.
+	if toolsRaw := stringAttr(sp.Attributes, observability.AttrGenAIRequestTools); toolsRaw != "" {
+		if err := json.Unmarshal([]byte(toolsRaw), &call.Tools); err != nil {
+			return RecordedCall{}, fmt.Errorf("replay: decode tools for span %s: %w", sp.SpanID, err)
+		}
+	}
+	if tc := stringAttr(sp.Attributes, observability.AttrGenAIRequestToolChoice); tc != "" {
+		call.ToolChoice = provider.ToolChoice(tc)
+	}
+	return call, nil
 }
 
 // stringAttr safely fetches a string attribute by key. Returns ""

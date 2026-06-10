@@ -17,6 +17,7 @@ import (
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/replay"
 	"github.com/YasserCR/galdor/pkg/schema"
+	"github.com/YasserCR/galdor/pkg/tool"
 )
 
 // scriptedProvider returns a canned reply per Generate call, useful
@@ -503,5 +504,96 @@ func TestEndToEnd_RecordAndReplayThroughReAct(t *testing.T) {
 	}
 	if replayProv.Remaining() != 0 {
 		t.Errorf("Remaining = %d, want 0 (all recorded calls served)", replayProv.Remaining())
+	}
+}
+
+type weatherIn struct {
+	City string `json:"city" jsonschema:"required, city to look up"`
+}
+type weatherOut struct {
+	Sky string `json:"sky"`
+}
+
+// Regression for audit H12: record-then-replay must work for tool-using
+// agents — the flagship workflow. ReAct advertises its tool set on every
+// turn, and the fingerprint folds tools in, so before the fix the
+// recording (which never captured tools) could never match the live
+// request and replay failed with ErrPromptMismatch. This drives the full
+// record → export → LoadFromStore → replay loop WITH a tool registry.
+func TestEndToEnd_RecordAndReplayWithTools(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "traces.db")
+
+	exporter, err := observability.NewSQLiteExporter(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = exporter.Shutdown(ctx) }()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	defer func() { _ = tp.Shutdown(ctx) }()
+	tracer := tp.Tracer("test")
+
+	weather := tool.MustNewTool("weather", "Look up the weather",
+		func(_ context.Context, in weatherIn) (weatherOut, error) {
+			return weatherOut{Sky: "clear"}, nil
+		})
+	reg, err := tool.NewRegistry(weather)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	innerProvider := &scriptedProvider{Plan: []*provider.Response{{
+		Message:    schema.AssistantMessage("it is clear in Quito"),
+		StopReason: schema.StopReasonEndTurn,
+		Model:      "scripted-1",
+	}}}
+	instrumented := observability.InstrumentProvider(innerProvider, tracer, observability.WithCaptureContent(true))
+
+	r, err := agent.NewReAct(agent.Config{Provider: instrumented, Model: "scripted-1", Tools: reg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooks := observability.TraceHooks[agent.State](tracer)
+	const runID = "tool-run-1"
+	if _, err = r.InvokeWith(ctx,
+		agent.State{Messages: []schema.Message{schema.UserMessage("weather in Quito?")}},
+		graph.RunOptions[agent.State]{RunID: runID, Hooks: hooks},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if flushErr := tp.ForceFlush(ctx); flushErr != nil {
+		t.Fatal(flushErr)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	rec, err := replay.LoadFromStore(ctx, dbPath, runID)
+	if err != nil {
+		t.Fatalf("LoadFromStore: %v", err)
+	}
+	if len(rec.Calls) != 1 {
+		t.Fatalf("recorded calls = %d, want 1", len(rec.Calls))
+	}
+	if len(rec.Calls[0].Tools) != 1 || rec.Calls[0].Tools[0].Name != "weather" {
+		t.Fatalf("recorded call did not capture tools (regression of H12): %+v", rec.Calls[0].Tools)
+	}
+
+	// The decisive check: replay the SAME tool-using request. Before the
+	// fix this failed with ErrPromptMismatch because the recorded tools
+	// were empty.
+	replayProv := replay.NewProvider(rec.Calls, replay.ModeStrict)
+	r2, err := agent.NewReAct(agent.Config{Provider: replayProv, Model: "scripted-1", Tools: reg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final, err := r2.Invoke(ctx, agent.State{
+		Messages: []schema.Message{schema.UserMessage("weather in Quito?")},
+	})
+	if err != nil {
+		t.Fatalf("replay invoke (tool-using agent) failed: %v", err)
+	}
+	if final.FinalText != "it is clear in Quito" {
+		t.Errorf("replayed text = %q", final.FinalText)
 	}
 }

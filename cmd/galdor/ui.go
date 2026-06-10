@@ -31,7 +31,7 @@ func runUI(ctx context.Context, args []string, w io.Writer, errW io.Writer) int 
 		_, _ = fmt.Fprintf(errW, "ui: %v\n", err)
 		return 70
 	}
-	s, err := store.Open(ctx, path)
+	s, err := store.OpenExisting(ctx, path)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "ui: open %s: %v\n", path, err)
 		return 70

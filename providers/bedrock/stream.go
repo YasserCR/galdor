@@ -22,16 +22,9 @@ import (
 // MessageStop is deferred until after the Metadata event so the
 // terminal Event carries final Usage.
 func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.StreamReader, error) {
-	convIn, err := buildConverseInput(req)
+	in, err := buildConverseStreamInput(req)
 	if err != nil {
 		return nil, err
-	}
-	in := &bedrockruntime.ConverseStreamInput{
-		ModelId:         convIn.ModelId,
-		Messages:        convIn.Messages,
-		System:          convIn.System,
-		InferenceConfig: convIn.InferenceConfig,
-		ToolConfig:      convIn.ToolConfig,
 	}
 
 	out, err := p.client.ConverseStream(ctx, in)

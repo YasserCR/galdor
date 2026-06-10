@@ -109,8 +109,13 @@ func TestScryStats_UnknownBy(t *testing.T) {
 
 func TestScryStats_EmptyDB(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	db := dir + "/empty.db"
+	// Seed an existing but empty DB (a non-existent path now errors — M22).
+	db := t.TempDir() + "/empty.db"
+	s, err := store.Open(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
 	var out, errOut bytes.Buffer
 	if code := scry(context.Background(), []string{"stats", "--db", db, "--by", "provider"}, &out, &errOut); code != 0 {
 		t.Fatalf("code = %d, err = %s", code, errOut.String())

@@ -328,6 +328,14 @@ func layeredPositions(s Spec) [][]string {
 		adj[e.From] = append(adj[e.From], e.To)
 	}
 
+	// maxDepth bounds the longest-path relaxation below. On an acyclic
+	// graph the longest simple path visits each distinct node at most
+	// once, so no legitimate depth can exceed the node count. A static
+	// cycle (ReAct's tools->model, Plan-Execute's execute->replan->execute
+	// are both cyclic) would otherwise relax depths upward forever and
+	// hang the renderer; clamping at maxDepth guarantees the BFS
+	// terminates while leaving acyclic layouts unchanged.
+	maxDepth := len(s.Nodes) + 2 // every registered node + START + END
 	depth := map[string]int{START: 0}
 	queue := []string{START}
 	for len(queue) > 0 {
@@ -335,6 +343,11 @@ func layeredPositions(s Spec) [][]string {
 		queue = queue[1:]
 		for _, next := range adj[cur] {
 			d := depth[cur] + 1
+			if d > maxDepth {
+				// Depth past the node count can only come from a cycle
+				// inflating it; stop relaxing along this path.
+				continue
+			}
 			if existing, seen := depth[next]; !seen || d > existing {
 				depth[next] = d
 				queue = append(queue, next)

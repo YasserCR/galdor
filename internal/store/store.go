@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -119,6 +121,28 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// OpenExisting opens a span store that must already exist. Unlike Open,
+// it does not create a missing database — a mistyped --db / $GALDOR_DB
+// surfaces as a clear error instead of a silently-created empty DB that
+// then reports "no runs recorded". In-memory paths pass through to Open.
+//
+// Use this on the read side (CLI inspection, dashboard, replay loading);
+// the exporter still uses Open to create the store on first write.
+func OpenExisting(ctx context.Context, path string) (*Store, error) {
+	if path == "" {
+		return nil, errors.New("store: empty path")
+	}
+	if !strings.HasPrefix(path, ":") {
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, fmt.Errorf("store: database %q does not exist (check --db or $GALDOR_DB)", path)
+			}
+			return nil, fmt.Errorf("store: stat %q: %w", path, err)
+		}
+	}
+	return Open(ctx, path)
 }
 
 // Close releases the underlying DB handle. Safe to call multiple times.

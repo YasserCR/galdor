@@ -259,3 +259,19 @@ func TestSQLiteExporter_CheckpointDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Regression for audit M22: the documented default lives at
+// ~/.galdor/traces.db, whose parent dir doesn't exist on a fresh
+// machine. NewSQLiteExporter must create the missing parent dir rather
+// than fail with a cryptic "unable to open database file (14)".
+func TestNewSQLiteExporter_CreatesMissingParentDir(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "deeper", "traces.db")
+	exp, err := NewSQLiteExporter(path)
+	if err != nil {
+		t.Fatalf("exporter should create the missing parent dir, got: %v", err)
+	}
+	defer func() { _ = exp.Shutdown(context.Background()) }()
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("db not created at %s: %v", path, err)
+	}
+}

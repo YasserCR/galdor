@@ -117,6 +117,7 @@ func CollectStream(ctx context.Context, r StreamReader) (*Response, error) {
 		stopReason schema.StopReason
 		usage      schema.Usage
 		model      string
+		thinking   []schema.ContentPart
 	)
 
 	for {
@@ -163,12 +164,28 @@ func CollectStream(ctx context.Context, r StreamReader) (*Response, error) {
 			if ev.Model != "" {
 				model = ev.Model
 			}
+			// Streamed reasoning rides the terminal Message as thinking
+			// part(s) carrying the signature; the content deltas carry
+			// only the answer text. Preserve them so CollectStream — the
+			// canonical bridge to non-streaming consumers — doesn't
+			// silently drop the model's reasoning (v0.6.0's headline
+			// capability).
+			if ev.Message != nil {
+				for _, part := range ev.Message.Content {
+					if part.Type == schema.ContentTypeThinking {
+						thinking = append(thinking, part)
+					}
+				}
+			}
 		}
 	}
 
 	msg := schema.Message{Role: schema.RoleAssistant}
+	// Thinking parts precede the text answer, matching how providers
+	// order an assistant turn that carries both.
+	msg.Content = append(msg.Content, thinking...)
 	if s := text.String(); s != "" {
-		msg.Content = []schema.ContentPart{schema.TextPart(s)}
+		msg.Content = append(msg.Content, schema.TextPart(s))
 	}
 	for _, id := range toolOrder {
 		tb := toolByID[id]

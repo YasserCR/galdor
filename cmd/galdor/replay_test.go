@@ -115,6 +115,25 @@ func TestScryReplay_WritesFixture(t *testing.T) {
 	}
 }
 
+// Regression for audit H14: the README/usage document
+// `scry replay <run-id> -o fixture.json` (run-id first, flags after).
+// stdlib flag stopped at the run-id, so this exact form previously
+// failed with exit 64. It must now work.
+func TestScryReplay_FlagsAfterRunID(t *testing.T) {
+	t.Parallel()
+	db := seedReplayDB(t, "rec-3", true)
+	fixture := filepath.Join(t.TempDir(), "fixture.json")
+	var out, errOut bytes.Buffer
+	// run-id first, then -o and --db — exactly the documented shape.
+	code := scry(context.Background(), []string{"replay", "rec-3", "-o", fixture, "--db", db}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("code = %d, errOut = %q (flags after run-id dropped — regression of H14)", code, errOut.String())
+	}
+	if _, err := os.Stat(fixture); err != nil {
+		t.Fatalf("fixture not written: %v", err)
+	}
+}
+
 func TestScryReplay_MissingContent(t *testing.T) {
 	t.Parallel()
 	db := seedReplayDB(t, "rec-3", false) // no captured content

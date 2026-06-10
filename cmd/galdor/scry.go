@@ -80,7 +80,7 @@ func scryList(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 		_, _ = fmt.Fprintf(errW, "scry: %v\n", err)
 		return 70
 	}
-	s, err := store.Open(ctx, path)
+	s, err := store.OpenExisting(ctx, path)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "scry: open %s: %v\n", path, err)
 		return 70
@@ -110,22 +110,18 @@ func scryShow(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 	fs.SetOutput(errW)
 	db := fs.String("db", "", "path to the span store")
 	format := fs.String("format", "tree", "tree or json")
-	if err := fs.Parse(args); err != nil {
+	runID, err := parseRunIDArg(fs, args)
+	if err != nil {
+		_, _ = fmt.Fprintf(errW, "scry: %v\n", err)
 		return 64
 	}
-	rest := fs.Args()
-	if len(rest) == 0 {
-		_, _ = fmt.Fprintln(errW, "scry: missing <run-id> argument")
-		return 64
-	}
-	runID := rest[0]
 
 	path, err := resolveDBPath(*db)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "scry: %v\n", err)
 		return 70
 	}
-	s, err := store.Open(ctx, path)
+	s, err := store.OpenExisting(ctx, path)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "scry: open %s: %v\n", path, err)
 		return 70
@@ -151,6 +147,33 @@ func scryShow(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 		renderSpanTree(w, runID, spans)
 		return 0
 	}
+}
+
+// parseRunIDArg parses a subcommand that takes exactly one <run-id>
+// positional plus flags. stdlib flag stops parsing at the first non-flag
+// token, so flags placed AFTER the run-id — the shape the usage strings
+// document, e.g. `scry show <run-id> --db PATH` — would otherwise be
+// silently dropped, and the command would quietly read the WRONG
+// database. We pull out the run-id, then re-parse the remainder so flags
+// on either side of it are honored.
+func parseRunIDArg(fs *flag.FlagSet, args []string) (string, error) {
+	if err := fs.Parse(args); err != nil {
+		return "", err
+	}
+	rest := fs.Args()
+	if len(rest) == 0 {
+		return "", fmt.Errorf("missing <run-id> argument")
+	}
+	runID := rest[0]
+	if len(rest) > 1 {
+		if err := fs.Parse(rest[1:]); err != nil {
+			return "", err
+		}
+		if extra := fs.Args(); len(extra) > 0 {
+			return "", fmt.Errorf("unexpected extra arguments: %v", extra)
+		}
+	}
+	return runID, nil
 }
 
 // resolveDBPath picks the database path: explicit flag, then env

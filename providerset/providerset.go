@@ -141,7 +141,7 @@ func FromEnv() (provider.Provider, error) {
 		if err != nil {
 			return nil, fmt.Errorf("providerset: invalid LLM_HTTP_TIMEOUT: %w", err)
 		}
-		cfg.HTTPClient = &http.Client{Timeout: d}
+		cfg.HTTPClient = streamSafeHTTPClient(d)
 	}
 
 	return New(cfg)

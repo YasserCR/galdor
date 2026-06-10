@@ -92,9 +92,7 @@ func (i *instrumentedProvider) Generate(ctx context.Context, req provider.Reques
 		span.SetAttributes(attribute.String(AttrGaldorSpanLabel, label))
 	}
 	if i.opts.captureContent {
-		if v := encodeMessages(req.Messages); v != "" {
-			span.SetAttributes(attribute.String(AttrGenAIPrompt, v))
-		}
+		captureRequestContent(span, req)
 	}
 	defer func() {
 		if err != nil {
@@ -137,9 +135,7 @@ func (i *instrumentedProvider) Stream(ctx context.Context, req provider.Request)
 		span.SetAttributes(attribute.String(AttrGaldorSpanLabel, label))
 	}
 	if i.opts.captureContent {
-		if v := encodeMessages(req.Messages); v != "" {
-			span.SetAttributes(attribute.String(AttrGenAIPrompt, v))
-		}
+		captureRequestContent(span, req)
 	}
 	reader, err := i.inner.Stream(ctx, req)
 	if err != nil {
@@ -290,6 +286,37 @@ func encodeMessages(msgs []schema.Message) string {
 		return ""
 	}
 	b, err := json.Marshal(msgs)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// captureRequestContent records the request-side fingerprint surface
+// (prompt + tools + tool_choice) on the span. The tool fields matter for
+// replay: the fingerprint folds them in, so a recorded fixture must carry
+// them or it can never match a live tool-using request. Gated by the
+// caller on WithCaptureContent.
+func captureRequestContent(span trace.Span, req provider.Request) {
+	if v := encodeMessages(req.Messages); v != "" {
+		span.SetAttributes(attribute.String(AttrGenAIPrompt, v))
+	}
+	if v := encodeTools(req.Tools); v != "" {
+		span.SetAttributes(attribute.String(AttrGenAIRequestTools, v))
+	}
+	if req.ToolChoice != "" {
+		span.SetAttributes(attribute.String(AttrGenAIRequestToolChoice, string(req.ToolChoice)))
+	}
+}
+
+// encodeTools marshals the request's tool set to JSON. The same value the
+// replay fingerprint marshals, so the capture round-trips exactly. Empty
+// input returns "" so no attribute is emitted for tool-less requests.
+func encodeTools(tools []schema.ToolDef) string {
+	if len(tools) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(tools)
 	if err != nil {
 		return ""
 	}

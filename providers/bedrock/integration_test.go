@@ -136,3 +136,58 @@ func TestIntegration_Stream(t *testing.T) {
 		t.Errorf("stream invariants: start=%v stop=%v chunks=%d", sawStart, sawStop, chunks)
 	}
 }
+
+// TestIntegration_StreamReasoning is the end-to-end confirmation of audit
+// C2: a streamed request with Reasoning.Enabled must actually produce a
+// reasoning (thinking) block. Before the fix, ConverseStreamInput dropped
+// AdditionalModelRequestFields, so reasoning_config never reached Bedrock
+// and no thinking block was streamed.
+//
+// Opt-in and separate from the default model because it needs an
+// extended-thinking-capable model and burns more tokens:
+//
+//	export BEDROCK_TEST_REASONING_MODEL_ID=us.anthropic.claude-3-7-sonnet-20250219-v1:0
+//	go test -tags=integration -run TestIntegration_StreamReasoning ./providers/bedrock/...
+func TestIntegration_StreamReasoning(t *testing.T) {
+	model := os.Getenv("BEDROCK_TEST_REASONING_MODEL_ID")
+	if model == "" {
+		t.Skip("BEDROCK_TEST_REASONING_MODEL_ID not set; skipping reasoning-stream confirmation")
+	}
+	p, _ := newIntegrationProvider(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	stream, err := p.Stream(ctx, provider.Request{
+		Model:     model,
+		Reasoning: &provider.ReasoningConfig{Enabled: true, Budget: 1024},
+		Messages: []schema.Message{
+			schema.UserMessage("What is 17 * 23? Think step by step, then give the number."),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	defer stream.Close()
+
+	var thinking string
+	for {
+		ev, err := stream.Recv(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Recv: %v", err)
+		}
+		if ev.Type == provider.EventMessageStop && ev.Message != nil {
+			for _, part := range ev.Message.Content {
+				if part.Type == schema.ContentTypeThinking {
+					thinking = part.Text
+				}
+			}
+		}
+	}
+	if thinking == "" {
+		t.Fatal("no reasoning block in the streamed response (regression of C2: reasoning_config dropped on the stream path)")
+	}
+	t.Logf("streamed reasoning (%d chars): %.80q...", len(thinking), thinking)
+}

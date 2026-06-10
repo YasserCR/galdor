@@ -26,7 +26,7 @@ func scryStats(ctx context.Context, args []string, w io.Writer, errW io.Writer) 
 		_, _ = fmt.Fprintf(errW, "scry: %v\n", err)
 		return 70
 	}
-	s, err := store.Open(ctx, path)
+	s, err := store.OpenExisting(ctx, path)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "scry: open %s: %v\n", path, err)
 		return 70

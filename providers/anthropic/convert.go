@@ -153,13 +153,21 @@ func partsToWire(parts []schema.ContentPart, cc *schema.CacheControl) ([]wireCon
 			}
 			out = append(out, wireContentBlock{Type: "image", Source: src})
 		case schema.ContentTypeThinking:
-			// Reasoning parts are model output. Anthropic does accept
-			// thinking blocks back (with their signature) for extended-
-			// thinking continuations, but resending one without a valid
-			// signature is rejected — so for now we skip them. This
-			// keeps a captured assistant turn safe to feed back; native
-			// thinking round-trip is a separate, later step.
-			continue
+			// Anthropic requires the signed thinking block echoed back in
+			// the assistant turn that carries tool_use when extended
+			// thinking is on, or it rejects the follow-up request — so a
+			// Reasoning+tools loop can't complete without round-tripping
+			// it. Resend it whenever we have the signature; skip unsigned
+			// reasoning (resending it without a valid signature is
+			// rejected, and it carries no continuation value).
+			if p.Signature == "" {
+				continue
+			}
+			out = append(out, wireContentBlock{
+				Type:      "thinking",
+				Thinking:  p.Text,
+				Signature: p.Signature,
+			})
 		default:
 			return nil, fmt.Errorf("%w: unsupported content type %q", provider.ErrInvalidRequest, p.Type)
 		}
