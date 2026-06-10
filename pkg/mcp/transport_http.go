@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -110,6 +111,29 @@ func (t *streamableHTTPTransport) listen() {
 	}()
 }
 
+// originAllowed implements the spec's DNS-rebinding protection: a browser
+// includes an Origin header on cross-site fetches, so a request whose
+// Origin resolves to anything other than loopback is rejected. Requests
+// with no Origin (ordinary non-browser MCP clients) are allowed.
+func originAllowed(r *http.Request) bool {
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return true
+	}
+	u, err := url.Parse(o)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
+}
+
 // Addr returns the bound network address. Useful in tests passing ":0".
 func (t *streamableHTTPTransport) Addr() string { return t.addr }
 
@@ -124,6 +148,13 @@ func (t *streamableHTTPTransport) StartError() error {
 }
 
 func (t *streamableHTTPTransport) handle(w http.ResponseWriter, r *http.Request) {
+	// DNS-rebinding guard (per the MCP spec): a browser attaches an
+	// Origin header on cross-site requests, so reject any Origin that
+	// isn't loopback. Non-browser MCP clients send no Origin and pass.
+	if !originAllowed(r) {
+		http.Error(w, "forbidden origin", http.StatusForbidden)
+		return
+	}
 	switch r.Method {
 	case http.MethodPost:
 		t.handlePost(w, r)
@@ -173,8 +204,12 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 	t.mu.Lock()
 	have := t.sessionID
 	t.mu.Unlock()
-	if have != "" && sid != "" && sid != have {
-		http.Error(w, "unknown session", http.StatusNotFound)
+	// Once a session id has been assigned, every non-initialize request
+	// must echo it exactly — including not omitting it. The old check
+	// skipped validation when the header was absent, so any request
+	// without the header bypassed the session entirely.
+	if have != "" && probe.Method != MethodInitialize && sid != have {
+		http.Error(w, "missing or unknown session id", http.StatusNotFound)
 		return
 	}
 
@@ -185,6 +220,29 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 		body:  body,
 		reply: make(chan []byte, 1),
 		ctx:   r.Context(),
+	}
+
+	// Register the pending request (requests only) BEFORE handing off, so
+	// the check-and-insert is atomic: two concurrent POSTs reusing one
+	// JSON-RPC id can't clobber each other's reply slot — the second is
+	// rejected rather than orphaning the first.
+	if !isNotification {
+		t.mu.Lock()
+		if _, dup := t.pending[req.id]; dup {
+			t.mu.Unlock()
+			http.Error(w, "duplicate in-flight request id", http.StatusConflict)
+			return
+		}
+		t.pending[req.id] = &req
+		t.mu.Unlock()
+		// Clean the slot up on every return path below (handoff failure,
+		// cancellation, or after the reply lands), so a request that
+		// gives up never leaks its pending entry.
+		defer func() {
+			t.mu.Lock()
+			delete(t.pending, req.id)
+			t.mu.Unlock()
+		}()
 	}
 
 	// Hand off to Recv.
@@ -205,15 +263,6 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
-
-	// Ensure the pending entry is removed once this handler returns,
-	// even if it gives up (timeout/cancel) before Send arrives — Send
-	// looks the entry up by id and a leftover would leak the slot.
-	defer func() {
-		t.mu.Lock()
-		delete(t.pending, req.id)
-		t.mu.Unlock()
-	}()
 
 	// Wait for exactly one reply from Send.
 	select {
@@ -247,19 +296,11 @@ func (t *streamableHTTPTransport) handlePost(w http.ResponseWriter, r *http.Requ
 // (non-empty id), registers its reply channel keyed by id so the
 // matching Send can fulfil it. Returns io.EOF on close.
 func (t *streamableHTTPTransport) Recv(ctx context.Context) ([]byte, error) {
-	register := func(req httpRequest) {
-		if req.id == "" {
-			// Notification: no reply will be sent, nothing to track.
-			return
-		}
-		r := req
-		t.mu.Lock()
-		t.pending[req.id] = &r
-		t.mu.Unlock()
-	}
+	// Pending registration happens in handlePost (atomically, before the
+	// handoff) so duplicate in-flight ids are rejected; Recv just pops the
+	// next body off the queue.
 	select {
 	case req := <-t.incoming:
-		register(req)
 		return req.body, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -267,7 +308,6 @@ func (t *streamableHTTPTransport) Recv(ctx context.Context) ([]byte, error) {
 		// Drain any in-flight request first.
 		select {
 		case req := <-t.incoming:
-			register(req)
 			return req.body, nil
 		default:
 		}

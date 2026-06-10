@@ -88,23 +88,68 @@ func (o HTTPGetOptions) normalize() httpGetConfig {
 		maxBytes:  o.MaxBytes,
 		allowHTTP: o.AllowHTTP,
 	}
-	if c.client == nil {
-		timeout := o.Timeout
-		if timeout == 0 {
-			timeout = 10 * time.Second
-		}
-		c.client = &http.Client{Timeout: timeout}
-	}
 	if c.maxBytes <= 0 {
 		c.maxBytes = 1 << 20 // 1 MiB
 	}
 	if len(o.AllowedHosts) > 0 {
 		c.allowedHosts = make(map[string]struct{}, len(o.AllowedHosts))
 		for _, h := range o.AllowedHosts {
-			c.allowedHosts[strings.ToLower(strings.TrimSpace(h))] = struct{}{}
+			// Normalize entries to a portless hostname so the stored key
+			// matches the request-host comparison below — an entry with a
+			// port could otherwise never match.
+			c.allowedHosts[hostKey(h)] = struct{}{}
+		}
+	}
+	if c.client == nil {
+		timeout := o.Timeout
+		if timeout == 0 {
+			timeout = 10 * time.Second
+		}
+		allowed := c.allowedHosts
+		allowHTTP := c.allowHTTP
+		c.client = &http.Client{
+			Timeout: timeout,
+			// Re-validate scheme + host on EVERY redirect hop. The initial
+			// allowlist check is otherwise bypassed by a redirect to an
+			// un-vetted host (SSRF).
+			CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+				return validateURL(req.URL, allowHTTP, allowed)
+			},
 		}
 	}
 	return c
+}
+
+// hostKey normalizes a host or allowlist entry to a lowercase, portless
+// hostname for comparison.
+func hostKey(host string) string {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if i := strings.IndexByte(h, ':'); i >= 0 {
+		h = h[:i]
+	}
+	return h
+}
+
+// validateURL enforces the scheme rule and the host allowlist. It is used
+// both for the initial request and (via CheckRedirect) every redirect hop.
+func validateURL(u *url.URL, allowHTTP bool, allowed map[string]struct{}) error {
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		// always allowed
+	case "http":
+		if !allowHTTP {
+			return fmt.Errorf("http_get: refusing plain http; pass AllowHTTP=true to opt in")
+		}
+	default:
+		return fmt.Errorf("http_get: unsupported scheme %q", u.Scheme)
+	}
+	if allowed != nil {
+		h := strings.ToLower(u.Hostname())
+		if _, ok := allowed[h]; !ok {
+			return fmt.Errorf("%w: %q", ErrHostNotAllowed, h)
+		}
+	}
+	return nil
 }
 
 // ErrHostNotAllowed is returned when the requested URL's host is not
@@ -116,25 +161,8 @@ func (c httpGetConfig) run(ctx context.Context, in HTTPGetIn) (HTTPGetOut, error
 	if err != nil {
 		return HTTPGetOut{}, fmt.Errorf("http_get: invalid URL: %w", err)
 	}
-	switch strings.ToLower(u.Scheme) {
-	case "https":
-		// always allowed
-	case "http":
-		if !c.allowHTTP {
-			return HTTPGetOut{}, fmt.Errorf("http_get: refusing plain http; pass AllowHTTP=true to opt in")
-		}
-	default:
-		return HTTPGetOut{}, fmt.Errorf("http_get: unsupported scheme %q", u.Scheme)
-	}
-	if c.allowedHosts != nil {
-		host := strings.ToLower(u.Host)
-		// Strip any port for comparison.
-		if i := strings.IndexByte(host, ':'); i >= 0 {
-			host = host[:i]
-		}
-		if _, ok := c.allowedHosts[host]; !ok {
-			return HTTPGetOut{}, fmt.Errorf("%w: %q", ErrHostNotAllowed, host)
-		}
+	if verr := validateURL(u, c.allowHTTP, c.allowedHosts); verr != nil {
+		return HTTPGetOut{}, verr
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)

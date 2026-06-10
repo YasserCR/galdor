@@ -89,30 +89,36 @@ func (t *stdioTransport) Send(ctx context.Context, msg any) error {
 // (os.Stdin), the read won't unblock on ctx cancellation. Callers
 // that need hard deadlines should wrap r in something that does.
 func (t *stdioTransport) Recv(ctx context.Context) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	line, err := t.readFrame()
-	if err != nil {
-		if errors.Is(err, io.EOF) && len(line) == 0 {
-			return nil, io.EOF
+	// Loop (not recurse) over blank lines: a peer streaming newlines must
+	// not grow the goroutine stack one frame per blank line — that path
+	// overflowed the stack (an unrecoverable abort) under a hostile or
+	// chatty peer.
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-		if errors.Is(err, io.EOF) {
-			// Last line had no trailing newline; treat it as a valid frame.
-			return line, nil
+		line, err := t.readFrame()
+		if err != nil {
+			if errors.Is(err, io.EOF) && len(line) == 0 {
+				return nil, io.EOF
+			}
+			if errors.Is(err, io.EOF) {
+				// Last line had no trailing newline; treat it as a valid frame.
+				return line, nil
+			}
+			return nil, fmt.Errorf("mcp: read frame: %w", err)
 		}
-		return nil, fmt.Errorf("mcp: read frame: %w", err)
+		// Trim trailing newline (and \r if running against Windows pipes).
+		for len(line) > 0 && (line[len(line)-1] == '\n' || line[len(line)-1] == '\r') {
+			line = line[:len(line)-1]
+		}
+		if len(line) == 0 {
+			// Empty line — skip it. Most MCP servers don't emit blank
+			// lines but a few do for human readability.
+			continue
+		}
+		return line, nil
 	}
-	// Trim trailing newline (and \r if running against Windows pipes).
-	for len(line) > 0 && (line[len(line)-1] == '\n' || line[len(line)-1] == '\r') {
-		line = line[:len(line)-1]
-	}
-	if len(line) == 0 {
-		// Empty line — recurse to skip it. Most MCP servers don't
-		// emit blank lines but a few do for human readability.
-		return t.Recv(ctx)
-	}
-	return line, nil
 }
 
 // readFrame reads a single newline-delimited frame from the buffered

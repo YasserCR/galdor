@@ -68,6 +68,13 @@ func buildRequest(req provider.Request, stream bool) (*chatRequest, error) {
 			effort = string(provider.ReasoningEffortMedium)
 		}
 		out.ReasoningEffort = effort
+		// o-series reasoning models reject max_tokens (use
+		// max_completion_tokens) and reject temperature / top_p. Move and
+		// drop them so the request is accepted.
+		out.MaxCompletionTokens = out.MaxTokens
+		out.MaxTokens = nil
+		out.Temperature = nil
+		out.TopP = nil
 	}
 
 	if uid, ok := req.Metadata["user_id"]; ok && uid != "" {

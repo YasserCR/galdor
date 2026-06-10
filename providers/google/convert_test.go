@@ -405,3 +405,22 @@ func TestResponseFromWire_SurfacesThought(t *testing.T) {
 		t.Errorf("thinking parts = %v, want [step-by-step reasoning]", thinks)
 	}
 }
+
+// Regression for audit M4: multiple system messages must all be sent to
+// Gemini, not collapsed to the last one.
+func TestBuildRequest_AppendsMultipleSystemMessages(t *testing.T) {
+	wire, err := buildRequest(provider.Request{
+		Model: "gemini-x",
+		Messages: []schema.Message{
+			schema.SystemMessage("first"),
+			schema.SystemMessage("second"),
+			schema.UserMessage("hi"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wire.SystemInstruction == nil || len(wire.SystemInstruction.Parts) != 2 {
+		t.Fatalf("both system messages must be preserved (regression of M4), got %+v", wire.SystemInstruction)
+	}
+}

@@ -103,7 +103,7 @@ func TestStreamRuns_HeartbeatWithoutData(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	// Drain after 3 iterations so the test isn't open-ended.
-	req := httptest.NewRequest(http.MethodGet, "/api/stream/runs?interval=10ms&_max-iterations=3", nil)
+	req := loopbackReq(http.MethodGet, "/api/stream/runs?interval=10ms&_max-iterations=3", nil)
 	srv.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
@@ -180,7 +180,7 @@ func TestRunPage_RendersTimelineSVG(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-happy", nil))
 	body := rec.Body.String()
 	for _, want := range []string{`<svg `, `class="bar`, `class="timeline"`} {
 		if !strings.Contains(body, want) {
@@ -193,7 +193,7 @@ func TestStaticLiveJS(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/live.js", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/static/live.js", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}

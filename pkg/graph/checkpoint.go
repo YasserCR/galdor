@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/gob"
 	"errors"
+	"fmt"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -110,7 +112,11 @@ type MemoryCheckpointer[S any] struct {
 // is deep-copied (see cloneState) so a later node mutating shared slices
 // or maps cannot corrupt this already-saved checkpoint.
 func (m *MemoryCheckpointer[S]) Save(_ context.Context, ck Checkpoint[S]) error {
-	ck.State = cloneState(ck.State)
+	cloned, err := cloneState(ck.State)
+	if err != nil {
+		return err
+	}
+	ck.State = cloned
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.history[ck.RunID] = append(m.history[ck.RunID], ck)
@@ -126,24 +132,56 @@ type Cloner[S any] interface {
 }
 
 // cloneState returns an independent deep copy of s for safe checkpoint
-// storage. It prefers an explicit Clone() (Cloner), falls back to a gob
-// round-trip for ordinary exported-field structs, and finally returns s
-// unchanged when the type is not gob-serializable (funcs, channels, no
-// exported fields) — preserving prior behavior rather than failing the
-// run. Types in the last bucket should implement Cloner to be safe.
-func cloneState[S any](s S) S {
+// storage. It prefers an explicit Clone() (Cloner) and otherwise uses a
+// gob round-trip. Unlike a silent best-effort, it returns an error when
+// the state cannot be faithfully copied — a gob round-trip silently drops
+// unexported fields, and a non-gob-serializable type (funcs, channels)
+// would otherwise be aliased rather than copied. Both cases corrupt a
+// checkpoint without warning, so they are surfaced and the caller is
+// directed to implement Cloner.
+func cloneState[S any](s S) (S, error) {
+	var out S
 	if c, ok := any(s).(Cloner[S]); ok {
-		return c.Clone()
+		return c.Clone(), nil
+	}
+	// gob silently DROPS unexported, func and channel fields WITHOUT an
+	// encode error, so reflection is the only way to catch that data
+	// loss. Types that handle their own gob encoding (e.g. time.Time)
+	// are exempt.
+	if _, ok := any(s).(gob.GobEncoder); !ok && hasGobUnsafeFields(reflect.TypeOf(s)) {
+		return out, fmt.Errorf("graph: checkpoint state %T has fields a gob copy would silently drop (unexported, func or channel); implement graph.Cloner[%T]", s, s)
 	}
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(s); err != nil {
-		return s
+		return out, fmt.Errorf("graph: checkpoint state %T is not gob-serializable; implement graph.Cloner[%T]: %w", s, s, err)
 	}
-	var out S
 	if err := gob.NewDecoder(&buf).Decode(&out); err != nil {
-		return s
+		return out, fmt.Errorf("graph: checkpoint decode %T: %w", s, err)
 	}
-	return out
+	return out, nil
+}
+
+// hasGobUnsafeFields reports whether t (a struct, or pointer to one) has
+// any field a gob round-trip would silently drop: unexported fields, or
+// func/channel fields. These produce no encode error but lose data.
+func hasGobUnsafeFields(t reflect.Type) bool {
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil || t.Kind() != reflect.Struct {
+		return false
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			return true
+		}
+		switch f.Type.Kind() {
+		case reflect.Func, reflect.Chan:
+			return true
+		}
+	}
+	return false
 }
 
 // Load returns the most recent Checkpoint for runID.

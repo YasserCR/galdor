@@ -56,6 +56,10 @@ func (s *Server) Serve(ctx context.Context, t Transport) error {
 		initialized bool
 		wg          sync.WaitGroup
 	)
+	// Bound concurrent in-flight dispatches so a peer can't flood the
+	// server into spawning unbounded goroutines. A full semaphore applies
+	// backpressure: the loop blocks before reading the next frame.
+	sem := make(chan struct{}, maxConcurrentDispatch)
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -65,7 +69,10 @@ func (s *Server) Serve(ctx context.Context, t Transport) error {
 		frame, err := t.Recv(ctx)
 		if errors.Is(err, io.EOF) {
 			wg.Wait()
-			return nil
+			// A listener that failed to bind closes immediately, surfacing
+			// here as EOF; report the real bind error instead of a silent
+			// clean exit.
+			return startError(t)
 		}
 		if err != nil {
 			wg.Wait()
@@ -97,9 +104,18 @@ func (s *Server) Serve(ctx context.Context, t Transport) error {
 			continue
 		}
 
+		// Acquire a dispatch slot (blocks when maxConcurrentDispatch are
+		// already running — backpressure rather than unbounded growth).
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return nil
+		}
 		wg.Add(1)
 		go func(req rpcMessage) {
 			defer wg.Done()
+			defer func() { <-sem }()
 			reply := s.dispatchSafe(ctx, req)
 			if err := t.Send(ctx, reply); err != nil {
 				// Best-effort: nothing we can do if the peer's
@@ -108,6 +124,19 @@ func (s *Server) Serve(ctx context.Context, t Transport) error {
 			}
 		}(msg)
 	}
+}
+
+// maxConcurrentDispatch bounds how many requests a single Server.Serve
+// loop will handle concurrently, capping goroutine growth under a flood.
+const maxConcurrentDispatch = 64
+
+// startError returns a transport's listener bind error when it exposes
+// one, so Serve can report a failed bind instead of a silent nil.
+func startError(t Transport) error {
+	if se, ok := t.(interface{ StartError() error }); ok {
+		return se.StartError()
+	}
+	return nil
 }
 
 // dispatchSafe runs dispatch with panic recovery so a misbehaving

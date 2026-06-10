@@ -159,6 +159,35 @@ func (c fileReadConfig) resolvePath(p string) (string, error) {
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return "", fmt.Errorf("%w: %q", ErrPathEscape, p)
 		}
+		// Lexical containment is not enough: an intermediate symlink
+		// directory inside BaseDir can point outside it (e.g. "link/x"
+		// where "link" -> /etc). Resolve symlinks and re-check the REAL
+		// path against the REAL base so such escapes are rejected.
+		if err := c.checkRealContainment(resolved); err != nil {
+			return "", err
+		}
 	}
 	return resolved, nil
+}
+
+// checkRealContainment resolves symlinks in `resolved` and verifies the
+// real target still lives inside the (also symlink-resolved) BaseDir. A
+// path that can't be fully resolved (a missing component) can't escape,
+// so it's allowed through — the subsequent open fails normally.
+func (c fileReadConfig) checkRealContainment(resolved string) error {
+	realBase, err := filepath.EvalSymlinks(c.baseDir)
+	if err != nil {
+		realBase = c.baseDir
+	}
+	realPath, err := filepath.EvalSymlinks(resolved)
+	if err != nil {
+		// A path that can't be fully resolved can't escape; let the
+		// subsequent open fail normally.
+		return nil //nolint:nilerr // intentional: unresolvable path is not an escape
+	}
+	rel, err := filepath.Rel(realBase, realPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%w: %q (symlink escapes base)", ErrPathEscape, resolved)
+	}
+	return nil
 }

@@ -22,6 +22,9 @@ import (
 // MessageStop is deferred until after the Metadata event so the
 // terminal Event carries final Usage.
 func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.StreamReader, error) {
+	if err := p.Capabilities().ValidateRequest(req); err != nil {
+		return nil, err
+	}
 	in, err := buildConverseStreamInput(req)
 	if err != nil {
 		return nil, err

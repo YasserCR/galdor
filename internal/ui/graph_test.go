@@ -13,7 +13,7 @@ import (
 func TestHandleGraphPage_RendersHTML(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/graph", nil)
+	req := loopbackReq(http.MethodGet, "/graph", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -43,7 +43,7 @@ func TestHandleGraphSVG_RendersFromSpec(t *testing.T) {
 		],
 		"conditional_edges": [{"from": "model"}]
 	}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/graph/svg", bytes.NewReader(body))
+	req := loopbackReq(http.MethodPost, "/api/graph/svg", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -67,7 +67,7 @@ func TestHandleGraphSVG_RendersFromSpec(t *testing.T) {
 func TestHandleGraphSVG_EmptyBodyReturns400SVG(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
-	req := httptest.NewRequest(http.MethodPost, "/api/graph/svg", strings.NewReader(""))
+	req := loopbackReq(http.MethodPost, "/api/graph/svg", strings.NewReader(""))
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -85,7 +85,7 @@ func TestHandleGraphSVG_EmptyBodyReturns400SVG(t *testing.T) {
 func TestHandleGraphSVG_MalformedJSONReturns400(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
-	req := httptest.NewRequest(http.MethodPost, "/api/graph/svg", strings.NewReader("{not json"))
+	req := loopbackReq(http.MethodPost, "/api/graph/svg", strings.NewReader("{not json"))
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -103,7 +103,7 @@ func TestHandleGraphSVG_OversizedBodyRejected(t *testing.T) {
 	// A body larger than maxGraphSVGBody is truncated by
 	// MaxBytesReader, so ReadAll errors before any rendering happens.
 	big := bytes.Repeat([]byte("a"), maxGraphSVGBody+1)
-	req := httptest.NewRequest(http.MethodPost, "/api/graph/svg", bytes.NewReader(big))
+	req := loopbackReq(http.MethodPost, "/api/graph/svg", bytes.NewReader(big))
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -130,7 +130,7 @@ func TestHandleGraphSVG_TooManyNodesRejected(t *testing.T) {
 	if b.Len() > maxGraphSVGBody {
 		t.Fatalf("test spec %d bytes exceeds body cap %d; can't isolate node-count path", b.Len(), maxGraphSVGBody)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/graph/svg", bytes.NewReader(b.Bytes()))
+	req := loopbackReq(http.MethodPost, "/api/graph/svg", bytes.NewReader(b.Bytes()))
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 

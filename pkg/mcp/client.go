@@ -292,8 +292,17 @@ func (c *Client) dispatchLoop() {
 			// allowed to send notifications we don't recognize.
 			continue
 		}
+		if msg.Method != "" {
+			// A frame carrying a method is a server-INITIATED request or
+			// notification, never a reply to one of our calls. Routing it
+			// to pending would mis-correlate it: both sides number ids
+			// from 1, so a server ping with id 1 would be handed to our
+			// pending request 1 and consumed as its (empty) result. We
+			// don't service server requests yet, so drop it.
+			continue
+		}
 		if len(msg.ID) == 0 {
-			continue // notification from server, ignored for now
+			continue // a reply must carry the id of the request it answers
 		}
 		var id int64
 		if err := json.Unmarshal(msg.ID, &id); err != nil {

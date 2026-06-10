@@ -7,20 +7,21 @@ import "encoding/json"
 // changes to the wire format never leak upward.
 
 type chatRequest struct {
-	Model            string          `json:"model"`
-	Messages         []wireMessage   `json:"messages"`
-	MaxTokens        *int            `json:"max_tokens,omitempty"`
-	Temperature      *float64        `json:"temperature,omitempty"`
-	TopP             *float64        `json:"top_p,omitempty"`
-	Stop             []string        `json:"stop,omitempty"`
-	Stream           bool            `json:"stream,omitempty"`
-	StreamOptions    *wireStreamOpts `json:"stream_options,omitempty"`
-	Tools            []wireTool      `json:"tools,omitempty"`
-	ToolChoice       json.RawMessage `json:"tool_choice,omitempty"`
-	ResponseFormat   *wireRespFormat `json:"response_format,omitempty"`
-	ReasoningEffort  string          `json:"reasoning_effort,omitempty"`
-	User             string          `json:"user,omitempty"`
-	ParallelToolCall *bool           `json:"parallel_tool_calls,omitempty"`
+	Model               string          `json:"model"`
+	Messages            []wireMessage   `json:"messages"`
+	MaxTokens           *int            `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int            `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64        `json:"temperature,omitempty"`
+	TopP                *float64        `json:"top_p,omitempty"`
+	Stop                []string        `json:"stop,omitempty"`
+	Stream              bool            `json:"stream,omitempty"`
+	StreamOptions       *wireStreamOpts `json:"stream_options,omitempty"`
+	Tools               []wireTool      `json:"tools,omitempty"`
+	ToolChoice          json.RawMessage `json:"tool_choice,omitempty"`
+	ResponseFormat      *wireRespFormat `json:"response_format,omitempty"`
+	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
+	User                string          `json:"user,omitempty"`
+	ParallelToolCall    *bool           `json:"parallel_tool_calls,omitempty"`
 }
 
 type wireStreamOpts struct {
@@ -133,6 +134,16 @@ type chatChunk struct {
 	Model   string        `json:"model"`
 	Choices []chunkChoice `json:"choices"`
 	Usage   *wireUsage    `json:"usage,omitempty"`
+	// Error is set when a provider streams an error frame mid-stream
+	// (data: {"error":{...}}). Without this field such a frame parsed to
+	// zero choices and was silently ignored, truncating the output.
+	Error *chunkError `json:"error,omitempty"`
+}
+
+type chunkError struct {
+	Type    string `json:"type"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 type chunkChoice struct {

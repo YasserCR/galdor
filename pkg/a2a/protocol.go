@@ -230,6 +230,35 @@ func (t *Task) snapshot() Task {
 	return cp
 }
 
+// deepCopy returns a fully independent copy of the task, safe to hand to
+// a Handler that mutates it (appends history, sets artifacts, flips
+// status) while concurrent readers observe the original through the
+// task's lock. Unlike snapshot it also clones Artifacts, the status
+// message and Metadata so a handler's mutations can't bleed into the
+// stored task before the result is committed.
+func (t *Task) deepCopy() *Task {
+	cp := *t
+	if t.History != nil {
+		cp.History = make([]Message, len(t.History))
+		copy(cp.History, t.History)
+	}
+	if t.Artifacts != nil {
+		cp.Artifacts = make([]Artifact, len(t.Artifacts))
+		copy(cp.Artifacts, t.Artifacts)
+	}
+	if t.Status.Message != nil {
+		m := *t.Status.Message
+		cp.Status.Message = &m
+	}
+	if t.Metadata != nil {
+		cp.Metadata = make(map[string]any, len(t.Metadata))
+		for k, v := range t.Metadata {
+			cp.Metadata[k] = v
+		}
+	}
+	return &cp
+}
+
 // Append adds a message to the task's history and updates the status
 // timestamp. Convenience for handlers building responses.
 func (t *Task) Append(m Message) {
@@ -251,6 +280,10 @@ const (
 // A2A-specific error codes per the spec.
 const (
 	ErrCodeTaskNotFound = -32001
+	// ErrCodeInvalidTaskState is returned when a request targets a task
+	// whose current state doesn't allow the operation — e.g. a
+	// tasks/send against a task already in a terminal state.
+	ErrCodeInvalidTaskState = -32002
 )
 
 // rpcMessage is the union JSON-RPC envelope. Same shape as MCP's

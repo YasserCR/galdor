@@ -384,3 +384,30 @@ func TestResponseFromWire_SurfacesReasoningContent(t *testing.T) {
 		t.Errorf("thinking = %v, want [chain of thought]", thinks)
 	}
 }
+
+// Regression for audit M8: o-series reasoning models reject max_tokens
+// (require max_completion_tokens) and temperature/top_p. Those params
+// must be moved/dropped when Reasoning is enabled.
+func TestBuildRequest_ReasoningMovesParamsForOSeries(t *testing.T) {
+	mt, temp, top := 100, 0.7, 0.9
+	out, err := buildRequest(provider.Request{
+		Model:       "o3",
+		Messages:    []schema.Message{schema.UserMessage("hi")},
+		MaxTokens:   &mt,
+		Temperature: &temp,
+		TopP:        &top,
+		Reasoning:   &provider.ReasoningConfig{Enabled: true},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.MaxTokens != nil {
+		t.Errorf("max_tokens must be dropped for reasoning models (regression of M8), got %d", *out.MaxTokens)
+	}
+	if out.MaxCompletionTokens == nil || *out.MaxCompletionTokens != 100 {
+		t.Errorf("max_tokens must move to max_completion_tokens (M8), got %v", out.MaxCompletionTokens)
+	}
+	if out.Temperature != nil || out.TopP != nil {
+		t.Errorf("temperature/top_p must be dropped for reasoning models (M8)")
+	}
+}

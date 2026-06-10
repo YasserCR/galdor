@@ -145,6 +145,10 @@ func (t *sseTransport) StartError() error {
 }
 
 func (t *sseTransport) handleSSE(w http.ResponseWriter, r *http.Request) {
+	if !originAllowed(r) {
+		http.Error(w, "forbidden origin", http.StatusForbidden)
+		return
+	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -209,12 +213,20 @@ func (t *sseTransport) handlePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !originAllowed(r) {
+		http.Error(w, "forbidden origin", http.StatusForbidden)
+		return
+	}
 	sid := r.URL.Query().Get("sessionId")
 	t.mu.Lock()
 	sess := t.session
 	t.mu.Unlock()
-	if sess == nil || (sid != "" && sid != sess.id) {
-		http.Error(w, "no active session", http.StatusNotFound)
+	// Require the exact session id issued in the SSE `endpoint` event.
+	// Accepting an empty/omitted id gave the 128-bit session no isolation
+	// — anyone who could reach the port could inject into the active
+	// session.
+	if sess == nil || sid == "" || sid != sess.id {
+		http.Error(w, "missing or unknown session id", http.StatusNotFound)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxMessageBytes)

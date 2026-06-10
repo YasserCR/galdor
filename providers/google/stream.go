@@ -19,6 +19,9 @@ import (
 // generateResponse-shaped JSON object describing the latest candidate
 // delta plus (on the terminal frame) finishReason and usageMetadata.
 func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.StreamReader, error) {
+	if err := p.Capabilities().ValidateRequest(req); err != nil {
+		return nil, err
+	}
 	wire, err := buildRequest(req)
 	if err != nil {
 		return nil, err

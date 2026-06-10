@@ -40,9 +40,12 @@ func buildRequest(req provider.Request) (*generateRequest, error) {
 	for _, m := range req.Messages {
 		switch m.Role {
 		case schema.RoleSystem:
-			out.SystemInstruction = &wireContent{
-				Parts: []wirePart{{Text: m.Text()}},
+			// Append, don't overwrite: multiple system messages must all
+			// reach Gemini rather than collapsing to the last one.
+			if out.SystemInstruction == nil {
+				out.SystemInstruction = &wireContent{}
 			}
+			out.SystemInstruction.Parts = append(out.SystemInstruction.Parts, wirePart{Text: m.Text()})
 		case schema.RoleUser:
 			parts, err := partsToWire(m.Content)
 			if err != nil {

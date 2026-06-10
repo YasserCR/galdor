@@ -75,7 +75,7 @@ func TestRunsPage(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := loopbackReq(http.MethodGet, "/", nil)
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -111,7 +111,7 @@ func TestRunsPage_EmptyStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -149,7 +149,7 @@ func TestRunsPage_OrphanWarning(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -166,7 +166,7 @@ func TestRunPage_RendersTree(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-happy", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -203,7 +203,7 @@ func TestRunPage_RendersGraphSVG(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-happy", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -223,7 +223,7 @@ func TestRunPage_NoGraphSVGWhenSpecAbsent(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-happy", nil))
 	if strings.Contains(rec.Body.String(), "graph topology") {
 		t.Errorf("graph-panel should be hidden when spec absent")
 	}
@@ -233,7 +233,7 @@ func TestRunPage_NotFound(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/does-not-exist", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/does-not-exist", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -247,7 +247,7 @@ func TestUnknownPath_NotFound(t *testing.T) {
 	srv := newTestServer(t)
 	for _, path := range []string{"/runs/", "/runs/a/b", "/totally-unknown"} {
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		srv.ServeHTTP(rec, loopbackReq(http.MethodGet, path, nil))
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("%s: status = %d", path, rec.Code)
 		}
@@ -258,7 +258,7 @@ func TestAPIRuns(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/runs", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/api/runs", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -278,7 +278,7 @@ func TestAPIRunSpans(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/runs/run-happy/spans", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/api/runs/run-happy/spans", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -295,7 +295,7 @@ func TestAPIRunSpans_MissingRun(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/runs/nope/spans", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/api/runs/nope/spans", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -308,7 +308,7 @@ func TestSpanDetailPage(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy/spans/a1", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-happy/spans/a1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -366,7 +366,7 @@ func TestSpanDetailPage_RendersCapturedMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-cap/spans/acap", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-cap/spans/acap", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -394,7 +394,7 @@ func TestSpanDetailPage_NotFound(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy/spans/does-not-exist", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-happy/spans/does-not-exist", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -404,7 +404,7 @@ func TestAPISpan(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/runs/run-happy/spans/a1", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/api/runs/run-happy/spans/a1", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -421,7 +421,7 @@ func TestRunPage_RowsAreLinks(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/runs/run-happy", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/runs/run-happy", nil))
 	body := rec.Body.String()
 	if !strings.Contains(body, `href="/runs/run-happy/spans/a1"`) {
 		t.Errorf("expected span row to link to its detail page; body=%s", body[:300])
@@ -432,7 +432,7 @@ func TestStaticCSS(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/style.css", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/static/style.css", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -445,7 +445,7 @@ func TestHealthz(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	srv.ServeHTTP(rec, loopbackReq(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -513,4 +513,42 @@ func TestListenAndServe_ShutsDownOnContextCancel(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("server did not shut down after ctx cancel")
 	}
+}
+
+// Regression for audit M23: the dashboard must reject requests whose Host
+// header is a domain name (the DNS-rebinding vector — a malicious site
+// resolves its domain to 127.0.0.1 and reaches the loopback dashboard via
+// the victim's browser). Direct IP / localhost access is unaffected.
+func TestServeHTTP_RejectsDNSRebindingHost(t *testing.T) {
+	srv, err := NewServer(openTestStore(t), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A domain Host must be rejected.
+	req := loopbackReq(http.MethodGet, "/api/runs", nil)
+	req.Host = "evil.example"
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("domain Host must be 403 (regression of M23), got %d", rec.Code)
+	}
+	// Loopback / IP / localhost hosts must still be served.
+	for _, h := range []string{"127.0.0.1:7777", "localhost:7777", "[::1]:7777"} {
+		r := loopbackReq(http.MethodGet, "/api/runs", nil)
+		r.Host = h
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, r)
+		if w.Code == http.StatusForbidden {
+			t.Errorf("host %q must be allowed, got 403", h)
+		}
+	}
+}
+
+// loopbackReq builds a test request with a loopback Host so it passes the
+// dashboard's DNS-rebinding guard (httptest.NewRequest defaults Host to
+// "example.com", a domain, which the guard rejects by design).
+func loopbackReq(method, target string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, target, body)
+	r.Host = "127.0.0.1:7777"
+	return r
 }

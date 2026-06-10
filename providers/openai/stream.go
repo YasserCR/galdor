@@ -19,6 +19,9 @@ import (
 // into galdor provider.Event values. The terminal sentinel `data: [DONE]`
 // is converted into an EventMessageStop and then io.EOF on the next Recv.
 func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.StreamReader, error) {
+	if err := p.Capabilities().ValidateRequest(req); err != nil {
+		return nil, err
+	}
 	wire, err := buildRequest(req, true)
 	if err != nil {
 		return nil, err
@@ -162,6 +165,16 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			continue
 		}
 
+		// Surface an in-stream error frame instead of silently ending the
+		// stream with a synthesized (apparently successful) MessageStop.
+		if chunk.Error != nil {
+			ae := &provider.APIError{Provider: providerName, Message: chunk.Error.Message}
+			if k := kindForType(chunk.Error.Type, chunk.Error.Code); k != nil {
+				ae.Kind = k
+			}
+			return provider.Event{}, ae
+		}
+
 		r.handleChunk(&chunk)
 		// Loop back: any events produced are now in r.pending.
 	}
@@ -252,6 +265,12 @@ func (r *streamReader) touchToolState(td *wireToolCall) *toolState {
 	}
 	if td.Function.Name != "" {
 		ts.name = td.Function.Name
+	}
+	if ts.id == "" {
+		// Several OpenAI-compatible backends omit tool_call ids. Synthesize
+		// a stable id by index so the call isn't dropped downstream (the
+		// stream-collection layer discards id-less tool deltas).
+		ts.id = fmt.Sprintf("call_%d", idx)
 	}
 	return ts
 }

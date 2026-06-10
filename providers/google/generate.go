@@ -12,6 +12,9 @@ import (
 
 // Generate implements provider.Provider.
 func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provider.Response, error) {
+	if err := p.Capabilities().ValidateRequest(req); err != nil {
+		return nil, err
+	}
 	wire, err := buildRequest(req)
 	if err != nil {
 		return nil, err

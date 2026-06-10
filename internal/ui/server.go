@@ -22,10 +22,11 @@ var assets embed.FS
 // does NOT own the *store.Store: the caller passes one in and
 // retains responsibility for closing it.
 type Server struct {
-	store     *store.Store
-	mux       *http.ServeMux
-	templates *template.Template
-	dbPath    string // displayed in the page footer; informational only
+	store        *store.Store
+	mux          *http.ServeMux
+	templates    *template.Template
+	dbPath       string // displayed in the page footer; informational only
+	allowedHosts map[string]struct{}
 }
 
 // Options configures a Server. Zero values are sensible defaults.
@@ -34,6 +35,13 @@ type Options struct {
 	// dashboards can tell which trace store they're looking at.
 	// Optional.
 	DBPath string
+
+	// AllowedHosts is an optional allowlist of Host-header hostnames to
+	// accept in addition to localhost and IP literals. Set this only
+	// when fronting the dashboard with a custom DNS name behind a
+	// trusted proxy; by default a domain-name Host is rejected as a
+	// DNS-rebinding attempt.
+	AllowedHosts []string
 }
 
 // NewServer wires up the mux and parses templates. The returned
@@ -50,11 +58,16 @@ func NewServer(s *store.Store, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	allowed := make(map[string]struct{}, len(opts.AllowedHosts))
+	for _, h := range opts.AllowedHosts {
+		allowed[h] = struct{}{}
+	}
 	srv := &Server{
-		store:     s,
-		mux:       http.NewServeMux(),
-		templates: tpl,
-		dbPath:    opts.DBPath,
+		store:        s,
+		mux:          http.NewServeMux(),
+		templates:    tpl,
+		dbPath:       opts.DBPath,
+		allowedHosts: allowed,
 	}
 	srv.registerRoutes()
 	return srv, nil
@@ -62,7 +75,30 @@ func NewServer(s *store.Store, opts Options) (*Server, error) {
 
 // ServeHTTP makes Server an http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.hostAllowed(r.Host) {
+		http.Error(w, "forbidden host", http.StatusForbidden)
+		return
+	}
 	s.mux.ServeHTTP(w, r)
+}
+
+// hostAllowed implements DNS-rebinding protection. A rebinding attack
+// relies on a domain name (resolving to 127.0.0.1) in the Host header, so
+// we accept only localhost, IP literals (which can't be rebound) and any
+// explicitly configured AllowedHosts. A domain-name Host is rejected.
+func (s *Server) hostAllowed(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	if host == "" || host == "localhost" {
+		return true
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	_, ok := s.allowedHosts[host]
+	return ok
 }
 
 // ListenAndServe binds to addr and serves until ctx is cancelled.

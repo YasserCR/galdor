@@ -29,6 +29,23 @@ type HandlerFunc func(ctx context.Context, t *Task) error
 // Handle implements Handler.
 func (f HandlerFunc) Handle(ctx context.Context, t *Task) error { return f(ctx, t) }
 
+// Inbound-request and store limits. The A2A server accepts unauthenticated
+// network input, so every growth vector is bounded.
+const (
+	// maxRequestBytes caps the JSON-RPC request body. A peer cannot drive
+	// unbounded allocation with a giant history/metadata blob.
+	maxRequestBytes = 4 << 20 // 4 MiB
+
+	// maxTaskIDLen caps a client-supplied task ID so the store can't be
+	// bloated with pathologically long keys.
+	maxTaskIDLen = 512
+
+	// defaultMaxTasks bounds the in-memory task store. At the cap a new
+	// task evicts the oldest terminal task; if every task is still
+	// active the send is rejected rather than growing without bound.
+	defaultMaxTasks = 4096
+)
+
 // Server exposes an Agent over the A2A HTTP surface. It implements
 // http.Handler so it slots into any net/http stack:
 //
@@ -45,21 +62,25 @@ func (f HandlerFunc) Handle(ctx context.Context, t *Task) error { return f(ctx, 
 // add a pluggable persistent store (the SQLite backend in
 // internal/store would be a natural fit).
 type Server struct {
-	card    AgentCard
-	handler Handler
+	card     AgentCard
+	handler  Handler
+	maxTasks int
 
 	mu    sync.Mutex
 	tasks map[string]*taskEntry
 }
 
-// taskEntry wraps a stored Task with its own mutex. The store map is
-// guarded by Server.mu; each task's contents are guarded by the
-// entry's mu so a slow handler can run without holding the store
-// lock, and concurrent operations on the same task (two same-id
-// tasks/send, or tasks/send racing tasks/get) are serialized.
+// taskEntry wraps a stored Task. procMu serializes tasks/send for this
+// id (so concurrent same-id sends don't interleave); mu guards the task
+// pointer and is held only briefly, so tasks/get can read the task's
+// current state (e.g. "working") while a long handler runs — it is NOT
+// held across the handler. updated is the last mutation time, used to
+// evict the oldest entries when the store is full.
 type taskEntry struct {
-	mu   sync.Mutex
-	task *Task
+	procMu  sync.Mutex
+	mu      sync.Mutex
+	task    *Task
+	updated time.Time
 }
 
 // NewServer constructs a Server. The card is served verbatim at the
@@ -72,9 +93,10 @@ func NewServer(card AgentCard, handler Handler) *Server {
 		})
 	}
 	return &Server{
-		card:    card,
-		handler: handler,
-		tasks:   map[string]*taskEntry{},
+		card:     card,
+		handler:  handler,
+		maxTasks: defaultMaxTasks,
+		tasks:    map[string]*taskEntry{},
 	}
 }
 
@@ -98,6 +120,9 @@ func (s *Server) serveAgentCard(w http.ResponseWriter) {
 }
 
 func (s *Server) serveJSONRPC(w http.ResponseWriter, r *http.Request) {
+	// Bound the request body: an unauthenticated peer must not be able to
+	// drive unbounded allocation with a multi-gigabyte POST.
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	defer func() { _ = r.Body.Close() }()
 	var msg rpcMessage
 	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
@@ -128,56 +153,106 @@ func (s *Server) handleTasksSend(ctx context.Context, req rpcMessage) rpcMessage
 	if len(p.Message.Parts) == 0 {
 		return errorReply(req.ID, ErrCodeInvalidParams, "message.parts is empty", "")
 	}
+	if len(p.ID) > maxTaskIDLen {
+		return errorReply(req.ID, ErrCodeInvalidParams, "id too long", "")
+	}
 
-	// Look up or create the task entry. Clients may reuse IDs across
-	// calls in a multi-turn conversation (e.g., to satisfy an
-	// input-required state). Only the store map is guarded by s.mu;
-	// the task contents are guarded by the entry's own lock.
+	// Look up or create the task entry under the store lock. Clients may
+	// reuse IDs across calls in a multi-turn conversation (to continue an
+	// input-required task). A new task is subject to the store cap.
 	s.mu.Lock()
 	e, ok := s.tasks[p.ID]
 	if !ok {
+		if len(s.tasks) >= s.maxTasks && !s.evictOneLocked() {
+			s.mu.Unlock()
+			return errorReply(req.ID, ErrCodeInternalError, "task store is full", "")
+		}
 		id := p.ID
 		if id == "" {
 			id = uuid.NewString()
 		}
-		e = &taskEntry{task: &Task{
-			ID:        id,
-			SessionID: p.SessionID,
-			Status:    TaskStatus{State: TaskSubmitted, Timestamp: time.Now().UTC()},
-			Metadata:  p.Metadata,
-		}}
+		e = &taskEntry{
+			task: &Task{
+				ID:        id,
+				SessionID: p.SessionID,
+				Status:    TaskStatus{State: TaskSubmitted, Timestamp: time.Now().UTC()},
+				Metadata:  p.Metadata,
+			},
+			updated: time.Now().UTC(),
+		}
 		s.tasks[id] = e
 	}
 	s.mu.Unlock()
 
-	// Hold the per-task lock for the whole send: appending the user
-	// message, running the handler, and committing the result. This
-	// serializes concurrent same-id sends and keeps tasks/get from
-	// observing a half-mutated task without blocking sends to other
-	// tasks.
+	// procMu serializes same-id sends. Crucially we do NOT hold the data
+	// lock (e.mu) across the handler — that's what let tasks/get hang for
+	// the whole handler duration.
+	e.procMu.Lock()
+	defer e.procMu.Unlock()
+
+	// Phase 1 (brief data lock): reject a terminal task, append the user
+	// message, flip to working, and detach an independent copy for the
+	// handler. After this the stored task shows "working" to tasks/get.
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	t := e.task
+	if isTerminalState(e.task.Status.State) {
+		state := e.task.Status.State
+		e.mu.Unlock()
+		return errorReply(req.ID, ErrCodeInvalidTaskState,
+			"task is in a terminal state and cannot be continued", string(state))
+	}
+	e.task.Append(p.Message)
+	e.task.Status.State = TaskWorking
+	e.task.Status.Timestamp = time.Now().UTC()
+	e.updated = time.Now().UTC()
+	wc := e.task.deepCopy()
+	e.mu.Unlock()
 
-	// Append the new user message and flip to working.
-	t.Append(p.Message)
-	t.Status.State = TaskWorking
-	t.Status.Timestamp = time.Now().UTC()
-
-	if err := s.handler.Handle(ctx, t); err != nil {
-		t.Status.State = TaskFailed
-		t.Status.Message = &Message{Role: RoleAgent, Parts: []Part{TextPart(err.Error())}}
-		t.Status.Timestamp = time.Now().UTC()
-	} else if !isTerminalState(t.Status.State) && t.Status.State != TaskInputRequired {
-		// Handler returned cleanly but forgot to set a terminal
-		// state; assume completion.
-		t.Status.State = TaskCompleted
-		t.Status.Timestamp = time.Now().UTC()
+	// Phase 2: run the handler on the detached copy with NO lock held, so
+	// a concurrent tasks/get returns the "working" snapshot promptly.
+	if err := s.handler.Handle(ctx, wc); err != nil {
+		wc.Status.State = TaskFailed
+		wc.Status.Message = &Message{Role: RoleAgent, Parts: []Part{TextPart(err.Error())}}
+		wc.Status.Timestamp = time.Now().UTC()
+	} else if !isTerminalState(wc.Status.State) && wc.Status.State != TaskInputRequired {
+		// Handler returned cleanly but forgot to set a terminal state.
+		wc.Status.State = TaskCompleted
+		wc.Status.Timestamp = time.Now().UTC()
 	}
 
-	// Reply with a snapshot taken under the lock so the encode in
-	// successReply doesn't race a later send on the same task.
-	return successReply(req.ID, t.snapshot())
+	// Phase 3 (brief data lock): commit the result and snapshot for the
+	// reply.
+	e.mu.Lock()
+	e.task = wc
+	e.updated = time.Now().UTC()
+	snap := e.task.snapshot()
+	e.mu.Unlock()
+	return successReply(req.ID, snap)
+}
+
+// evictOneLocked removes the oldest terminal (completed/failed/canceled)
+// task to make room when the store is at capacity. It returns false when
+// every task is still active, so the caller rejects the new task rather
+// than dropping in-flight work. Caller must hold s.mu.
+func (s *Server) evictOneLocked() bool {
+	var oldestID string
+	var oldest time.Time
+	for id, e := range s.tasks {
+		e.mu.Lock()
+		terminal := isTerminalState(e.task.Status.State)
+		upd := e.updated
+		e.mu.Unlock()
+		if !terminal {
+			continue
+		}
+		if oldestID == "" || upd.Before(oldest) {
+			oldestID, oldest = id, upd
+		}
+	}
+	if oldestID == "" {
+		return false
+	}
+	delete(s.tasks, oldestID)
+	return true
 }
 
 func (s *Server) handleTasksGet(req rpcMessage) rpcMessage {

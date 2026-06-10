@@ -207,7 +207,7 @@ func TestRenderTurn_FoldsToolCallsAndResults(t *testing.T) {
 func TestHandleRunSteps_HappyPath(t *testing.T) {
 	t.Parallel()
 	srv := newStepsServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/runs/run-steps/steps", nil)
+	req := loopbackReq(http.MethodGet, "/runs/run-steps/steps", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -228,7 +228,7 @@ func TestHandleRunSteps_HappyPath(t *testing.T) {
 func TestHandleRunSteps_UnknownRun(t *testing.T) {
 	t.Parallel()
 	srv := newStepsServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/runs/ghost/steps", nil)
+	req := loopbackReq(http.MethodGet, "/runs/ghost/steps", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -239,7 +239,7 @@ func TestHandleRunSteps_UnknownRun(t *testing.T) {
 func TestHandleRunSteps_LinkedFromRunDetail(t *testing.T) {
 	t.Parallel()
 	srv := newStepsServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/runs/run-steps", nil)
+	req := loopbackReq(http.MethodGet, "/runs/run-steps", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {

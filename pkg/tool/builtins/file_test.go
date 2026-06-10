@@ -157,3 +157,30 @@ func TestFileRead_NoBaseDirAllowsAbsolute(t *testing.T) {
 		t.Errorf("Content = %q", out.Content)
 	}
 }
+
+// Regression for audit H4: an intermediate symlink directory inside
+// BaseDir that points OUTSIDE it must not let a read escape. The final
+// path component is a regular file (so the symlink gate doesn't catch it)
+// and the lexical path stays inside BaseDir, so only real-path resolution
+// catches the escape.
+func TestFileRead_RejectsIntermediateSymlinkEscape(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("TOPSECRET"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unsupported on this filesystem: %v", err)
+	}
+
+	tt := MustNewFileReadTool(FileReadOptions{BaseDir: base})
+	out, err := tt.Execute(context.Background(), FileReadIn{Path: "link/secret.txt"})
+	if err == nil {
+		t.Fatalf("intermediate symlink escaped BaseDir (regression of H4): read %q", out.Content)
+	}
+	if !errors.Is(err, ErrPathEscape) {
+		t.Errorf("err = %v, want ErrPathEscape", err)
+	}
+}

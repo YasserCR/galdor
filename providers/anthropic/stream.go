@@ -18,6 +18,9 @@ import (
 // connection to /v1/messages and returns a StreamReader that decodes
 // Anthropic event types into galdor provider.Event values.
 func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.StreamReader, error) {
+	if err := p.Capabilities().ValidateRequest(req); err != nil {
+		return nil, err
+	}
 	wire, err := buildRequest(req, true)
 	if err != nil {
 		return nil, err

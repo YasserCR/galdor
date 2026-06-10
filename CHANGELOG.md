@@ -11,6 +11,68 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-10
+
+Network-surface hardening and cross-provider contract fixes from the
+pre-alpha audit: 23 findings across the A2A and MCP servers, the dashboard,
+checkpoints, the builtin tools, and the provider adapters. Each fix landed
+with a regression test (reproduced failing first, then green). The changes
+tighten input handling on the unauthenticated network surfaces and make
+several silent failures loud, so some previously-accepted-but-wrong inputs
+now error. Green under `go test -race`, golangci-lint v2.12.2, govulncheck
+and gosec across all nine modules.
+
+### Security
+- **A2A server resource bounds.** The JSON-RPC body is capped (4 MiB), the
+  in-memory task store is bounded (cap + oldest-terminal eviction) and
+  client task IDs are length-limited, so an unauthenticated peer can no
+  longer drive unbounded memory growth.
+- **MCP HTTP transports validate Origin** (DNS-rebinding protection per the
+  spec) and **require the assigned session id** on the Streamable HTTP and
+  SSE transports — an omitted/foreign id no longer bypasses the session.
+- **Dashboard rejects DNS-rebinding.** `galdor ui` now refuses requests
+  whose `Host` is a domain name (only localhost / IP literals / an opt-in
+  `AllowedHosts` are served), closing the rebinding path to captured
+  prompts. The stdio MCP transport no longer recurses (and overflows the
+  stack) on a stream of blank lines.
+- **Builtin tool sandboxes.** `file_read` now resolves symlinks and
+  re-checks containment, so an intermediate symlink inside `BaseDir` can't
+  escape it; `http_get` re-validates scheme + host on every redirect hop
+  (SSRF) and normalizes allowlist entries that carry a port.
+
+### Fixed
+- **MCP client reply correlation (H15).** A server-initiated request
+  (ping / sampling / roots) sharing an id with an in-flight client call was
+  delivered as that call's reply, yielding a silent zero-value result.
+  Frames carrying a method are no longer routed to pending callers.
+- **A2A polling and lifecycle.** `tasks/get` no longer blocks for the whole
+  duration of a running handler (it returns the live "working" snapshot),
+  and `tasks/send` against a task in a terminal state is rejected
+  (`-32002`) instead of silently re-opening it.
+- **MCP server robustness.** A failed listener bind is now surfaced by
+  `Serve` (was a silent nil), in-flight dispatches are bounded by a
+  semaphore, and the Streamable HTTP transport rejects duplicate in-flight
+  request ids instead of clobbering the pending slot.
+- **Checkpoints fail loudly.** `MemoryCheckpointer.Save` now returns an
+  error when the state can't be faithfully deep-copied — a gob round-trip
+  silently drops unexported/func/channel fields and aliases
+  non-serializable types — instead of corrupting the checkpoint. Implement
+  `graph.Cloner` for such states.
+- **Capability validation is enforced (M7).** `Capabilities.ValidateRequest`
+  is now called by every adapter's `Generate`/`Stream`, so a request asking
+  for a feature the provider doesn't support (e.g. structured output on
+  Anthropic) returns `ErrUnsupported` instead of being silently ignored.
+- **Cross-provider consistency.** Google now sends *all* system messages
+  (not just the last); OpenAI maps reasoning requests to
+  `max_completion_tokens` and drops `temperature`/`top_p` for o-series
+  models; OpenAI synthesizes a stable tool-call id when the backend omits
+  one (so the call isn't dropped); and OpenAI surfaces an in-stream
+  `error` frame instead of ending the stream as if it succeeded.
+
+### Build
+- Submodule `require` pins bumped from v0.6.2 to v0.7.0 across providers/*,
+  memory/*, providerset and examples. No go.sum churn.
+
 ## [0.6.2] - 2026-06-10
 
 A follow-up to v0.6.1 that softens the read-side database handling for the
@@ -428,7 +490,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/YasserCR/galdor/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/YasserCR/galdor/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/YasserCR/galdor/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/YasserCR/galdor/compare/v0.5.0...v0.6.0
