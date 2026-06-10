@@ -11,6 +11,73 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-10
+
+Audit-driven correctness, reliability and security fixes. All changes are
+backward-compatible — no API removals, no behavior changes for code that
+wasn't hitting the bugs. Green under `go test -race`, golangci-lint v2.12.2,
+govulncheck and gosec across all nine modules.
+
+### Fixed
+- **The default HTTP client no longer kills long streams.** It set a 60s
+  `http.Client.Timeout`, which bounds the entire exchange *including the
+  response-body read*, so any SSE stream — or an extended-thinking
+  generation — past 60s was aborted mid-flight. Anthropic, OpenAI, Google
+  and `providerset` now bound only the connection and time-to-first-byte
+  (`Transport.ResponseHeaderTimeout`), leaving the body's lifetime to the
+  request context.
+- **Bedrock streaming reasoning.** `Stream` built its `ConverseStreamInput`
+  from a five-field subset that dropped `AdditionalModelRequestFields`, so a
+  streamed request with `Reasoning.Enabled` silently ran with no thinking
+  (while still nulling temperature/top_p and inflating max_tokens). The
+  streaming path now carries the full request; confirmed end-to-end against
+  Bedrock.
+- **`provider.CollectStream` preserves reasoning.** The canonical
+  stream→response bridge read only stop-reason/usage/model from the terminal
+  event and dropped the thinking part; it now keeps it (with signature).
+- **Anthropic thinking round-trip.** A signed thinking block is now echoed
+  back on the assistant turn that carries `tool_use`, so a Reasoning+tools
+  loop can complete (the API rejects the follow-up otherwise). Unsigned
+  reasoning is still skipped.
+- **Replay works for tool-using agents.** Tool definitions and tool_choice —
+  folded into the v2 replay fingerprint — are now captured on the span
+  (`gen_ai.request.tools` / `gen_ai.request.tool_choice`), so a recorded
+  fixture for a ReAct agent matches on replay instead of failing with
+  `ErrPromptMismatch`.
+- **`jsonschema` no longer crashes on recursive embedded types.** An
+  exported struct that (transitively) embeds itself overflowed the stack
+  (an unrecoverable process abort); it now returns the documented
+  recursive-type error.
+- **Graph SVG rendering no longer hangs on cyclic graphs.** `RenderSVG`/
+  `Inspect` looped forever on a static cycle — and ReAct and Plan-Execute
+  graphs are cyclic — because the layout BFS relaxed depth without bound;
+  it is now bounded by the node count.
+- **Conditional-edge router panics are contained.** A panic in a router
+  escaped the synchronous `Invoke` path and crashed the process; it is now
+  recovered into a `*PanicError`, matching node-body and `Stream` behavior.
+- **The CLI honors flags placed after the run-id.** `scry show <run-id>
+  --db PATH` and `scry replay <run-id> -o FILE` (the documented shapes)
+  silently ignored the trailing flags — reading the wrong database — because
+  stdlib `flag` stops at the first positional; they are now re-parsed.
+- **Read-side commands don't fabricate empty databases.** A mistyped `--db`
+  no longer silently creates an empty store and reports "no runs" — it fails
+  with a clear "database does not exist" error (`store.OpenExisting`). The
+  SQLite exporter now creates the parent directory of the default
+  `~/.galdor/traces.db` on first write instead of failing on a fresh machine.
+
+### Docs
+- README install/status updated to the current release.
+- `docs/ops.md`: corrected the CGO claim — galdor uses `modernc.org/sqlite`
+  (pure Go, ADR-009), so `CGO_ENABLED=0` is the correct, recommended static
+  build, not `CGO_ENABLED=1`.
+- `docs/patterns/streaming.md`: fixed the graph-streaming snippet to the
+  real API (`StreamWith`, `Event.Type`, `EventNodeStart` / `EventRunEnd`).
+
+### Build
+- Submodule `require` pins bumped from v0.6.0 to v0.6.1 across providers/*,
+  memory/*, providerset and examples. No go.sum churn — the local
+  `replace => ../..` directives keep workspace builds resolving from source.
+
 ## [0.6.0] - 2026-06-08
 
 Model reasoning capture across every provider, plus a rustic in-SQLite vector
@@ -342,7 +409,10 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/YasserCR/galdor/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/YasserCR/galdor/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/YasserCR/galdor/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/YasserCR/galdor/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/YasserCR/galdor/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/YasserCR/galdor/compare/v0.3.0...v0.3.1
