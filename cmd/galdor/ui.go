@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/YasserCR/galdor/internal/store"
 	"github.com/YasserCR/galdor/internal/ui"
 )
 
@@ -31,7 +30,7 @@ func runUI(ctx context.Context, args []string, w io.Writer, errW io.Writer) int 
 		_, _ = fmt.Fprintf(errW, "ui: %v\n", err)
 		return 70
 	}
-	s, err := store.OpenExisting(ctx, path)
+	s, err := openLiveStore(ctx, path, errW)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "ui: open %s: %v\n", path, err)
 		return 70

@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -174,6 +176,26 @@ func parseRunIDArg(fs *flag.FlagSet, args []string) (string, error) {
 		}
 	}
 	return runID, nil
+}
+
+// openLiveStore opens the span store for a live-watch command (ui, tail).
+// Unlike the one-shot inspect commands (list/show/stats/replay), which use
+// store.OpenExisting and fail on a missing DB, a live watcher may
+// legitimately start before the writing process has created the database —
+// so a missing file is created (and its parent dir, for the default
+// ~/.galdor path) rather than treated as an error. A one-line notice on
+// errW keeps a mistyped --db visible instead of silently watching an empty
+// new store.
+func openLiveStore(ctx context.Context, path string, errW io.Writer) (*store.Store, error) {
+	if path != "" && !strings.HasPrefix(path, ":") {
+		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+			if dir := filepath.Dir(path); dir != "" && dir != "." {
+				_ = os.MkdirAll(dir, 0o700)
+			}
+			_, _ = fmt.Fprintf(errW, "galdor: %s does not exist yet — creating it and watching for spans\n", path)
+		}
+	}
+	return store.Open(ctx, path)
 }
 
 // resolveDBPath picks the database path: explicit flag, then env

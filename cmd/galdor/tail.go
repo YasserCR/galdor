@@ -35,7 +35,7 @@ func scryTail(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 		_, _ = fmt.Fprintf(errW, "scry: %v\n", err)
 		return 70
 	}
-	s, err := store.OpenExisting(ctx, path)
+	s, err := openLiveStore(ctx, path, errW)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return 0

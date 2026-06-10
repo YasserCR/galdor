@@ -234,6 +234,47 @@ func TestScry_ShowFlagsAfterRunID(t *testing.T) {
 	}
 }
 
+// M22 softening: live-watch commands (ui, tail) create a missing DB and
+// emit a notice, rather than erroring like the one-shot inspect commands.
+// This restores the "start the watcher before the app records" workflow.
+func TestOpenLiveStore_CreatesMissingDBWithNotice(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nested", "fresh.db")
+	var errOut bytes.Buffer
+	s, err := openLiveStore(context.Background(), path, &errOut)
+	if err != nil {
+		t.Fatalf("openLiveStore must create a missing DB, got: %v", err)
+	}
+	_ = s.Close()
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("DB (and parent dir) not created at %s: %v", path, err)
+	}
+	if !strings.Contains(errOut.String(), "does not exist yet") {
+		t.Errorf("expected a creation notice on errW, got: %q", errOut.String())
+	}
+}
+
+// An existing DB opens silently — no spurious notice.
+func TestOpenLiveStore_ExistingDBIsSilent(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "exists.db")
+	s0, err := store.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s0.Close()
+
+	var errOut bytes.Buffer
+	s, err := openLiveStore(context.Background(), path, &errOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	if errOut.Len() != 0 {
+		t.Errorf("no notice expected for an existing DB, got: %q", errOut.String())
+	}
+}
+
 func TestScry_ShowMissingRunID(t *testing.T) {
 	t.Parallel()
 	var out, errOut bytes.Buffer

@@ -33,14 +33,22 @@ func (b *syncBuf) String() string {
 	return b.buf.String()
 }
 
-// TestRunUI_BadDB exercises the early-exit path: a directory that
-// can't be created is a fast way to force store.Open to fail.
+// TestRunUI_BadDB exercises the early-exit path: runUI must return a
+// non-zero code (without starting the server) when the store can't be
+// opened. A *merely missing* path is no longer a failure — ui creates it
+// (the M22 live-watch softening) — so we force a genuine failure by
+// placing the db "under" a regular file, where creating the parent
+// directory and opening the database both fail.
 func TestRunUI_BadDB(t *testing.T) {
-	t.Setenv("GALDOR_DB", filepath.Join(t.TempDir(), "no-such-dir", "subdir", "x.db"))
+	notADir := filepath.Join(t.TempDir(), "iamafile")
+	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GALDOR_DB", filepath.Join(notADir, "x.db")) // parent is a file → open fails
 	var out, errOut bytes.Buffer
 	code := runUI(context.Background(), []string{"--addr", "127.0.0.1:0"}, &out, &errOut)
 	if code == 0 {
-		t.Fatalf("expected non-zero exit for unreachable db path")
+		t.Fatalf("expected non-zero exit for an unopenable db path")
 	}
 	if !strings.Contains(errOut.String(), "ui:") {
 		t.Errorf("expected error prefix; got %q", errOut.String())
