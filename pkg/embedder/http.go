@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/YasserCR/galdor/pkg/memory"
@@ -74,7 +75,11 @@ type HTTPEmbedder struct {
 	apiKey    string
 	client    *http.Client
 	batchSize int
-	dim       int
+	// dim is the embedding dimension. It may be configured up front or
+	// learned from the first response, so it's guarded by atomic access:
+	// HTTPEmbedder is documented as safe for concurrent use, and the
+	// auto-detect write would otherwise race concurrent Embed/Dimensions.
+	dim atomic.Int64
 }
 
 // NewHTTPEmbedder validates cfg and returns a ready embedder.
@@ -112,10 +117,12 @@ func NewHTTPEmbedder(cfg HTTPConfig) (*HTTPEmbedder, error) {
 			u += "/embeddings"
 		}
 	}
-	return &HTTPEmbedder{
+	e := &HTTPEmbedder{
 		url: u, shape: shape, model: cfg.Model, apiKey: cfg.APIKey,
-		client: client, batchSize: batch, dim: cfg.Dim,
-	}, nil
+		client: client, batchSize: batch,
+	}
+	e.dim.Store(int64(cfg.Dim))
+	return e, nil
 }
 
 // Embed implements memory.Embedder. Inputs longer than BatchSize are
@@ -147,14 +154,14 @@ func (e *HTTPEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, 
 		}
 		out = append(out, vecs...)
 	}
-	if e.dim == 0 && len(out) > 0 && len(out[0]) > 0 {
-		e.dim = len(out[0])
+	if len(out) > 0 && len(out[0]) > 0 {
+		e.dim.CompareAndSwap(0, int64(len(out[0])))
 	}
 	return out, nil
 }
 
 // Dimensions implements memory.Embedder.
-func (e *HTTPEmbedder) Dimensions() int { return e.dim }
+func (e *HTTPEmbedder) Dimensions() int { return int(e.dim.Load()) }
 
 // Ping issues a single-element Embed and discards the vector.
 func (e *HTTPEmbedder) Ping(ctx context.Context) error {
@@ -167,8 +174,8 @@ func (e *HTTPEmbedder) encode(texts []string) ([]byte, error) {
 		return json.Marshal(map[string]any{"inputs": texts})
 	}
 	req := openAIRequest{Input: texts, Model: e.model}
-	if e.dim > 0 {
-		req.Dimensions = e.dim
+	if d := e.dim.Load(); d > 0 {
+		req.Dimensions = int(d)
 	}
 	return json.Marshal(req)
 }
@@ -195,6 +202,15 @@ func (e *HTTPEmbedder) decode(raw []byte, n int) ([][]float32, error) {
 			return nil, fmt.Errorf("embedder: openai response index %d out of range", idx)
 		}
 		vecs[idx] = d.Embedding
+	}
+	// Every input must have produced a vector. A short or duplicate-index
+	// response leaves a nil slot that the length check upstream (len ==
+	// n, always true here) can't catch — error instead of returning nil
+	// embeddings into the store.
+	for i, v := range vecs {
+		if v == nil {
+			return nil, fmt.Errorf("embedder: openai response missing embedding for input %d (%d of %d returned)", i, len(env.Data), n)
+		}
 	}
 	return vecs, nil
 }

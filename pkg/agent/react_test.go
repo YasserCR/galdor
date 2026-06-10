@@ -202,9 +202,27 @@ func TestReAct_MaxIterationsCap(t *testing.T) {
 	if final.Iterations != 3 {
 		t.Errorf("Iterations = %d, want 3 (capped)", final.Iterations)
 	}
-	// FinalText stays empty because every turn had tool calls.
-	if final.FinalText != "" {
-		t.Errorf("FinalText should be empty after a tool-only cap, got %q", final.FinalText)
+	// Regression for audit M1: hitting the cap mid-tool-cycle must be
+	// flagged, not silently returned as an empty (apparently clean) result.
+	if !final.StoppedAtIterationCap {
+		t.Error("StoppedAtIterationCap must be set when the cap is hit with pending tool calls (M1)")
+	}
+}
+
+// Regression for audit M1: the Run convenience must surface the cap as
+// ErrMaxIterations instead of returning ("", nil).
+func TestReAct_RunReturnsErrMaxIterations(t *testing.T) {
+	t.Parallel()
+	reg := toolsRegistry(t)
+	toolCall := schema.Message{
+		Role:      schema.RoleAssistant,
+		ToolCalls: []schema.ToolCall{{ID: "c", Name: "add", Arguments: json.RawMessage(`{"a":1,"b":1}`)}},
+	}
+	p := &scriptedProvider{Plan: []schema.Message{toolCall, toolCall, toolCall, toolCall}}
+
+	_, err := Run(context.Background(), Config{Provider: p, Tools: reg, Model: "x", MaxIterations: 2}, "loop")
+	if !errors.Is(err, ErrMaxIterations) {
+		t.Fatalf("Run must return ErrMaxIterations when capped mid-cycle (M1), got %v", err)
 	}
 }
 

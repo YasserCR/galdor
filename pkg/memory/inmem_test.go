@@ -152,3 +152,17 @@ func TestInMemoryStore_EmptyQueryRejected(t *testing.T) {
 		t.Fatal("expected error on empty Query")
 	}
 }
+
+// Regression for audit M14: a query whose embedding dimension doesn't
+// match a stored chunk must error, not silently score over a truncated
+// prefix.
+func TestInMemory_RetrieveDimensionMismatchErrors(t *testing.T) {
+	s := memory.NewInMemoryStore()
+	_ = s.Add(context.Background(), []memory.Chunk{
+		{ID: "c1", DocumentID: "d", Text: "x", Embedding: []float32{1, 0, 0, 0}}, // 4-dim
+	})
+	_, err := s.Retrieve(context.Background(), memory.Query{Embedding: []float32{1, 0, 0}, K: 5}) // 3-dim
+	if err == nil {
+		t.Fatal("a dimension mismatch must error (regression of M14)")
+	}
+}

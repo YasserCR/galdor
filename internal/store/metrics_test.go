@@ -150,23 +150,38 @@ func TestStatsByProvider_EmptyStore(t *testing.T) {
 	}
 }
 
-func TestSpansSince(t *testing.T) {
+// Regression for audit H13: SpansSince cursors on rowid (ingestion order),
+// not start_time. A span ingested AFTER the cursor but with a LOWER start
+// time — e.g. a long parent span that starts first but ends (and exports)
+// last — must still be surfaced. A start-time cursor would miss it.
+func TestSpansSince_RowidCursorSurfacesLateLowStartSpan(t *testing.T) {
 	t.Parallel()
 	s := openTempStore(t)
 	ctx := context.Background()
+
+	// First batch: a child span with a high start time.
 	if err := s.InsertSpans(ctx, []Span{
-		{SpanID: "s1", TraceID: "t", Name: "a", StartTimeUnixNano: 100, EndTimeUnixNano: 200},
-		{SpanID: "s2", TraceID: "t", Name: "b", StartTimeUnixNano: 300, EndTimeUnixNano: 400},
-		{SpanID: "s3", TraceID: "t", Name: "c", StartTimeUnixNano: 500, EndTimeUnixNano: 600},
+		{SpanID: "child", TraceID: "t", Name: "child", StartTimeUnixNano: 500, EndTimeUnixNano: 600},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.SpansSince(ctx, 200, 0)
+	_, cursor, err := s.SpansSince(ctx, 0, 100) // consume it; advance the cursor
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].SpanID != "s2" || got[1].SpanID != "s3" {
-		t.Errorf("got %+v", got)
+
+	// Second batch: the PARENT, ingested later but with a LOWER start time.
+	if err = s.InsertSpans(ctx, []Span{
+		{SpanID: "parent", TraceID: "t", Name: "parent", StartTimeUnixNano: 100, EndTimeUnixNano: 1000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := s.SpansSince(ctx, cursor, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].SpanID != "parent" {
+		t.Fatalf("rowid cursor must surface a late-ingested low-start span (regression of H13), got %+v", got)
 	}
 }
 
@@ -184,7 +199,7 @@ func TestSpansSince_LimitClamps(t *testing.T) {
 	if err := s.InsertSpans(ctx, spans); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.SpansSince(ctx, 0, 2)
+	got, _, err := s.SpansSince(ctx, 0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,16 +208,16 @@ func TestSpansSince_LimitClamps(t *testing.T) {
 	}
 }
 
-func TestMaxSpanStart(t *testing.T) {
+func TestMaxSpanRowid(t *testing.T) {
 	t.Parallel()
 	s := openTempStore(t)
 	ctx := context.Background()
-	v, err := s.MaxSpanStart(ctx)
+	v, err := s.MaxSpanRowid(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != 0 {
-		t.Errorf("empty MaxSpanStart = %d", v)
+		t.Errorf("empty MaxSpanRowid = %d", v)
 	}
 	if insErr := s.InsertSpans(ctx, []Span{
 		{SpanID: "a", TraceID: "t", Name: "n", StartTimeUnixNano: 42, EndTimeUnixNano: 50},
@@ -210,12 +225,12 @@ func TestMaxSpanStart(t *testing.T) {
 	}); insErr != nil {
 		t.Fatal(insErr)
 	}
-	v, err = s.MaxSpanStart(ctx)
+	v, err = s.MaxSpanRowid(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v != 99 {
-		t.Errorf("MaxSpanStart = %d, want 99", v)
+	if v != 2 { // two rows inserted -> max rowid 2
+		t.Errorf("MaxSpanRowid = %d, want 2", v)
 	}
 }
 

@@ -37,6 +37,7 @@ type SQLiteExporter struct {
 	checkpointLogger   *slog.Logger
 	ckptDone           chan struct{}
 	ckptWG             sync.WaitGroup
+	exportWG           sync.WaitGroup // tracks in-flight ExportSpans calls
 }
 
 // ErrExporterShutdown is returned by ExportSpans after Shutdown.
@@ -150,7 +151,11 @@ func (e *SQLiteExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadO
 		e.mu.Unlock()
 		return ErrExporterShutdown
 	}
+	// Register under the lock so Shutdown can't flip the flag and close the
+	// DB between this check and the insert below.
+	e.exportWG.Add(1)
 	e.mu.Unlock()
+	defer e.exportWG.Done()
 
 	if len(spans) == 0 {
 		return nil
@@ -175,6 +180,10 @@ func (e *SQLiteExporter) Shutdown(ctx context.Context) error {
 	}
 	e.shutdown = true
 	e.mu.Unlock()
+
+	// Wait for any in-flight ExportSpans to finish before closing the DB,
+	// so a concurrent insert never races store.Close().
+	e.exportWG.Wait()
 
 	if e.ckptDone != nil {
 		close(e.ckptDone)

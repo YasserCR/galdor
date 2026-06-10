@@ -191,46 +191,63 @@ func percentile(sorted []int64, p float64) int64 {
 	return sorted[idx]
 }
 
-// SpansSince returns every span whose start_time_unix_nano is
-// strictly greater than after. Used by `galdor scry tail` to
+// SpansSince returns spans ingested after the given rowid cursor, in
+// ingestion order, together with the new cursor (the largest rowid
+// returned). Used by `galdor scry tail` and the dashboard's SSE feed to
 // poll for new arrivals between ticks.
 //
-// Spans are returned in ascending start order so callers can pass
-// the last item's start time as the next `after` value.
-func (s *Store) SpansSince(ctx context.Context, after int64, limit int) ([]Span, error) {
+// The cursor is the rowid (ingestion order), NOT start_time: the OTel
+// batch processor exports spans on END, so a long parent span (which
+// starts first but ends last) is ingested in a later batch with a
+// start_time already below a start-time cursor — and would be silently
+// skipped. rowid is monotonic in ingestion order, so nothing is missed.
+func (s *Store) SpansSince(ctx context.Context, afterRowid int64, limit int) ([]Span, int64, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT span_id, trace_id, parent_span_id, name,
+		SELECT rowid, span_id, trace_id, parent_span_id, name,
 		       start_time_unix_nano, end_time_unix_nano,
 		       status_code, status_message, attrs_json, events_json, run_id
 		FROM spans
-		WHERE start_time_unix_nano > ?
-		ORDER BY start_time_unix_nano ASC
-		LIMIT ?`, after, limit)
+		WHERE rowid > ?
+		ORDER BY rowid ASC
+		LIMIT ?`, afterRowid, limit)
 	if err != nil {
-		return nil, fmt.Errorf("store: spans since: %w", err)
+		return nil, afterRowid, fmt.Errorf("store: spans since: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
+	cursor := afterRowid
 	var out []Span
 	for rows.Next() {
-		sp, err := scanSpan(rows)
-		if err != nil {
-			return nil, err
+		var rid int64
+		var sp Span
+		var attrs, events string
+		if err := rows.Scan(
+			&rid, &sp.SpanID, &sp.TraceID, &sp.ParentSpanID, &sp.Name,
+			&sp.StartTimeUnixNano, &sp.EndTimeUnixNano,
+			&sp.StatusCode, &sp.StatusMessage, &attrs, &events, &sp.RunID,
+		); err != nil {
+			return nil, afterRowid, err
+		}
+		if err := decodeSpanJSON(&sp, attrs, events); err != nil {
+			return nil, afterRowid, err
+		}
+		if rid > cursor {
+			cursor = rid
 		}
 		out = append(out, sp)
 	}
-	return out, rows.Err()
+	return out, cursor, rows.Err()
 }
 
-// MaxSpanStart returns the largest start_time_unix_nano in the
-// store, or 0 if the table is empty. Callers use it to seed the
-// cursor for SpansSince.
-func (s *Store) MaxSpanStart(ctx context.Context) (int64, error) {
+// MaxSpanRowid returns the largest rowid in the store, or 0 if empty.
+// Callers use it to seed the cursor for SpansSince so they don't replay
+// historical spans.
+func (s *Store) MaxSpanRowid(ctx context.Context) (int64, error) {
 	var v *int64
-	err := s.db.QueryRowContext(ctx, `SELECT MAX(start_time_unix_nano) FROM spans`).Scan(&v)
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(rowid) FROM spans`).Scan(&v)
 	if err != nil {
 		return 0, err
 	}

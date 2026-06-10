@@ -45,7 +45,7 @@ func scryTail(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 	}
 	defer func() { _ = s.Close() }()
 
-	cursor, err := s.MaxSpanStart(ctx)
+	cursor, err := s.MaxSpanRowid(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return 0
@@ -73,7 +73,7 @@ func scryTail(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 		case <-tick.C:
 		}
 
-		newSpans, err := s.SpansSince(ctx, cursor, 200)
+		newSpans, next, err := s.SpansSince(ctx, cursor, 200)
 		if err != nil {
 			// Don't bail on transient query errors — print and keep
 			// polling. The user gets a stream of warnings if the DB
@@ -81,10 +81,8 @@ func scryTail(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 			_, _ = fmt.Fprintf(errW, "scry tail: %v\n", err)
 			continue
 		}
+		cursor = next
 		for _, sp := range newSpans {
-			if sp.StartTimeUnixNano > cursor {
-				cursor = sp.StartTimeUnixNano
-			}
 			if useJSON {
 				if err := enc.Encode(sp); err != nil {
 					_, _ = fmt.Fprintf(errW, "scry tail: encode: %v\n", err)

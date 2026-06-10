@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -84,7 +85,11 @@ func (s *InMemoryStore) Retrieve(_ context.Context, q Query) ([]Result, error) {
 			if len(c.Embedding) == 0 {
 				continue
 			}
-			score = cosine(q.Embedding, c.Embedding)
+			cs, err := cosine(q.Embedding, c.Embedding)
+			if err != nil {
+				return nil, err
+			}
+			score = cs
 			vector = true
 		case q.Text != "":
 			score = lexicalScore(q.Text, c.Text)
@@ -154,16 +159,19 @@ func matchesFilter(meta, filter map[string]string) bool {
 
 // cosine returns the cosine similarity between a and b, in [-1, 1].
 // Returns 0 when either vector is zero-length.
-func cosine(a, b []float32) float32 {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
+func cosine(a, b []float32) (float32, error) {
+	if len(a) != len(b) {
+		// Truncating to the shorter length (the old behavior) produced a
+		// plausible but wrong score over a prefix — a 768-dim query
+		// against 1536-dim vectors would silently "work". A mismatch
+		// means the corpus and query were embedded by different models.
+		return 0, fmt.Errorf("memory: embedding dimension mismatch: query=%d vs chunk=%d", len(a), len(b))
 	}
-	if n == 0 {
-		return 0
+	if len(a) == 0 {
+		return 0, nil
 	}
 	var dot, na, nb float64
-	for i := 0; i < n; i++ {
+	for i := range a {
 		ai := float64(a[i])
 		bi := float64(b[i])
 		dot += ai * bi
@@ -172,9 +180,9 @@ func cosine(a, b []float32) float32 {
 	}
 	denom := math.Sqrt(na) * math.Sqrt(nb)
 	if denom == 0 {
-		return 0
+		return 0, nil
 	}
-	return float32(dot / denom)
+	return float32(dot / denom), nil
 }
 
 // lexicalScore is a rough term-frequency match: every query token

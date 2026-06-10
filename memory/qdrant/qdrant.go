@@ -20,6 +20,7 @@ import (
 // signals "system-owned" and avoids collisions with caller-supplied
 // keys.
 const (
+	payloadKeyChunkID    = "__chunk_id"
 	payloadKeyDocumentID = "__document_id"
 	payloadKeyIndex      = "__index"
 	payloadKeyText       = "__text"
@@ -117,11 +118,17 @@ func (s *Store) Add(ctx context.Context, chunks []memory.Chunk) error {
 	points := make([]upsertPoint, 0, len(chunks))
 	for _, c := range chunks {
 		payload := map[string]any{
+			payloadKeyChunkID:    c.ID,
 			payloadKeyDocumentID: c.DocumentID,
 			payloadKeyIndex:      c.Index,
 			payloadKeyText:       c.Text,
 		}
 		for k, v := range c.Metadata {
+			// Reserved-key guard: user metadata must not clobber the
+			// internal "__"-prefixed keys (which carry the id, text, etc.).
+			if strings.HasPrefix(k, "__") {
+				return fmt.Errorf("memory/qdrant: chunk %q metadata key %q uses the reserved %q prefix", c.ID, k, "__")
+			}
 			payload[k] = v
 		}
 		points = append(points, upsertPoint{
@@ -309,7 +316,7 @@ func buildSearchBody(vec []float32, k int, filter map[string]string) map[string]
 		"vector":       vec,
 		"limit":        k,
 		"with_payload": true,
-		"with_vector":  false,
+		"with_vector":  true,
 	}
 	if len(filter) > 0 {
 		must := make([]any, 0, len(filter))
@@ -329,6 +336,9 @@ func buildSearchBody(vec []float32, k int, filter map[string]string) map[string]
 // Metadata.
 func chunkFromPayload(payload map[string]any) memory.Chunk {
 	c := memory.Chunk{}
+	if v, ok := payload[payloadKeyChunkID].(string); ok {
+		c.ID = v
+	}
 	if v, ok := payload[payloadKeyDocumentID].(string); ok {
 		c.DocumentID = v
 	}

@@ -41,7 +41,7 @@ func (s *Server) handleStreamRuns(w http.ResponseWriter, r *http.Request) {
 	// Seed cursor at the current max so we don't replay historical
 	// runs to a freshly connected client. Existing runs are already
 	// in the static page render; we only stream what's new.
-	cursor, err := s.store.MaxSpanStart(r.Context())
+	cursor, err := s.store.MaxSpanRowid(r.Context())
 	if err != nil {
 		http.Error(w, "stream: seed cursor: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -60,15 +60,15 @@ func (s *Server) handleStreamRuns(w http.ResponseWriter, r *http.Request) {
 		}
 		iter++
 
-		spans, err := s.store.SpansSince(r.Context(), cursor, 500)
+		spans, next, err := s.store.SpansSince(r.Context(), cursor, 500)
 		if err != nil {
 			writeSSEError(w, flusher, err)
 			return
 		}
+		cursor = next
 
 		touched := map[string]struct{}{}
 		for _, sp := range spans {
-			cursor = max(cursor, sp.StartTimeUnixNano)
 			touched[sp.TraceID] = struct{}{}
 		}
 

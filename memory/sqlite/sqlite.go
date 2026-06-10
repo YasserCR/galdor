@@ -138,7 +138,16 @@ func (s *Store) lexicalRetrieve(ctx context.Context, q memory.Query, k int) ([]m
 	// FTS5 bm25() returns negative scores (lower = more relevant);
 	// negate so the caller-facing Score follows the higher-is-better
 	// convention used across galdor.
-	rows, err := s.db.QueryContext(ctx, lexicalRetrieveSQL, match, k*4) // overfetch for post-filtering
+	// Push the metadata filter into SQL alongside the FTS MATCH. Filtering
+	// in Go after a fixed `k*4` overfetch could return 0 of K available
+	// rows when the filter-matching chunks ranked below the overfetch
+	// window.
+	where, filterArgs := filterSQL("c.metadata", q.Filter)
+	args := make([]any, 0, 2+len(filterArgs))
+	args = append(args, match)
+	args = append(args, filterArgs...)
+	args = append(args, k)
+	rows, err := s.db.QueryContext(ctx, lexicalRetrieveSQL(where), args...)
 	if err != nil {
 		return nil, fmt.Errorf("memory/sqlite: fts query: %w", err)
 	}
@@ -156,13 +165,7 @@ func (s *Store) lexicalRetrieve(ctx context.Context, q memory.Query, k int) ([]m
 			return nil, err
 		}
 		c.Embedding = decodeEmbedding(embedBlob)
-		if !matchesFilter(c.Metadata, q.Filter) {
-			continue
-		}
 		results = append(results, memory.Result{Chunk: c, Score: float32(-bm25)})
-		if len(results) >= k {
-			break
-		}
 	}
 	return results, rows.Err()
 }
@@ -196,7 +199,10 @@ func (s *Store) vectorRetrieve(ctx context.Context, q memory.Query, k int) ([]me
 		if len(c.Embedding) == 0 {
 			continue
 		}
-		score := cosine(q.Embedding, c.Embedding)
+		score, err := cosine(q.Embedding, c.Embedding)
+		if err != nil {
+			return nil, err
+		}
 		if score < 0 {
 			continue
 		}
@@ -247,15 +253,6 @@ func quoteFTSTerm(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
-func matchesFilter(meta, filter map[string]string) bool {
-	for k, v := range filter {
-		if meta[k] != v {
-			return false
-		}
-	}
-	return true
-}
-
 // filterSQL builds an AND-chain of `json_extract(<col>, ?) = ?` predicates that
 // push a metadata equality filter down into SQLite, together with the bound
 // arguments. Keys are sorted so the generated SQL is deterministic. The JSON
@@ -278,9 +275,17 @@ func filterSQL(col string, filter map[string]string) (string, []any) {
 		b.WriteString(" AND json_extract(")
 		b.WriteString(col)
 		b.WriteString(", ?) = ?")
-		args = append(args, "$."+k, filter[k])
+		args = append(args, jsonPath(k), filter[k])
 	}
 	return b.String(), args
+}
+
+// jsonPath builds a quoted SQLite json_extract path for an arbitrary key.
+// An unquoted "$."+key breaks for keys containing "." (treated as a nested
+// lookup), spaces, or other path specials — those never matched. Quoting
+// (with "" escaping) makes any flat key a literal member access.
+func jsonPath(key string) string {
+	return `$."` + strings.ReplaceAll(key, `"`, `""`) + `"`
 }
 
 // vectorScanSQL returns the chunk scan used by vectorRetrieve, with the metadata
@@ -332,16 +337,18 @@ func decodeEmbedding(b []byte) []float32 {
 
 // cosine returns the cosine similarity between a and b, in [-1, 1].
 // Returns 0 when either vector is zero-length.
-func cosine(a, b []float32) float32 {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
+func cosine(a, b []float32) (float32, error) {
+	if len(a) != len(b) {
+		// A mismatch means the corpus and query were embedded by different
+		// models; truncating to the shorter length produced a wrong score
+		// over a prefix instead of failing.
+		return 0, fmt.Errorf("memory/sqlite: embedding dimension mismatch: query=%d vs chunk=%d", len(a), len(b))
 	}
-	if n == 0 {
-		return 0
+	if len(a) == 0 {
+		return 0, nil
 	}
 	var dot, na, nb float64
-	for i := 0; i < n; i++ {
+	for i := range a {
 		ai := float64(a[i])
 		bi := float64(b[i])
 		dot += ai * bi
@@ -350,9 +357,9 @@ func cosine(a, b []float32) float32 {
 	}
 	denom := math.Sqrt(na) * math.Sqrt(nb)
 	if denom == 0 {
-		return 0
+		return 0, nil
 	}
-	return float32(dot / denom)
+	return float32(dot / denom), nil
 }
 
 const schemaSQL = `
@@ -390,11 +397,13 @@ const deleteChunkSQL = `DELETE FROM chunks WHERE id = ?`
 
 const deleteByDocSQL = `DELETE FROM chunks WHERE document_id = ?`
 
-const lexicalRetrieveSQL = `
+func lexicalRetrieveSQL(where string) string {
+	return `
 SELECT c.id, c.document_id, c.idx, c.text, c.embedding, c.metadata, bm25(chunks_fts) AS score
 FROM chunks_fts
 JOIN chunks c ON c.rowid = chunks_fts.rowid
-WHERE chunks_fts MATCH ?
+WHERE chunks_fts MATCH ?` + where + `
 ORDER BY score ASC
 LIMIT ?
 `
+}

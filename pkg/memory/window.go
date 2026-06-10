@@ -37,6 +37,11 @@ type Window struct {
 	// are simply dropped.
 	Summarizer Summarizer
 
+	// snapMu serializes Snapshot so two concurrent snapshots don't
+	// double-summarize the same evicted prefix. It is held across the
+	// (unlocked-w.mu) Summarizer call; mu guards the data and is released
+	// during that call so Append/Len stay responsive.
+	snapMu   sync.Mutex
 	mu       sync.Mutex
 	messages []schema.Message
 	summary  string // accumulated summary; prepended on Snapshot
@@ -81,40 +86,96 @@ func (w *Window) AppendAll(ms []schema.Message) {
 // the oldest non-system messages are summarized into a single system
 // message and prepended to the snapshot.
 func (w *Window) Snapshot(ctx context.Context) ([]schema.Message, error) {
+	// Only one summarizing Snapshot at a time, so two callers can't
+	// double-summarize the same evicted prefix.
+	w.snapMu.Lock()
+	defer w.snapMu.Unlock()
+
+	// Phase 1 (data lock): decide the eviction prefix and copy the
+	// messages to be summarized. The prefix is the oldest non-system
+	// messages, which stay at the front regardless of concurrent Appends.
+	w.mu.Lock()
+	sys, start := w.evictionPlanLocked()
+	var evictedCopy []schema.Message
+	if start > 0 && w.Summarizer != nil {
+		body := w.messages
+		if sys != nil {
+			body = body[1:]
+		}
+		evictedCopy = append([]schema.Message(nil), body[:start]...)
+	}
+	w.mu.Unlock()
+
+	// Phase 2 (NO data lock): run the Summarizer (an LLM). Append/Len
+	// stay responsive while this round-trips.
+	var newSummary string
+	if len(evictedCopy) > 0 {
+		if s, err := w.Summarizer.Summarize(ctx, evictedCopy); err == nil {
+			newSummary = s
+		}
+	}
+
+	// Phase 3 (data lock): fold the new summary, drop the evicted prefix
+	// (still at the front), and build the snapshot from the current state.
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if newSummary != "" {
+		if w.summary != "" {
+			w.summary = w.summary + "\n\n" + newSummary
+		} else {
+			w.summary = newSummary
+		}
+	}
+	if start > 0 {
+		curSys := sys
+		body := w.messages
+		if len(body) > 0 && body[0].Role == schema.RoleSystem {
+			s := body[0]
+			curSys = &s
+			body = body[1:]
+		}
+		drop := start
+		if drop > len(body) {
+			drop = len(body) // defensive: prefix shrank (shouldn't happen)
+		}
+		newMsgs := make([]schema.Message, 0, 1+len(body)-drop)
+		if curSys != nil {
+			newMsgs = append(newMsgs, *curSys)
+		}
+		newMsgs = append(newMsgs, body[drop:]...)
+		w.messages = newMsgs
+	}
+	return w.buildSnapshotLocked(), nil
+}
 
-	// Identify the leading system message, if any.
-	var sys *schema.Message
+// evictionPlanLocked returns the leading system message (if any) and how
+// many of the remaining (oldest-first) messages must be evicted to fit
+// the caps. Caller must hold w.mu.
+func (w *Window) evictionPlanLocked() (sys *schema.Message, start int) {
 	body := w.messages
 	if len(body) > 0 && body[0].Role == schema.RoleSystem {
 		s := body[0]
 		sys = &s
 		body = body[1:]
 	}
-
-	// Find the prefix that fits under the caps. Trim from the front
-	// (oldest first) until both caps are satisfied.
-	start := 0
 	for start < len(body) && !w.fits(sys, body[start:]) {
 		start++
 	}
-	evicted := body[:start]
-	kept := body[start:]
+	return sys, start
+}
 
-	// Summarize the evicted messages, when applicable.
-	if len(evicted) > 0 && w.Summarizer != nil {
-		s, err := w.Summarizer.Summarize(ctx, evicted)
-		if err == nil && s != "" {
-			if w.summary != "" {
-				w.summary = w.summary + "\n\n" + s
-			} else {
-				w.summary = s
-			}
-		}
+// buildSnapshotLocked assembles the output snapshot from the current
+// state: leading system message, the accumulated summary, then the
+// remaining messages. Caller must hold w.mu.
+func (w *Window) buildSnapshotLocked() []schema.Message {
+	body := w.messages
+	var sys *schema.Message
+	if len(body) > 0 && body[0].Role == schema.RoleSystem {
+		s := body[0]
+		sys = &s
+		body = body[1:]
 	}
-
-	out := make([]schema.Message, 0, 2+len(kept))
+	out := make([]schema.Message, 0, 2+len(body))
 	if sys != nil {
 		out = append(out, *sys)
 	}
@@ -123,19 +184,8 @@ func (w *Window) Snapshot(ctx context.Context) ([]schema.Message, error) {
 		summaryMsg.Name = "summary"
 		out = append(out, summaryMsg)
 	}
-	out = append(out, kept...)
-
-	// Drop the evicted messages from the window's storage so they
-	// aren't re-summarized on the next Snapshot.
-	if start > 0 {
-		newMsgs := make([]schema.Message, 0, 1+len(kept))
-		if sys != nil {
-			newMsgs = append(newMsgs, *sys)
-		}
-		newMsgs = append(newMsgs, kept...)
-		w.messages = newMsgs
-	}
-	return out, nil
+	out = append(out, body...)
+	return out
 }
 
 // Len returns the number of messages currently stored in the window

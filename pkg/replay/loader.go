@@ -84,12 +84,14 @@ func LoadFromStore(ctx context.Context, dbPath, runID string) (Recording, error)
 	rec := Recording{Version: CurrentFixtureVersion, RunID: runID}
 	var providerSpans []store.Span
 	for _, sp := range spans {
-		if sp.Name == observability.SpanProviderGenerate {
+		// Streaming calls carry the same captured prompt/completion as
+		// non-streaming ones; include both so a streamed run is replayable.
+		if sp.Name == observability.SpanProviderGenerate || sp.Name == observability.SpanProviderStream {
 			providerSpans = append(providerSpans, sp)
 		}
 	}
 	if len(providerSpans) == 0 {
-		return Recording{}, fmt.Errorf("replay: run %q has no provider.generate spans", runID)
+		return Recording{}, fmt.Errorf("replay: run %q has no provider.generate or provider.stream spans", runID)
 	}
 	sort.SliceStable(providerSpans, func(i, j int) bool {
 		return providerSpans[i].StartTimeUnixNano < providerSpans[j].StartTimeUnixNano
@@ -99,9 +101,17 @@ func LoadFromStore(ctx context.Context, dbPath, runID string) (Recording, error)
 	for _, sp := range providerSpans {
 		call, err := callFromSpan(sp)
 		if err != nil {
+			// A call that errored has no captured completion; skip it
+			// rather than failing the whole recording.
+			if errors.Is(err, ErrNoContent) {
+				continue
+			}
 			return Recording{}, err
 		}
 		rec.Calls = append(rec.Calls, call)
+	}
+	if len(rec.Calls) == 0 {
+		return Recording{}, fmt.Errorf("%w: run %q (record with observability.WithCaptureContent(true) and ensure calls succeeded)", ErrNoContent, runID)
 	}
 	return rec, nil
 }

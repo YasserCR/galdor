@@ -300,7 +300,12 @@ func (s *stripThinkingStream) feed(chunk string) string {
 					}
 					s.buf = tail
 				}
-				return strings.TrimLeftFunc(out.String(), isSpace)
+				// Return the legitimate text emitted before the tag as-is.
+				// Trimming here (the old behavior) deleted the whitespace
+				// of real text preceding a <think> block ("Hello <think>…"
+				// streamed as "Helloworld"). Whitespace at the seam AFTER a
+				// stripped block is handled where the close tag is consumed.
+				return out.String()
 			}
 			// Close found; resume normal scanning after it.
 			work = work[end:]
@@ -375,10 +380,6 @@ func splitSafePrefix(in string) (string, string) {
 		return in, ""
 	}
 	return in[:idx], tail
-}
-
-func isSpace(r rune) bool {
-	return r == ' ' || r == '\t' || r == '\n' || r == '\r'
 }
 
 // Compile-time interface assertions.

@@ -153,7 +153,10 @@ func (r *retryProvider) Generate(ctx context.Context, req Request) (*Response, e
 		if attempt >= r.cfg.MaxAttempts {
 			break
 		}
-		delay := r.nextDelay(attempt, err)
+		delay, ok := r.nextDelay(attempt, err)
+		if !ok {
+			break
+		}
 		if r.cfg.OnRetry != nil {
 			r.cfg.OnRetry(attempt+1, delay, err)
 		}
@@ -184,7 +187,10 @@ func (r *retryProvider) Stream(ctx context.Context, req Request) (StreamReader, 
 		if attempt >= r.cfg.MaxAttempts {
 			break
 		}
-		delay := r.nextDelay(attempt, err)
+		delay, ok := r.nextDelay(attempt, err)
+		if !ok {
+			break
+		}
 		if r.cfg.OnRetry != nil {
 			r.cfg.OnRetry(attempt+1, delay, err)
 		}
@@ -195,31 +201,53 @@ func (r *retryProvider) Stream(ctx context.Context, req Request) (StreamReader, 
 	return nil, fmt.Errorf("provider: exhausted %d attempts: %w", r.cfg.MaxAttempts, lastErr)
 }
 
-// nextDelay computes the delay for the next attempt. ErrRateLimited
-// with a positive APIError.RetryAfter takes precedence over the
-// exponential schedule — servers know better than our heuristic.
-// Jitter is applied to either source, and MaxDelay is enforced last as
-// a hard ceiling so neither exponential growth, a hostile/buggy
-// Retry-After, nor jitter can exceed the caller's configured cap.
-func (r *retryProvider) nextDelay(attempt int, err error) time.Duration {
-	var d time.Duration
-	// Server-suggested backoff wins over the exponential schedule.
+// nextDelay computes the delay for the next attempt, and reports whether
+// to retry at all. A server's Retry-After takes precedence over the
+// exponential schedule: it is honored within MaxDelay (jittered upward
+// only, so a retry never lands before the server's window), and if it
+// exceeds MaxDelay the caller gives up (ok=false) rather than retry early
+// or block for the full hint. The exponential path jitters both ways and
+// is capped at MaxDelay.
+func (r *retryProvider) nextDelay(attempt int, err error) (time.Duration, bool) {
+	// Server-mandated backoff is the source of truth for WHEN to retry.
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.RetryAfter > 0 {
-		d = time.Duration(apiErr.RetryAfter) * time.Second
-	} else {
-		f := float64(r.cfg.InitialDelay)
-		for i := 1; i < attempt; i++ {
-			f *= r.cfg.Multiplier
+		secs := apiErr.RetryAfter
+		if secs > maxRetryAfterSeconds {
+			secs = maxRetryAfterSeconds // guard against overflow / hostile values
 		}
-		d = time.Duration(f)
+		d := time.Duration(secs) * time.Second
+		// If the server wants a longer wait than the caller tolerates
+		// (MaxDelay), give up: truncating to MaxDelay would retry before
+		// the server's window (another guaranteed 429), and blocking for
+		// the full hint exceeds the caller's patience.
+		if d > r.cfg.MaxDelay {
+			return 0, false
+		}
+		// Honor it as a FLOOR — jitter only upward (never retry early),
+		// bounded by MaxDelay so it stays within the caller's tolerance.
+		jittered := applyJitterUp(d, r.cfg.Jitter)
+		if jittered > r.cfg.MaxDelay {
+			jittered = r.cfg.MaxDelay
+		}
+		return jittered, true
 	}
-	d = applyJitter(d, r.cfg.Jitter)
+	// Exponential schedule: jitter both ways, cap at MaxDelay.
+	f := float64(r.cfg.InitialDelay)
+	for i := 1; i < attempt; i++ {
+		f *= r.cfg.Multiplier
+	}
+	d := applyJitter(time.Duration(f), r.cfg.Jitter)
 	if d > r.cfg.MaxDelay {
 		d = r.cfg.MaxDelay
 	}
-	return d
+	return d, true
 }
+
+// maxRetryAfterSeconds caps a server's Retry-After so a hostile or buggy
+// value can't overflow the time.Duration multiplication. 24h is far beyond
+// any legitimate hint (and far beyond any sane MaxDelay).
+const maxRetryAfterSeconds = 24 * 60 * 60
 
 // IsRetryable reports whether err is a transient failure worth
 // retrying. Network-level errors (context.DeadlineExceeded on a
@@ -259,6 +287,20 @@ func applyJitter(d time.Duration, j float64) time.Duration {
 		j = 1
 	}
 	factor := 1 + (rand.Float64()*2-1)*j // #nosec G404 -- jitter for thundering-herd avoidance; not a security primitive
+	return time.Duration(float64(d) * factor)
+}
+
+// applyJitterUp adds jitter in [0, j] only — the result is never below d.
+// Used for server-mandated Retry-After, which must not be undershot.
+func applyJitterUp(d time.Duration, j float64) time.Duration {
+	if j <= 0 || d <= 0 {
+		return d
+	}
+	if j > 1 {
+		j = 1
+	}
+	// factor in [1, 1+j] — never below d.
+	factor := 1 + rand.Float64()*j // #nosec G404 -- jitter for thundering-herd avoidance; not a security primitive
 	return time.Duration(float64(d) * factor)
 }
 

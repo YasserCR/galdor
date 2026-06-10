@@ -111,8 +111,15 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
 	// SQLite plays best with a single writer; concurrent reads still
-	// work fine with WAL. Use small pool to keep contention low.
-	db.SetMaxOpenConns(8)
+	// work fine with WAL. Use a small pool to keep contention low.
+	// EXCEPT for :memory:, where each pooled connection is a SEPARATE,
+	// empty database — more than one connection means queries can hit a
+	// fresh connection with no schema ("no such table"). Pin to 1.
+	if inMemory {
+		db.SetMaxOpenConns(1)
+	} else {
+		db.SetMaxOpenConns(8)
+	}
 	db.SetMaxIdleConns(2)
 
 	s := &Store{db: db, inMemory: inMemory}
@@ -238,8 +245,12 @@ func (s *Store) InsertSpans(ctx context.Context, spans []Span) error {
 	if err != nil {
 		return fmt.Errorf("store: begin tx: %w", err)
 	}
+	// INSERT OR IGNORE: a duplicate span_id is a producer bug, not data
+	// worth failing the whole batch for. Without this, one duplicate rolls
+	// back the entire transaction and the OTel batcher (which doesn't
+	// retry ExportSpans) drops a batch of unrelated spans.
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO spans
+		INSERT OR IGNORE INTO spans
 			(span_id, trace_id, parent_span_id, name,
 			 start_time_unix_nano, end_time_unix_nano,
 			 status_code, status_message, attrs_json, events_json, run_id)
@@ -400,7 +411,9 @@ func (s *Store) SpansForRun(ctx context.Context, runID string) ([]Span, error) {
 		       start_time_unix_nano, end_time_unix_nano,
 		       status_code, status_message, attrs_json, events_json, run_id
 		FROM spans
-		WHERE trace_id = (SELECT trace_id FROM spans WHERE run_id = ? LIMIT 1)
+		WHERE trace_id = (
+			SELECT trace_id FROM spans WHERE run_id = ?
+			ORDER BY start_time_unix_nano DESC LIMIT 1)
 		ORDER BY start_time_unix_nano ASC,
 		         CASE WHEN parent_span_id = '' THEN 0 ELSE 1 END ASC,
 		         end_time_unix_nano DESC`, runID)
@@ -441,17 +454,25 @@ func scanSpan(rows *sql.Rows) (Span, error) {
 	); err != nil {
 		return Span{}, err
 	}
+	if err := decodeSpanJSON(&sp, attrs, events); err != nil {
+		return Span{}, err
+	}
+	return sp, nil
+}
+
+// decodeSpanJSON unmarshals the JSON-encoded attrs/events columns into sp.
+func decodeSpanJSON(sp *Span, attrs, events string) error {
 	if attrs != "" && attrs != "{}" {
 		if err := json.Unmarshal([]byte(attrs), &sp.Attributes); err != nil {
-			return Span{}, fmt.Errorf("store: decode attrs for span %s: %w", sp.SpanID, err)
+			return fmt.Errorf("store: decode attrs for span %s: %w", sp.SpanID, err)
 		}
 	}
 	if events != "" && events != "[]" {
 		if err := json.Unmarshal([]byte(events), &sp.Events); err != nil {
-			return Span{}, fmt.Errorf("store: decode events for span %s: %w", sp.SpanID, err)
+			return fmt.Errorf("store: decode events for span %s: %w", sp.SpanID, err)
 		}
 	}
-	return sp, nil
+	return nil
 }
 
 // jsonMarshal produces a deterministic representation of m. SQLite

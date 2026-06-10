@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -274,4 +275,20 @@ func TestNewSQLiteExporter_CreatesMissingParentDir(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("db not created at %s: %v", path, err)
 	}
+}
+
+// Regression for audit M21: Shutdown must wait for in-flight ExportSpans
+// before closing the DB. Run under -race: concurrent Export + Shutdown.
+func TestSQLiteExporter_ConcurrentExportAndShutdown(t *testing.T) {
+	exp, err := NewSQLiteExporter(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = exp.ExportSpans(context.Background(), nil) }()
+	}
+	_ = exp.Shutdown(context.Background())
+	wg.Wait()
 }

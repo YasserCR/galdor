@@ -27,7 +27,19 @@ type State struct {
 	// Iterations counts how many times the model node executed in
 	// this run.
 	Iterations int
+
+	// StoppedAtIterationCap is set when the loop terminated because it
+	// hit MaxIterations while the model's last turn still had pending
+	// tool calls — i.e. the run was truncated, not completed. FinalText
+	// will be a best-effort value (often empty) in that case. Run
+	// surfaces this as ErrMaxIterations.
+	StoppedAtIterationCap bool
 }
+
+// ErrMaxIterations is returned by Run when the loop stopped at
+// MaxIterations with tool calls still pending, so an empty result isn't
+// mistaken for a completed (empty) answer.
+var ErrMaxIterations = errors.New("agent: stopped at MaxIterations with tool calls still pending")
 
 // Config configures the ReAct loop.
 type Config struct {
@@ -143,6 +155,13 @@ func NewReAct(cfg Config) (*graph.Runnable[State], error) {
 		s.Iterations++
 		if len(resp.Message.ToolCalls) == 0 {
 			s.FinalText = resp.Message.Text()
+		} else if s.Iterations >= maxIter {
+			// Cap reached with tool calls still pending: the router will
+			// END this cycle without executing the tools. Flag the
+			// truncation and surface any text the model did produce, so
+			// callers don't read the empty FinalText as a clean answer.
+			s.StoppedAtIterationCap = true
+			s.FinalText = resp.Message.Text()
 		}
 		return s, nil
 	}
@@ -225,6 +244,9 @@ func Run(ctx context.Context, cfg Config, input string, system ...string) (strin
 	final, err := r.Invoke(ctx, State{Messages: msgs})
 	if err != nil {
 		return final.FinalText, err
+	}
+	if final.StoppedAtIterationCap {
+		return final.FinalText, ErrMaxIterations
 	}
 	return final.FinalText, nil
 }

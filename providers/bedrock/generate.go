@@ -29,5 +29,19 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 
 	resp := responseFromConverse(out, raw)
 	resp.Model = req.Model
+	// Bedrock's Converse has no "none" tool choice, so the model can still
+	// emit tool_use even when ToolChoiceNone was requested. Honor the
+	// cross-provider contract (ToolChoiceNone -> no tool calls produced)
+	// by stripping them from the response.
+	enforceToolChoiceNone(resp, req.ToolChoice)
 	return resp, nil
+}
+
+// enforceToolChoiceNone strips any tool calls from resp when the caller
+// asked for ToolChoiceNone, which Bedrock's Converse API can't express
+// natively.
+func enforceToolChoiceNone(resp *provider.Response, choice provider.ToolChoice) {
+	if resp != nil && choice == provider.ToolChoiceNone {
+		resp.Message.ToolCalls = nil
+	}
 }

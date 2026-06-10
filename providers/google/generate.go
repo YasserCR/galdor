@@ -50,5 +50,15 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 			Message:  "decode response: " + err.Error(),
 		})
 	}
+	// A prompt blocked by Gemini's safety filter comes back HTTP 200 with
+	// no candidates and a blockReason. Surface it as an error instead of
+	// an empty (apparently successful) response.
+	if len(msg.Candidates) == 0 && msg.PromptFeedback != nil && msg.PromptFeedback.BlockReason != "" {
+		return nil, &provider.APIError{
+			Provider: providerName,
+			Kind:     provider.ErrInvalidRequest,
+			Message:  "prompt blocked by safety filter: " + msg.PromptFeedback.BlockReason,
+		}
+	}
 	return responseFromWire(&msg, raw), nil
 }

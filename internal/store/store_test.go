@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -77,16 +78,59 @@ func TestStore_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestInsertSpans_DuplicateRejected(t *testing.T) {
+// Regression for audit M20: a duplicate span_id must be ignored, not fail
+// the whole batch — the OTel batcher doesn't retry, so failing the batch
+// would drop a batch of unrelated spans.
+func TestInsertSpans_DuplicateIgnoredNotBatchFailing(t *testing.T) {
 	t.Parallel()
 	s := openTempStore(t)
 	ctx := context.Background()
-	one := []Span{{SpanID: "dup", TraceID: "t", Name: "x", StartTimeUnixNano: 1, EndTimeUnixNano: 2}}
-	if err := s.InsertSpans(ctx, one); err != nil {
+	if err := s.InsertSpans(ctx, []Span{{SpanID: "dup", TraceID: "t", Name: "x", StartTimeUnixNano: 1, EndTimeUnixNano: 2}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.InsertSpans(ctx, one); err == nil {
-		t.Fatal("expected duplicate-key error on second insert")
+	// A batch with the duplicate AND a fresh span must succeed and land
+	// the fresh one.
+	batch := []Span{
+		{SpanID: "dup", TraceID: "t", Name: "x", StartTimeUnixNano: 1, EndTimeUnixNano: 2},
+		{SpanID: "fresh", TraceID: "t", Name: "y", StartTimeUnixNano: 3, EndTimeUnixNano: 4},
+	}
+	if err := s.InsertSpans(ctx, batch); err != nil {
+		t.Fatalf("a duplicate span must not fail the batch (regression of M20): %v", err)
+	}
+	n, err := s.SpanCount(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 spans (dup ignored, fresh inserted), got %d", n)
+	}
+}
+
+// Regression for audit M19: an in-memory store must pin the pool to a
+// single connection, or concurrent queries hit a fresh (empty) connection
+// and fail with "no such table".
+func TestOpen_InMemoryConcurrentQueries(t *testing.T) {
+	t.Parallel()
+	s, err := Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := s.SpanCount(context.Background()); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("in-memory concurrent query failed (regression of M19): %v", err)
 	}
 }
 
@@ -190,5 +234,27 @@ func TestNormalizeStatus(t *testing.T) {
 		if got := normalizeStatus(in); got != want {
 			t.Errorf("normalizeStatus(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Regression for audit M24: when a runID is reused across traces,
+// SpansForRun must resolve deterministically (the most recent trace), not
+// an arbitrary one.
+func TestSpansForRun_ReusedRunIDPicksLatestTrace(t *testing.T) {
+	t.Parallel()
+	s := openTempStore(t)
+	ctx := context.Background()
+	if err := s.InsertSpans(ctx, []Span{
+		{SpanID: "old", TraceID: "tOld", Name: "galdor.graph.run", StartTimeUnixNano: 100, EndTimeUnixNano: 200, RunID: "shared"},
+		{SpanID: "new", TraceID: "tNew", Name: "galdor.graph.run", StartTimeUnixNano: 900, EndTimeUnixNano: 1000, RunID: "shared"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.SpansForRun(ctx, "shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TraceID != "tNew" {
+		t.Fatalf("reused runID must resolve to the latest trace (regression of M24), got %+v", got)
 	}
 }

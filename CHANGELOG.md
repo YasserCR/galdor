@@ -11,6 +11,61 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-10
+
+`memory.Store` contract consistency and correctness fixes from the pre-alpha
+audit: the three vector backends (sqlite, pgvector, qdrant) and the in-memory
+store now agree on IDs, required embeddings, score scales and metadata
+round-tripping, and the observability/replay path no longer drops or
+mis-attributes spans. Each fix landed with a regression test (reproduced
+failing first, then green). Some previously-silent failures are now loud, so a
+few inputs that used to be accepted-but-wrong now error. Green under `go test
+-race`, golangci-lint v2.12.2, govulncheck and gosec across all nine modules.
+
+### Changed
+- **Retry gives up instead of retrying early.** When a server's `Retry-After`
+  exceeds the configured `MaxDelay`, the retry wrapper now stops (returns the
+  exhausted error) rather than truncating the wait to `MaxDelay` — truncating
+  would retry inside the server's window and earn another 429. A `Retry-After`
+  within `MaxDelay` is still honored as a floor (jittered upward only, never
+  below the server value).
+- **Cross-backend memory semantics are unified and documented.** The README now
+  carries a semantics matrix (ID handling, required embeddings, lexical-query
+  support, score scale) and the "swap backends by changing one constructor"
+  claim is scoped to what actually holds. Vector backends consistently require
+  a query embedding and drop anti-correlated (negative-cosine) results.
+- **Agents surface the iteration cap.** Hitting the max-iteration limit
+  mid-cycle now sets `State.StoppedAtIterationCap` and returns the
+  `ErrMaxIterations` sentinel instead of silently returning a partial run.
+
+### Fixed
+- **qdrant**: the user's free-form `Chunk.ID` is round-tripped via a reserved
+  `__chunk_id` payload key (previously lost on retrieval); caller metadata using
+  the reserved `__` prefix is now rejected instead of silently colliding with
+  system keys; searches request `with_vector` so retrieved chunks carry their
+  embedding.
+- **sqlite memory**: lexical (BM25) metadata filtering is pushed into SQL
+  instead of being applied after the fact, and JSON metadata paths are quoted
+  so keys with special characters no longer break the query; cosine on a
+  dimension mismatch returns an error rather than a meaningless score.
+- **pgvector**: an HNSW cosine index is created on the embedding column, so
+  nearest-neighbor search is no longer a sequential scan over the table.
+- **embedders**: the cached embedding dimension is read/written atomically
+  (data race under concurrent first calls), and a nil/empty vector in a
+  provider response is rejected rather than cached as a zero-dim embedding.
+- **observability / replay**: the span tail cursor advances on rowid, so a
+  late-ingested span with a low start time is no longer skipped; span ingest
+  is idempotent (`INSERT OR IGNORE`); `Shutdown` waits for in-flight async
+  exports (`WaitGroup`); per-run span lookup picks the latest trace; fully
+  streaming runs are now replayable (`LoadFromStore` includes provider-stream
+  spans and skips errored calls); the in-memory trace store caps the pool to a
+  single connection so `:memory:` rows stay visible across queries.
+- **providers**: Google reports a safety-block as an error instead of an empty
+  response and appends (rather than overwrites) multiple system messages;
+  Bedrock honors `ToolChoice: none` by stripping tool calls from the response.
+- **thinking strip**: trailing whitespace after a stripped `<thinking>` block is
+  preserved rather than eaten, so adjacent text isn't joined.
+
 ## [0.7.0] - 2026-06-10
 
 Network-surface hardening and cross-provider contract fixes from the
@@ -491,6 +546,7 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
 [Unreleased]: https://github.com/YasserCR/galdor/compare/v0.7.0...HEAD
+[0.8.0]: https://github.com/YasserCR/galdor/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/YasserCR/galdor/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/YasserCR/galdor/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/YasserCR/galdor/compare/v0.6.0...v0.6.1

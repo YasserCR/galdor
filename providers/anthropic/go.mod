@@ -2,7 +2,7 @@ module github.com/YasserCR/galdor/providers/anthropic
 
 go 1.25.11
 
-require github.com/YasserCR/galdor v0.7.0
+require github.com/YasserCR/galdor v0.8.0
 
 // During development the parent module is resolved from the local
 // workspace. This replace is also respected when building this module

@@ -182,26 +182,36 @@ func TestRetry_RespectsRetryAfterHeader(t *testing.T) {
 	}
 }
 
-func TestRetry_RetryAfterClampedToMaxDelay(t *testing.T) {
+func TestRetry_RetryAfterAboveMaxDelayGivesUp(t *testing.T) {
 	t.Parallel()
-	// A hostile/buggy server asks for a 1-day backoff; MaxDelay is the
-	// caller's hard ceiling and must cap it.
+	// A hostile/buggy server asks for a 1-day backoff. Truncating to
+	// MaxDelay would retry before the server's window (a guaranteed second
+	// 429); blocking for the full day blows past the caller's patience. So
+	// the wrapper gives up: it stops retrying and returns the exhausted
+	// error — WITHOUT ever sleeping. This test would hang for a day under
+	// the old clamp-and-sleep behavior, so finishing at all proves the fix.
 	p := &scriptedRetryProv{responses: []scriptedResponse{
 		{err: &provider.APIError{Kind: provider.ErrRateLimited, RetryAfter: 86400}}, // 1 day
-		{resp: &provider.Response{Message: schema.AssistantMessage("ok")}},
+		{resp: &provider.Response{Message: schema.AssistantMessage("ok")}},          // never reached
 	}}
-	var planned time.Duration
+	retried := false
 	wrapped := provider.Retry(p, provider.RetryConfig{
 		MaxAttempts: 3,
 		MaxDelay:    50 * time.Millisecond,
-		Jitter:      -1, // deterministic for the assertion
-		OnRetry:     func(_ int, delay time.Duration, _ error) { planned = delay },
+		Jitter:      -1,
+		OnRetry:     func(_ int, _ time.Duration, _ error) { retried = true },
 	})
-	if _, err := wrapped.Generate(context.Background(), provider.Request{}); err != nil {
-		t.Fatal(err)
+	start := time.Now()
+	_, err := wrapped.Generate(context.Background(), provider.Request{})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected exhausted error when Retry-After exceeds MaxDelay, got nil")
 	}
-	if planned != 50*time.Millisecond {
-		t.Errorf("planned delay = %v, want clamped to MaxDelay 50ms", planned)
+	if retried {
+		t.Error("OnRetry fired: the wrapper slept on a Retry-After that exceeds MaxDelay instead of giving up")
+	}
+	if elapsed > time.Second {
+		t.Errorf("Generate took %v; it must give up immediately, not honor the 1-day hint", elapsed)
 	}
 }
 

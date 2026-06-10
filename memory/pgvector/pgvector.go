@@ -221,6 +221,15 @@ CREATE TABLE IF NOT EXISTS %s (
 	if _, err := s.pool.Exec(ctx, idx); err != nil {
 		return fmt.Errorf("memory/pgvector: create index: %w", err)
 	}
+	// Vector index: without it, the `embedding <=> $1` nearest-neighbor
+	// search in Retrieve is a sequential scan over the whole table —
+	// exactly the O(N) cost callers move to pgvector to avoid. HNSW with
+	// cosine ops matches the query's distance operator. Requires pgvector
+	// >= 0.5.0; a clear error is better than a silent full scan.
+	hnsw := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_embedding_hnsw ON %s USING hnsw (embedding vector_cosine_ops)`, s.table, s.table)
+	if _, err := s.pool.Exec(ctx, hnsw); err != nil {
+		return fmt.Errorf("memory/pgvector: create vector index (needs pgvector >= 0.5.0 for HNSW): %w", err)
+	}
 	return nil
 }
 
