@@ -188,6 +188,40 @@ func TestAdd_ValidatesDimAndID(t *testing.T) {
 	}
 }
 
+// Regression for audit M13: user metadata must not be able to clobber
+// the internal "__"-prefixed payload keys (which carry id/text/doc-id);
+// such a key is rejected at Add time rather than silently overwriting
+// the chunk's identity on read.
+func TestAdd_RejectsReservedMetadataKeys(t *testing.T) {
+	t.Parallel()
+	var upserted bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/points") {
+			upserted = true
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	}))
+	defer srv.Close()
+
+	s, err := Open(context.Background(), Config{URL: srv.URL, Dim: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	err = s.Add(context.Background(), []memory.Chunk{{
+		ID: "x", DocumentID: "d", Embedding: []float32{1, 0, 0, 0},
+		Metadata: map[string]string{"__chunk_id": "spoofed"},
+	}})
+	if err == nil {
+		t.Fatal("a reserved __-prefixed metadata key must be rejected (regression of M13)")
+	}
+	if upserted {
+		t.Error("Add must reject before issuing the upsert, not write a clobbered payload")
+	}
+}
+
 func TestRetrieve_RejectsEmptyEmbedding(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

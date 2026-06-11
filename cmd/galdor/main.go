@@ -89,6 +89,7 @@ Commands:
   version    Print version information
   help       Show this help
 
-This is a Phase 0 placeholder binary. See ROADMAP.md.
+Implemented today: scry, ui, version, help. The remaining commands are
+planned stubs and print "not yet implemented" when run. See ROADMAP.md.
 `)
 }

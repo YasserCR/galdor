@@ -54,6 +54,26 @@ func normalizeHTTPError(resp *http.Response) error {
 	return provider.Classify(apiErr)
 }
 
+// classifyStreamError builds a galdor *provider.APIError from an
+// in-stream {"error":{...}} frame, reusing the same reason/status
+// classification as the HTTP error path. The body carries no HTTP status
+// of its own, so the embedded numeric Code (an HTTP status) seeds the
+// kind before the more specific reason/status promotions.
+func classifyStreamError(e *wireErrorBody) error {
+	apiErr := &provider.APIError{
+		Provider:   providerName,
+		StatusCode: e.Code,
+		Message:    e.Message,
+		Kind:       kindForStatus(e.Code),
+	}
+	if k := kindForReason(e.Details); k != nil {
+		apiErr.Kind = k
+	} else if k := kindForStatusName(e.Status); k != nil {
+		apiErr.Kind = k
+	}
+	return provider.Classify(apiErr)
+}
+
 func kindForStatus(code int) error {
 	switch {
 	case code == http.StatusUnauthorized || code == http.StatusForbidden:

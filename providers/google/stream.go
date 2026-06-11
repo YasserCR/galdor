@@ -138,6 +138,21 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			// Skip malformed lines without surfacing transport hiccups.
 			continue
 		}
+		// Surface an in-stream error frame instead of letting the stream
+		// end with a synthesized (apparently successful) MessageStop.
+		if frame.Error != nil {
+			return provider.Event{}, classifyStreamError(frame.Error)
+		}
+		// A prompt blocked by Gemini's safety filter arrives as a frame
+		// with no candidates and a blockReason; mirror Generate and fail
+		// instead of silently terminating.
+		if len(frame.Candidates) == 0 && frame.PromptFeedback != nil && frame.PromptFeedback.BlockReason != "" {
+			return provider.Event{}, &provider.APIError{
+				Provider: providerName,
+				Kind:     provider.ErrInvalidRequest,
+				Message:  "prompt blocked by safety filter: " + frame.PromptFeedback.BlockReason,
+			}
+		}
 		r.handleFrame(&frame)
 	}
 }

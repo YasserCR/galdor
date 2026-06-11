@@ -10,6 +10,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/YasserCR/galdor/pkg/memory"
@@ -59,10 +60,14 @@ type EmbedderConfig struct {
 // Embedder implements memory.Embedder against Google's
 // batchEmbedContents endpoint. Safe for concurrent use.
 type Embedder struct {
-	apiKey     string
-	baseURL    string
-	model      string
-	dim        int
+	apiKey  string
+	baseURL string
+	model   string
+	// dim is the embedding dimension: configured up front or learned
+	// from the first response. Guarded by atomic access because Embedder
+	// is documented as safe for concurrent use, and the auto-detect write
+	// would otherwise race concurrent Embed/Dimensions calls.
+	dim        atomic.Int64
 	httpClient *http.Client
 	userAgent  string
 }
@@ -78,10 +83,10 @@ func NewEmbedder(cfg EmbedderConfig) (*Embedder, error) {
 		apiKey:     cfg.APIKey,
 		baseURL:    cfg.BaseURL,
 		model:      cfg.Model,
-		dim:        cfg.Dim,
 		httpClient: cfg.HTTPClient,
 		userAgent:  cfg.UserAgent,
 	}
+	e.dim.Store(int64(cfg.Dim))
 	if e.baseURL == "" {
 		e.baseURL = defaultBaseURL
 	}
@@ -103,6 +108,7 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 		return nil, nil
 	}
 	modelPath := e.modelPath()
+	dim := int(e.dim.Load())
 	body := embedBatchRequest{
 		Requests: make([]embedSingleRequest, len(texts)),
 	}
@@ -111,8 +117,8 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 			Model:   modelPath,
 			Content: embedContent{Parts: []embedPart{{Text: t}}},
 		}
-		if e.dim > 0 {
-			body.Requests[i].OutputDimensionality = e.dim
+		if dim > 0 {
+			body.Requests[i].OutputDimensionality = dim
 		}
 	}
 
@@ -159,8 +165,11 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 	for i, em := range out.Embeddings {
 		vecs[i] = em.Values
 	}
-	if e.dim == 0 && len(vecs) > 0 && len(vecs[0]) > 0 {
-		e.dim = len(vecs[0])
+	if len(vecs) > 0 && len(vecs[0]) > 0 {
+		// Cache the native dimensionality from the first successful
+		// response. CompareAndSwap keeps a configured Dim authoritative
+		// and makes the write race-free.
+		e.dim.CompareAndSwap(0, int64(len(vecs[0])))
 	}
 	return vecs, nil
 }
@@ -171,8 +180,8 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 // gemini-embedding-001 returns variable sizes — set Dim explicitly
 // for those).
 func (e *Embedder) Dimensions() int {
-	if e.dim > 0 {
-		return e.dim
+	if d := int(e.dim.Load()); d > 0 {
+		return d
 	}
 	return 768
 }

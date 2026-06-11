@@ -37,7 +37,7 @@ if err != nil {
 }
 ```
 
-`p` is a `provider.Provider`; pass it to `agent.Run`, `graph.NewBuilder`, `council.Supervisor`, or whatever consumes one.
+`p` is a `provider.Provider`; pass it to `agent.Run`, `agent.NewReAct`, `council.NewSupervisor`, or whatever consumes one.
 
 ### 2. Construct from the environment
 

@@ -7,8 +7,36 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
+
+// Regression for audit H10 (OpenAI embedder half): the dim auto-detect
+// write must not race concurrent Embed/Dimensions calls — the type is
+// documented "Safe for concurrent use". Run with -race.
+func TestEmbed_ConcurrentDimAutoDetectIsRaceFree(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"index":0,"embedding":[0.1,0.2,0.3]}]}`)
+	}))
+	defer srv.Close()
+
+	// Dim left zero so every Embed attempts the auto-detect write.
+	e, _ := NewEmbedder(EmbedderConfig{APIKey: "test-key", BaseURL: srv.URL})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = e.Embed(context.Background(), []string{"x"}) }()
+		go func() { defer wg.Done(); _ = e.Dimensions() }()
+	}
+	wg.Wait()
+
+	if e.Dimensions() != 3 {
+		t.Errorf("Dimensions = %d, want 3", e.Dimensions())
+	}
+}
 
 func TestNewEmbedder_RequiresAPIKey(t *testing.T) {
 	t.Parallel()

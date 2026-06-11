@@ -53,5 +53,6 @@ The same `Runnable[S]` can be:
 - consumed event-by-event with `Stream` (see `examples/graph-counter`),
 - paused and resumed with `InterruptBefore` + `Resume` (this example).
 
-Future agent helpers (`agent.ReAct`, Phase 3 session C) layer ReAct
-loops on top of this same primitive — the runtime stays one thing.
+The agent helpers (`agent.NewReAct`, `agent.NewPlanAndExecute`) layer
+ReAct and plan-execute loops on top of this same primitive — the runtime
+stays one thing.

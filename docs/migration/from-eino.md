@@ -140,7 +140,7 @@ so the same instrumentation works against:
 |---|---|
 | `deepagent.DeepAgent` | `council.Supervisor` (hierarchical) or `council.Swarm` (peer) |
 | sub-agent delegation | `Worker.Run` (Supervisor) or `Agent.Handoffs` (Swarm) |
-| planning tools | a `Worker` running `agent.NewPlanExecute(...)` |
+| planning tools | a `Worker` running `agent.NewPlanAndExecute(...)` |
 
 Supervisor sketch:
 

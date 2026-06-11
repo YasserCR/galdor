@@ -159,4 +159,3 @@ for {
 - [Cost tracking](cost-tracking.md) — the budget middleware composes with `InstrumentProvider`, useful when each queue job has a hard $-cap.
 - [Human-in-the-loop](human-in-the-loop.md) — when a job needs human approval mid-run.
 - [Observability](../concepts/observability.md) — the `WithRunID` mechanic and dashboard grouping.
-- [`retro/pragma-galdor/pragma-agents-go`](../../../retro/pragma-galdor/pragma-agents-go/) — a real worker against BullMQ + Postgres + galdor.

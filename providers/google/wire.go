@@ -112,12 +112,17 @@ type wireSafety struct {
 	Threshold string `json:"threshold"`
 }
 
-// generateResponse is the body of a successful non-streaming call.
+// generateResponse is the body of a successful non-streaming call, and
+// also a single server-sent frame on the streaming endpoint. Error is
+// populated only on a streamed error frame: Gemini's SSE stream can
+// deliver {"error":{...}} mid-stream instead of closing cleanly, and it
+// must be surfaced rather than swallowed (see streamReader.Recv).
 type generateResponse struct {
 	Candidates     []wireCandidate     `json:"candidates"`
 	UsageMetadata  wireUsage           `json:"usageMetadata"`
 	ModelVersion   string              `json:"modelVersion"`
 	PromptFeedback *wirePromptFeedback `json:"promptFeedback,omitempty"`
+	Error          *wireErrorBody      `json:"error,omitempty"`
 }
 
 type wireCandidate struct {
@@ -156,12 +161,16 @@ type wireUsage struct {
 // status="INVALID_ARGUMENT" for invalid API keys, with the real
 // classification only in details[].reason.
 type errorResponse struct {
-	Error struct {
-		Code    int               `json:"code"`
-		Message string            `json:"message"`
-		Status  string            `json:"status"`
-		Details []wireErrorDetail `json:"details,omitempty"`
-	} `json:"error"`
+	Error wireErrorBody `json:"error"`
+}
+
+// wireErrorBody is the google.rpc-style error block, shared by the HTTP
+// error response and the in-stream error frame.
+type wireErrorBody struct {
+	Code    int               `json:"code"`
+	Message string            `json:"message"`
+	Status  string            `json:"status"`
+	Details []wireErrorDetail `json:"details,omitempty"`
 }
 
 // wireErrorDetail captures the subset of google.rpc.* detail messages the

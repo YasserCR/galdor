@@ -400,6 +400,76 @@ func TestStreamableHTTP_ConcurrentSameSession(t *testing.T) {
 	}
 }
 
+// Regression for audit M29: two concurrent POSTs reusing one JSON-RPC id
+// must not clobber each other's reply slot. The first registers the id;
+// the second (same id, still in flight) must be rejected with 409
+// Conflict rather than orphaning the first request's reply.
+func TestStreamableHTTP_DuplicateInFlightID(t *testing.T) {
+	t.Parallel()
+	baseURL, stop := startStreamableServerReg(t, slowRegistry(t))
+	defer stop()
+
+	// Establish a session.
+	c := newStreamableClient(baseURL)
+	if status, _, _ := c.do(t, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`)); status != http.StatusOK {
+		t.Fatalf("init status = %d", status)
+	}
+	_, _, _ = c.do(t, []byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
+	sid := c.sessionID
+
+	// rawPost issues a tools/call with the given id and returns the HTTP
+	// status. The "slow" tool sleeps ms so the request stays in flight.
+	rawPost := func(id, ms int) (int, error) {
+		body := fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"slow","arguments":{"text":"x","ms":%d}}}`, id, ms)
+		req, _ := http.NewRequest(http.MethodPost, baseURL+"/", bytes.NewReader([]byte(body)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Mcp-Session-Id", sid)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		defer resp.Body.Close()
+		_, _ = io.ReadAll(resp.Body)
+		return resp.StatusCode, nil
+	}
+
+	type res struct {
+		status int
+		err    error
+	}
+	results := make(chan res, 2)
+	// id 7 in flight for 400ms; a second id-7 POST fired while it runs.
+	go func() { s, err := rawPost(7, 400); results <- res{s, err} }()
+	time.Sleep(40 * time.Millisecond) // ensure the first id 7 is registered
+	go func() { s, err := rawPost(7, 0); results <- res{s, err} }()
+
+	var statuses []int
+	for i := 0; i < 2; i++ {
+		select {
+		case r := <-results:
+			if r.err != nil {
+				t.Fatalf("request: %v", r.err)
+			}
+			statuses = append(statuses, r.status)
+		case <-time.After(5 * time.Second):
+			t.Fatal("a request never returned")
+		}
+	}
+
+	var ok, conflict int
+	for _, s := range statuses {
+		switch s {
+		case http.StatusOK:
+			ok++
+		case http.StatusConflict:
+			conflict++
+		}
+	}
+	if ok != 1 || conflict != 1 {
+		t.Fatalf("want exactly one 200 and one 409 Conflict, got statuses %v (regression of M29)", statuses)
+	}
+}
+
 // TestStreamableHTTP_OversizeBodyRejected confirms a body larger than
 // the cap is rejected rather than fully buffered.
 func TestStreamableHTTP_OversizeBodyRejected(t *testing.T) {

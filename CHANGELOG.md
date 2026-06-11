@@ -11,6 +11,58 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-11
+
+Post-audit follow-up: three provider fixes whose earlier cleanup only landed
+in one of several places, plus the regression tests and documentation the
+audit verification flagged as missing. Each code fix has a permanent
+regression test (red→green where the bug was reproducible). Green under
+`go test -race`, `go vet` and the build across the root module and the nine
+submodules.
+
+### Fixed
+- **Google streaming surfaces in-stream errors.** A `{"error":{...}}` frame
+  delivered mid-stream by Gemini is now returned as a classified
+  `*provider.APIError` instead of being swallowed and ending the stream with
+  a synthesized, apparently-successful `MessageStop` (the same fix OpenAI
+  already had). A prompt blocked by the safety filter mid-stream now errors
+  too, matching the non-streaming `Generate` path.
+- **Bedrock echoes signed reasoning blocks.** A signed extended-thinking
+  block is now re-emitted on the assistant turn that carries `tool_use`, as
+  the Converse API requires ("include the text and its signature
+  unmodified") — so a `Reasoning.Enabled` + tools loop can complete a
+  round-trip on Claude-on-Bedrock. Unsigned reasoning is still skipped.
+- **Embedder dimension auto-detect is race-free.** The OpenAI and Google
+  `Embedder.dim` cache now uses an atomic, matching the HTTP embedder; the
+  types are documented "safe for concurrent use" and a concurrent
+  `Embed`/`Dimensions` no longer races (confirmed under `-race`).
+
+### Changed
+- Behavior change implied by the two streaming/Bedrock fixes above: Google
+  `Stream` now returns an error (rather than a truncated success) on an
+  in-stream error frame or safety block, and Bedrock requests now include the
+  signed reasoning block on assistant turns carrying `tool_use`. Both are
+  bug fixes; call them out if you depended on the prior (silent) behavior.
+
+### Tests
+- Added the regression tests the audit verification found missing: duplicate
+  in-flight JSON-RPC id rejection over Streamable HTTP MCP (returns 409),
+  qdrant rejecting reserved `__`-prefixed metadata keys, and the SQLite
+  vector-store dimension-mismatch error (the in-memory store already had its
+  own).
+
+### Docs
+- Example READMEs added for `examples/eval-suite` and `examples/memory-rag`
+  (closing the "each example has its own README" claim). Corrected stale API
+  references (`providerset.md`, `from-eino.md`, `graph-interrupt`), a dead
+  link in `queue-worker.md`, the `ARCHITECTURE.md` adapter/store/e2e entries,
+  delivered-but-unchecked `ROADMAP.md` items, the dependency count in
+  `README.md`, and the CLI usage footer.
+
+### Build
+- Submodule `require` pins bumped from v0.9.0 to v0.9.1 across providers/*,
+  memory/*, providerset and examples.
+
 ## [0.9.0] - 2026-06-10
 
 Pre-alpha audit cleanup: the ~45 low-severity findings from the audit's §4,
@@ -612,7 +664,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/YasserCR/galdor/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/YasserCR/galdor/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/YasserCR/galdor/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/YasserCR/galdor/compare/v0.6.2...v0.7.0

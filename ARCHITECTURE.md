@@ -14,7 +14,7 @@ This document is a working overview of the galdor architecture. Authoritative de
 +-------------------------------------------------------------+
 |  Tools  |  Memory  |  RAG/Retrieval  |  Multi-Agent (A2A)   |
 +-------------------------------------------------------------+
-|  Provider Abstraction (Anthropic, OpenAI, Google, Ollama)   |
+|  Provider Abstraction (Anthropic, OpenAI, Google, Bedrock)  |
 +-------------------------------------------------------------+
 |  Observability Core (OTel-native, embedded backend)         |
 +-------------------------------------------------------------+
@@ -37,13 +37,13 @@ This document is a working overview of the galdor architecture. Authoritative de
 | `pkg/spellbook/` | Prompt registry (themed high-level) | 4+ |
 | `pkg/mcp/` | Model Context Protocol client and server | 7 |
 | `pkg/schema/` | Shared types: Message, Run, Span, etc. | 1 |
-| `internal/store/` | Storage adapters (SQLite, Postgres) | 4 |
+| `internal/store/` | Embedded trace/metric store (SQLite) | 4 |
 | `internal/ui/` | Embedded web UI assets | 5 |
 | `internal/jsonschema/` | Reflection-based JSON Schema generation | 2 |
 | `providers/<name>/` | Per-provider Go module (Anthropic, OpenAI, ...) | 1+ |
 | `memory/<backend>/` | Per-backend Go module (pgvector, qdrant, ...) | 6 |
 | `examples/<name>/` | Runnable examples doubling as integration tests | each phase |
-| `e2e/` | Opt-in end-to-end tests against real providers | 1+ |
+| `**/integration_test.go` | Opt-in (env-gated) tests against real providers/backends, per module | 1+ |
 
 ## Design invariants
 
@@ -66,7 +66,7 @@ This document is a working overview of the galdor architecture. Authoritative de
 galdor's observability stack lives in the same binary:
 
 - **Tracer:** OTel-native spans for every LLM call, tool, node and edge.
-- **Embedded backend:** spans written to a local SQLite store by default. Postgres or ClickHouse can be plugged in for scale.
+- **Embedded backend:** spans written to a local SQLite store by default. Because the tracer is OTel-native, spans can also be exported to any OTel-compatible collector for scale.
 - **Web UI:** served by the binary itself on a local port (default `:6006`), rendering runs, span trees, input/output diffs and graph visualizations.
 - **Replay engine:** any run can be reconstructed from its spans and re-executed, optionally with provider mocks.
 - **Eval framework:** LLM-as-judge, custom scorers and regression datasets, with CI-friendly exit codes.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/YasserCR/galdor/memory/sqlite"
@@ -150,6 +151,26 @@ func TestRetrieve_VectorCosine(t *testing.T) {
 	}
 	if res[0].Chunk.ID != "near" {
 		t.Errorf("top hit = %q, want near", res[0].Chunk.ID)
+	}
+}
+
+// Regression for audit M14 (sqlite half): a query whose embedding
+// dimension doesn't match a stored chunk must error, not silently score
+// over a truncated prefix. inmem already has its own M14 test; this pins
+// the sqlite cosine path the audit named alongside it.
+func TestRetrieve_VectorDimensionMismatchErrors(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	_ = s.Add(ctx, []memory.Chunk{
+		{ID: "c1", DocumentID: "d", Text: "x", Embedding: []float32{1, 0, 0, 0}}, // 4-dim
+	})
+	_, err := s.Retrieve(ctx, memory.Query{Embedding: []float32{1, 0, 0}, K: 5}) // 3-dim
+	if err == nil {
+		t.Fatal("a dimension mismatch must error (regression of M14)")
+	}
+	if !strings.Contains(err.Error(), "dimension mismatch") {
+		t.Errorf("error should name the mismatch, got %v", err)
 	}
 }
 

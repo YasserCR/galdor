@@ -143,7 +143,7 @@ Then:
   - [x] `integration-approval-gate` — `InterruptBefore` + `MemoryCheckpointer` + `Resume` with `OverrideState`. Three scenarios: low-risk auto-approve, high-risk dual signoff, over-cap rejection.
   - [x] `integration-mcp-server` — wraps a `tool.Registry` as an MCP server over stdio; four tools (time / math + custom lookup_doc / open_ticket); README ships the Claude Desktop config snippet.
   - [x] `integration-cost-tracked` — `BudgetProvider` middleware that wraps any provider with atomic token accounting, per-model pricing table, two-point check (pre-call refuse + post-call fail-on-overshoot).
-- [ ] Full docs (quickstart, conceptual guides per package, pattern recipes, migration guides, ops guide)
+- [x] Full docs (quickstart, conceptual guides per package, pattern recipes, migration guides, ops guide) — shipped under `docs/` (concept guides, pattern recipes, migration guides, `docs/ops.md`).
 - [x] Benchmarks — five hot paths covered (`pkg/graph` runtime, `pkg/observability` span recording, `internal/store` throughput, `pkg/memory` retrieval, `pkg/tool` dispatch). Results + sizing guidance in [`docs/benchmarks.md`](docs/benchmarks.md). Headline: galdor's own overhead is 3-5 orders of magnitude smaller than a typical LLM call.
 - [x] Security audit (self-review) — `govulncheck` + `gosec` wired into CI across all 8 modules, toolchain pinned to `go 1.25.10` (closes 21 stdlib CVEs), pgx bumped to v5.9.2 (closes 2 module CVEs), 9 `gosec` findings triaged + suppressed with explicit `// #nosec Gxxx -- reason` annotations. Full writeup + OWASP LLM Top 10 self-assessment in [`docs/security.md`](docs/security.md). Third-party audit deferred to post-v1.0.
 - [ ] Public launch (HN, r/golang, GopherCon CFP)
@@ -246,9 +246,9 @@ Smaller items that compound. Each ships independently.
       `WithCaptureResponse(bool)` separately. `WithRedactor(func(string) string)`
       runs before persisting to spans. Existing `WithCaptureContent` stays as
       a shortcut for both.
-- [ ] `CHANGELOG.md` + tagged GitHub releases for every minor.
-      Auto-generated stub (release-please or equivalent); curated highlights
-      by hand.
+- [x] `CHANGELOG.md` + tagged GitHub releases for every minor.
+      Hand-curated `CHANGELOG.md` shipped; releases tagged through v0.9.0.
+      (Release automation à la release-please still optional.)
 - [ ] Doc additions: `$GOBIN` on `PATH` in the CLI install snippet; one
       paragraph in `docs/concepts/observability.md` clarifying that galdor
       spans nest under any caller-provided parent span via context
@@ -268,7 +268,7 @@ first — without adding framework surface area.
       structured output + observability + graceful shutdown + health endpoint.
       Copy-paste starter, not a `pkg/serve` abstraction. (Decision recorded
       in ADR-016 on why we resist `pkg/serve`.)
-- [ ] `docs/migration/from-langchain-py.md` — concrete mappings
+- [x] `docs/migration/from-langchain-python.md` — concrete mappings
       (`JsonOutputParser` → `schema.ParseJSON`, LCEL pipe → "write a Go
       function", `RunnableWithFallbacks` → `provider.RetryPolicy` + typed
       errors).

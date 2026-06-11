@@ -271,10 +271,24 @@ func partsToBlocks(parts []schema.ContentPart) ([]brtypes.ContentBlock, error) {
 				},
 			})
 		case schema.ContentTypeThinking:
-			// Reasoning parts are model output, not input: never echo
-			// them back on the request. Skipping keeps a captured
-			// assistant turn safe to feed into a later call.
-			continue
+			// Claude-on-Bedrock requires the signed reasoning block echoed
+			// back in the assistant turn that carries tool_use when extended
+			// thinking is on ("include the text and its signature unmodified"
+			// per the Converse API), or it rejects the follow-up — so a
+			// Reasoning+tools loop can't complete without round-tripping it.
+			// Resend whenever we have a signature; skip unsigned reasoning
+			// (it carries no continuation value and would be rejected).
+			if p.Signature == "" {
+				continue
+			}
+			out = append(out, &brtypes.ContentBlockMemberReasoningContent{
+				Value: &brtypes.ReasoningContentBlockMemberReasoningText{
+					Value: brtypes.ReasoningTextBlock{
+						Text:      aws.String(p.Text),
+						Signature: aws.String(p.Signature),
+					},
+				},
+			})
 		default:
 			return nil, fmt.Errorf("%w: unsupported content type %q", provider.ErrInvalidRequest, p.Type)
 		}
