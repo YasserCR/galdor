@@ -64,6 +64,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] CLI `galdor scry list` / `galdor scry show <run-id>` over the SQLite store (text + JSON output)
 - [x] Latency (p50/p95/p99) and token metrics — `galdor scry stats [--by overall|provider|model]` (cost tracking needs a per-model price table; tracked for future session)
 - [x] `galdor scry tail` live-follow mode (text + json output, configurable poll interval)
+- [x] Prompt registry — `pkg/spellbook` (versioned file-backed templates, `Render` via text/template) + CLI `galdor spellbook list|show|diff|render` + agent-block `system_spell` integration (v0.13.0)
 
 **Outcome:** First-class agent debugging from the CLI.
 

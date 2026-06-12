@@ -12,6 +12,7 @@ import (
 	"github.com/YasserCR/galdor/pkg/agent"
 	"github.com/YasserCR/galdor/pkg/mcp"
 	"github.com/YasserCR/galdor/pkg/provider"
+	"github.com/YasserCR/galdor/pkg/spellbook"
 	"github.com/YasserCR/galdor/pkg/tool"
 	"github.com/YasserCR/galdor/pkg/tool/builtins"
 	"github.com/YasserCR/galdor/providerset"
@@ -43,12 +44,24 @@ type AgentBlock struct {
 	// LLM_API_KEY. The secret itself never lives in the file.
 	APIKeyEnv string `yaml:"api_key_env,omitempty"`
 
-	System        string     `yaml:"system,omitempty"`
+	System string `yaml:"system,omitempty"`
+	// SystemSpell loads the system prompt from the spellbook instead of an
+	// inline System string. Exactly one of System / SystemSpell may be set.
+	SystemSpell   *SpellRef  `yaml:"system_spell,omitempty"`
 	MaxIterations int        `yaml:"max_iterations,omitempty"`
 	Temperature   *float64   `yaml:"temperature,omitempty"`
 	TopP          *float64   `yaml:"top_p,omitempty"`
 	MaxTokens     *int       `yaml:"max_tokens,omitempty"`
 	Tools         ToolsBlock `yaml:"tools,omitempty"`
+}
+
+// SpellRef points at a versioned prompt in the spellbook. Version empty
+// means the latest. Dir overrides the spellbook directory (default
+// ./spells or $GALDOR_SPELLBOOK).
+type SpellRef struct {
+	Name    string `yaml:"name"`
+	Version string `yaml:"version,omitempty"`
+	Dir     string `yaml:"dir,omitempty"`
 }
 
 // ToolsBlock declares the tools an agent may call.
@@ -112,6 +125,47 @@ func resolveAPIKey(block AgentBlock) string {
 		}
 	}
 	return os.Getenv("LLM_API_KEY")
+}
+
+// effectiveSystem returns the agent's system prompt: the inline System,
+// or — when SystemSpell is set — the referenced spell's template loaded
+// from the spellbook. A static system prompt is used verbatim (no template
+// rendering); inline a System string if you need per-run interpolation.
+func effectiveSystem(block AgentBlock) (string, error) {
+	if block.SystemSpell == nil {
+		return block.System, nil
+	}
+	if block.System != "" {
+		return "", fmt.Errorf("agent: set either system or system_spell, not both")
+	}
+	ref := block.SystemSpell
+	dir := ref.Dir
+	if dir == "" {
+		dir = spellbookDir()
+	}
+	book, err := spellbook.Open(dir)
+	if err != nil {
+		return "", fmt.Errorf("system_spell: %w", err)
+	}
+	var sp spellbook.Spell
+	if ref.Version != "" {
+		sp, err = book.Get(ref.Name, ref.Version)
+	} else {
+		sp, err = book.Latest(ref.Name)
+	}
+	if err != nil {
+		return "", fmt.Errorf("system_spell: %w", err)
+	}
+	return sp.Template, nil
+}
+
+// spellbookDir is the default spellbook location: $GALDOR_SPELLBOOK, else
+// ./spells.
+func spellbookDir() string {
+	if d := os.Getenv("GALDOR_SPELLBOOK"); d != "" {
+		return d
+	}
+	return "spells"
 }
 
 // resolveProvider constructs the provider interface for an AgentBlock from

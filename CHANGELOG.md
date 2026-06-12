@@ -11,6 +11,35 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-12
+
+The prompt registry ships, completing the CLI surface — every advertised
+verb is now implemented. Green under `go test -race`, `go vet`,
+golangci-lint v2.12.2 and gosec across the root and the CLI module.
+
+### Added
+- **`pkg/spellbook`** — a versioned prompt registry. `Spell` (name +
+  version + template + metadata), `Book` (`Get` / `Latest` / `List`), an
+  in-memory `New` and a file-backed `Open` (one raw `.md` per version, so
+  prompts diff and review like code), and `Spell.Render` over Go
+  `text/template` (a missing key errors rather than emitting `<no value>`).
+  Stdlib-only — the core module stays dependency-light.
+- **`galdor spellbook list | show | diff | render`** — manage a spell
+  directory from the CLI (`diff` is a unified +/- line diff). `--dir`
+  defaults to `$GALDOR_SPELLBOOK`, then `./spells`. `examples/spellbook`.
+- **`system_spell` in the agent block** — `cast` / `council` / `trial`
+  agents can pull their system prompt from a versioned spell
+  (`system_spell: {name, version}`) instead of inlining it, so a fleet
+  shares one reviewed prompt. Mutually exclusive with inline `system:`.
+
+### Changed
+- The CLI usage no longer has a "planned" section — `spellbook` was the
+  last unimplemented verb.
+
+### Build
+- Submodule `require` pins bumped v0.12.0 → v0.13.0; `cmd/galdor` tagged
+  last (ADR-014 D3). No new dependencies.
+
 ## [0.12.0] - 2026-06-12
 
 The config-driven verbs are complete: an agent and a multi-agent team now
@@ -777,7 +806,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/YasserCR/galdor/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/YasserCR/galdor/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/YasserCR/galdor/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/YasserCR/galdor/compare/v0.9.1...v0.10.0

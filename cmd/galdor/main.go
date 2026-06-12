@@ -9,12 +9,11 @@
 //	trial      run an evaluation suite from YAML         — implemented
 //	cast       run an agent from a YAML file             — implemented
 //	council    run a multi-agent orchestration from YAML — implemented
-//	spellbook  manage the prompt registry               — planned
+//	spellbook  manage versioned prompt templates         — implemented
 //
-// Planned verbs print "not yet implemented" until their release lands
-// (see ROADMAP.md). The verbs serve, recast and forge were removed from
-// the surface — ADR-013 records why (serve and forge contradict explicit
-// non-goals; recast is subsumed by `scry replay`).
+// The verbs serve, recast and forge were removed from the surface —
+// ADR-013 records why (serve and forge contradict explicit non-goals;
+// recast is subsumed by `scry replay`).
 package main
 
 import (
@@ -105,10 +104,8 @@ func main() {
 		code := councilCmd(ctx, os.Args[2:], os.Stdout, os.Stderr)
 		stop()
 		os.Exit(code)
-	case
-		"spellbook":
-		_, _ = fmt.Fprintf(os.Stderr, "galdor %s: not yet implemented — see ROADMAP.md\n", os.Args[1])
-		os.Exit(64)
+	case "spellbook":
+		os.Exit(spellbookCmd(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "galdor: unknown command %q\n\n", os.Args[1])
 		usage(os.Stderr)
@@ -130,10 +127,8 @@ Commands:
   trial      Run an evaluation suite from a YAML file
   cast       Run an agent from a YAML file
   council    Run a multi-agent orchestration from a YAML file
+  spellbook  Manage versioned prompt templates
   version    Print version information
   help       Show this help
-
-Planned (print "not yet implemented" when run — see ROADMAP.md):
-  spellbook  Manage the prompt registry
 `)
 }

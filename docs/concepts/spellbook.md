@@ -1,15 +1,12 @@
 # spellbook
 
-`pkg/spellbook` is the planned home for galdor's prompt registry — versioned prompt templates with a diff-friendly storage format, retrievable by name and version from agents and the CLI. "Spellbook" is one of the few themed package names in galdor; it teaches the concept better than the technical alternative ("prompt-registry") would, and the package boundary is small enough that the theming doesn't obscure anything.
+`pkg/spellbook` is galdor's prompt registry — versioned prompt templates with a diff-friendly storage format, retrievable by name and version from agents and the CLI. "Spellbook" is one of the few themed package names: a prompt registry stores incantations — *galdors* in the project's namesake sense — that are named, versioned, and chanted at the model. The constructors are unthemed and Go-idiomatic (`New`, `Open`, `Book.Get`) so application code doesn't have to think about the theming.
 
-## Status
+The package is **stdlib-only** by design — it lives in the core module, which stays dependency-light.
 
-The package is a **stub** at the current revision. Only the `doc.go` placeholder ships — no exported types, no constructors, no tests beyond the package compiling. The shape below is the planned surface, recorded here so callers can track when it lands. Until the implementation lands, build your own prompt loader against `pkg/schema.Message` and swap to `spellbook` later — the upgrade path is intended to be a search-and-replace.
+## Core types
 
 ```go
-// Planned surface — not yet implemented.
-package spellbook
-
 type Spell struct {
     Name     string
     Version  string
@@ -17,54 +14,78 @@ type Spell struct {
     Metadata map[string]string
 }
 
+// Render executes the template against data (a map or struct) using Go
+// text/template syntax, e.g. {{.Input}}. A missing key is an error, not
+// "<no value>".
+func (s Spell) Render(data any) (string, error)
+
 type Book interface {
     Get(name, version string) (Spell, error)
-    Latest(name string) (Spell, error)
+    Latest(name string) (Spell, error)   // lexically-greatest version
     List() ([]Spell, error)
 }
 ```
 
-## Why the theming
-
-The package-name rule in galdor (see [`ADR-001`](../adr/ADR-001-foundational-decisions.md)) is: prefer plain technical names (`pkg/tool`, `pkg/graph`, `pkg/memory`), use a themed name only when the theme **adds** semantics over the plain alternative. `council` qualifies because "Supervisor + Swarm + Hierarchy" is a compound concept; `scry` qualifies because the verb shape ("look into the trace store") is the API surface. `spellbook` qualifies because a prompt registry stores incantations — *galdors* in the project's namesake sense — that are named, versioned, and chanted at the model. The technical name "prompt-template-registry" is longer and no clearer.
-
-The constructors when they land will be unthemed and Go-idiomatic — `spellbook.New`, `spellbook.Open`, `Book.Get` — so callers writing application code don't have to think about the theming when navigating the API.
-
-## What to do until it lands
-
-For now, keep prompts as Go constants or load them from a file you own:
+## Two backends
 
 ```go
-const summarizePrompt = `Summarize the following text in 3 bullet points:
+// In-memory — handy for tests and programmatic prompts.
+book := spellbook.New(
+    spellbook.Spell{Name: "summarize", Version: "v1", Template: "Summarize:\n{{.Input}}"},
+)
 
-{{.Input}}`
-
-func summarize(ctx context.Context, p provider.Provider, model, input string) (string, error) {
-    tmpl, _ := template.New("").Parse(summarizePrompt)
-    var buf bytes.Buffer
-    _ = tmpl.Execute(&buf, map[string]string{"Input": input})
-    resp, err := p.Generate(ctx, provider.Request{
-        Model: model,
-        Messages: []schema.Message{
-            schema.SystemMessage("You are a concise summarizer."),
-            schema.UserMessage(buf.String()),
-        },
-    })
-    if err != nil { return "", err }
-    return resp.Message.Text(), nil
-}
+// File-backed — the directory IS the registry.
+book, err := spellbook.Open("./spells")
 ```
 
-Version the prompt the same way you version code (commit hash, package path). When `pkg/spellbook` ships, swap the constant for a `Book.Get("summarize", "v1")` call — the rest of the chain (template rendering, message construction, provider call) stays the same.
+The file layout is one raw-text file per version:
+
+```
+spells/
+  summarize/
+    v1.md          # the file content is the raw template
+    2024-06-01.md
+  translate/
+    v1.md
+```
+
+Because each version is a plain `.md` file, prompts diff and review in code review exactly like Go source. Versions are **opaque string labels** — `"v3"`, `"2024-05-01"`, a git SHA — and `Latest` returns the lexically-greatest one (use zero-padded or date-prefixed labels if you need a particular order). The file backend leaves `Metadata` empty; the in-memory backend carries whatever you set.
+
+## From the CLI (`galdor spellbook`)
+
+```bash
+galdor spellbook list                         # name + version of every spell
+galdor spellbook show  summarize              # the latest version's template
+galdor spellbook show  summarize v1           # a specific version
+galdor spellbook diff  summarize v1 v2        # unified +/- line diff
+galdor spellbook render summarize --data '{"Input":"..."}'
+```
+
+`--dir` selects the store (default `$GALDOR_SPELLBOOK`, then `./spells`). Flags work wherever you put them.
+
+## Using a spell as an agent's system prompt
+
+An agent block (`cast`, `council`, `trial`) can pull its system prompt from the spellbook instead of inlining it — so a fleet of agents shares one reviewed, versioned prompt:
+
+```yaml
+version: 1
+agent:
+  provider: anthropic
+  model: claude-haiku-4-5
+  system_spell: {name: support_persona, version: v3}   # ./spells/support_persona/v3.md
+```
+
+`system_spell` and an inline `system:` are mutually exclusive; omit `version` to use the latest. The spell's template is used verbatim as the system prompt (no per-run rendering — inline a `system:` string if you need interpolation).
 
 ## Gotchas
 
-- Don't import `pkg/spellbook` expecting symbols today — the package compiles but exports nothing.
-- The planned storage format is "diff-friendly" — likely YAML or a flat-file layout rather than a binary blob — so prompts can be reviewed in code-review the same way Go source is.
-- Versioning is by **string**, not semver. A spell version is whatever label the operator picks (`"2024-05-01"`, `"v3"`, a git SHA). The registry treats them opaquely.
+- **Versions sort lexically, not by semver.** `"v10" < "v2"` as strings; zero-pad (`v02`, `v10`) or date-prefix if ordering matters.
+- **`Render` is strict.** A `{{.Field}}` with no matching key errors (`missingkey=error`) rather than silently emitting `<no value>`.
+- **The file backend rejects path traversal.** Names and versions must be single path segments — no `/`, `\`, or `..`.
+- **Metadata is in-memory only** for now; the file backend stores just the template text.
 
 ## See also
 
+- [agent](agent.md), [eval](eval.md), [council](council.md) — the verbs whose agent blocks can reference a spell via `system_spell`.
 - [provider](provider.md), [schema](schema.md) — what a rendered spell ultimately becomes.
-- [`ROADMAP.md`](../../ROADMAP.md) — where the implementation phase is tracked.
-- [`ADR-001`](../adr/ADR-001-foundational-decisions.md) — the package-naming rule that justifies the themed name.
+- [ADR-001](../adr/ADR-001-foundational-decisions.md) — the package-naming rule that justifies the themed name.

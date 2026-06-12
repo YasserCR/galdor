@@ -52,6 +52,11 @@ func cast(ctx context.Context, args []string, w io.Writer, errW io.Writer) int {
 		_, _ = fmt.Fprintf(errW, "cast: %v\n", err)
 		return 2
 	}
+	system, err := effectiveSystem(cc.Agent)
+	if err != nil {
+		_, _ = fmt.Fprintf(errW, "cast: %v\n", err)
+		return 2
+	}
 	cfg, cleanup, err := resolveAgentConfig(ctx, cc.Agent, errW)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "cast: %v\n", err)
@@ -60,10 +65,10 @@ func cast(ctx context.Context, args []string, w io.Writer, errW io.Writer) int {
 	defer cleanup()
 
 	if *traceFlag {
-		return castTraced(ctx, cfg, cc.Agent.System, input, *db, *runID, w, errW)
+		return castTraced(ctx, cfg, system, input, *db, *runID, w, errW)
 	}
 
-	answer, err := agent.Run(ctx, cfg, input, cc.Agent.System)
+	answer, err := agent.Run(ctx, cfg, input, system)
 	if err != nil && !errors.Is(err, agent.ErrMaxIterations) {
 		_, _ = fmt.Fprintf(errW, "cast: %v\n", err)
 		return 1

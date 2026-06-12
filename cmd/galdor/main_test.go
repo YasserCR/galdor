@@ -27,23 +27,18 @@ func renderUsage(t *testing.T) string {
 	return string(out)
 }
 
-func TestUsageListsImplementedAndPlannedVerbs(t *testing.T) {
+func TestUsageListsAllVerbs(t *testing.T) {
 	out := renderUsage(t)
 
-	for _, v := range []string{"scry", "ui", "mcp", "weave", "trial", "cast", "council", "version", "help"} {
+	// Every shipped verb appears in the usage. As of v0.13.0 all verbs are
+	// implemented — there is no "planned" block.
+	for _, v := range []string{"scry", "ui", "mcp", "weave", "trial", "cast", "council", "spellbook", "version", "help"} {
 		if !strings.Contains(out, v) {
-			t.Errorf("help text missing implemented verb %q", v)
+			t.Errorf("help text missing verb %q", v)
 		}
 	}
-	for _, v := range []string{"spellbook"} {
-		if !strings.Contains(out, v) {
-			t.Errorf("help text missing planned verb %q", v)
-		}
-	}
-	// The planned block must be labeled so users see the status before
-	// running a verb, not after (audit §5 "stubs invisible until run").
-	if !strings.Contains(out, "not yet implemented") {
-		t.Error("help text must label planned verbs as not yet implemented")
+	if strings.Contains(out, "not yet implemented") {
+		t.Error("no verb should be labeled not-yet-implemented anymore")
 	}
 }
 

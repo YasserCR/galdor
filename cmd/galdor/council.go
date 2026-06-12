@@ -115,7 +115,12 @@ func runSupervisor(ctx context.Context, cc CouncilConfig, input string, w io.Wri
 			return 2
 		}
 		cleanups = append(cleanups, clean)
-		system := wb.Agent.System
+		system, serr := effectiveSystem(wb.Agent)
+		if serr != nil {
+			cleanupAll()
+			_, _ = fmt.Fprintf(errW, "council: worker %q: %v\n", wb.Name, serr)
+			return 2
+		}
 		cfg := wcfg
 		workers = append(workers, council.Worker{
 			Name:        wb.Name,
@@ -176,6 +181,12 @@ func runSwarm(ctx context.Context, cc CouncilConfig, input string, w io.Writer, 
 			return 2
 		}
 		cleanups = append(cleanups, clean)
+		system, serr := effectiveSystem(wb.Agent)
+		if serr != nil {
+			cleanupAll()
+			_, _ = fmt.Fprintf(errW, "council: agent %q: %v\n", wb.Name, serr)
+			return 2
+		}
 		agents = append(agents, &council.SwarmAgent{
 			Name:          wb.Name,
 			Description:   wb.Description,
@@ -183,7 +194,7 @@ func runSwarm(ctx context.Context, cc CouncilConfig, input string, w io.Writer, 
 			Model:         wb.Agent.Model,
 			Tools:         reg,
 			Handoffs:      wb.Handoffs,
-			SystemPrompt:  wb.Agent.System,
+			SystemPrompt:  system,
 			MaxIterations: wb.Agent.MaxIterations,
 		})
 	}

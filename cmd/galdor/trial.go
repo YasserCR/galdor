@@ -147,7 +147,11 @@ func buildEvalConfig(ctx context.Context, tc TrialConfig, errW io.Writer) (eval.
 	if err != nil {
 		return eval.Config{}, func() {}, fmt.Errorf("subject: %w", err)
 	}
-	system := tc.Subject.System
+	system, err := effectiveSystem(tc.Subject)
+	if err != nil {
+		cleanup()
+		return eval.Config{}, func() {}, fmt.Errorf("subject: %w", err)
+	}
 	subject := eval.Subject(func(ctx context.Context, input string) (string, error) {
 		if system != "" {
 			return agent.Run(ctx, subjectCfg, input, system)
