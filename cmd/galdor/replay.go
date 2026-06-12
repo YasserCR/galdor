@@ -27,6 +27,9 @@ func scryReplay(ctx context.Context, args []string, w io.Writer, errW io.Writer)
 	out := fs.String("o", "", "write the recording to this JSON fixture file (default: print summary only)")
 	note := fs.String("note", "", "free-form note saved on the fixture (e.g., dataset version)")
 	runID, err := parseRunIDArg(fs, args)
+	if helpRequested(err) {
+		return 0
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "usage: galdor scry replay <run-id> [--db PATH] [-o FILE] [--note TEXT]\n  %v\n", err)
 		return 64

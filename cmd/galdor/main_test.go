@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,5 +85,41 @@ func TestResolveVersion_NeverBarePlaceholderInThisModule(t *testing.T) {
 	// surface something more specific than the bare fallback.
 	if got := resolveVersion(); got == "0.0.0-dev" {
 		t.Skip("no VCS/module build info available in this environment")
+	}
+}
+
+// Asking for help is never a usage error: every verb and subcommand that
+// parses flags must exit 0 on -h/--help (flag.ErrHelp), not 64. Pinned
+// here through the in-process entry points.
+func TestHelpFlagExitsZero(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name string
+		run  func() int
+	}{
+		{"ui", func() int { return runUI(ctx, []string{"--help"}, io.Discard, io.Discard) }},
+		{"weave", func() int { return weave(ctx, []string{"--help"}, io.Discard, io.Discard) }},
+		{"trial", func() int { return trial(ctx, []string{"--help"}, io.Discard, io.Discard) }},
+		{"cast", func() int { return cast(ctx, []string{"--help"}, io.Discard, io.Discard) }},
+		{"council", func() int { return councilCmd(ctx, []string{"--help"}, io.Discard, io.Discard) }},
+		{"scry list", func() int { return scry(ctx, []string{"list", "--help"}, io.Discard, io.Discard) }},
+		{"scry show", func() int { return scry(ctx, []string{"show", "--help"}, io.Discard, io.Discard) }},
+		{"scry stats", func() int { return scry(ctx, []string{"stats", "--help"}, io.Discard, io.Discard) }},
+		{"scry replay", func() int { return scry(ctx, []string{"replay", "--help"}, io.Discard, io.Discard) }},
+		{"mcp serve", func() int { return mcpCmd(ctx, []string{"serve", "--help"}, io.Discard, io.Discard) }},
+		{"mcp ls", func() int { return mcpCmd(ctx, []string{"ls", "--help"}, io.Discard, io.Discard) }},
+		{"mcp call", func() int { return mcpCmd(ctx, []string{"call", "--help"}, io.Discard, io.Discard) }},
+		{"spellbook list", func() int { return spellbookCmd(ctx, []string{"list", "--help"}, io.Discard, io.Discard) }},
+		{"spellbook show", func() int { return spellbookCmd(ctx, []string{"show", "--help"}, io.Discard, io.Discard) }},
+		{"spellbook render", func() int { return spellbookCmd(ctx, []string{"render", "--help"}, io.Discard, io.Discard) }},
+		{"spellbook diff", func() int { return spellbookCmd(ctx, []string{"diff", "--help"}, io.Discard, io.Discard) }},
+		{"doctor", func() int { return doctor(ctx, []string{"--help"}, io.Discard, io.Discard) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if code := tc.run(); code != 0 {
+				t.Errorf("%s --help exited %d, want 0", tc.name, code)
+			}
+		})
 	}
 }

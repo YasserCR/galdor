@@ -21,6 +21,10 @@ func trial(ctx context.Context, args []string, w io.Writer, errW io.Writer) int 
 	fs.SetOutput(errW)
 	jsonOut := fs.Bool("json", false, "emit the report as JSON instead of the text summary")
 	if err := fs.Parse(args); err != nil {
+		if helpRequested(err) {
+			_, _ = fmt.Fprintln(w, trialUsage)
+			return 0
+		}
 		return 64
 	}
 	rest := fs.Args()

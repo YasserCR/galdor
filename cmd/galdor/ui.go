@@ -22,6 +22,9 @@ func runUI(ctx context.Context, args []string, w io.Writer, errW io.Writer) int 
 	db := fs.String("db", "", "path to the span store (defaults to $GALDOR_DB or ~/.galdor/traces.db)")
 	addr := fs.String("addr", "127.0.0.1:7777", "address to bind the dashboard server to")
 	if err := fs.Parse(args); err != nil {
+		if helpRequested(err) {
+			return 0
+		}
 		return 64
 	}
 

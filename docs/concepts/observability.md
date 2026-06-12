@@ -69,6 +69,10 @@ final, err := r.InvokeWith(ctx, state, graph.RunOptions[State]{
 
 `WithCaptureContent(true)` records the request messages as `gen_ai.prompt` and the response as `gen_ai.completion`, both JSON-encoded. **Off by default** — prompts routinely contain PII, customer data, or proprietary instructions. Turn it on for local debugging, eval runs, or when you intend to drive [replay](replay.md) later.
 
+### Nesting under your own spans
+
+galdor's spans nest under any parent span already in the `context.Context` — standard OTel context propagation, nothing galdor-specific. If your HTTP handler (or job runner) opens a span and passes its ctx into `agent.Run` / `Runnable.Invoke`, every provider, tool and node span galdor emits becomes a child of it, so an agent run appears as a subtree inside your service's existing traces. The reverse also holds: with no ambient span, galdor's spans are roots.
+
 ## Attribute conventions
 
 The keys are constants in `attrs.go`:

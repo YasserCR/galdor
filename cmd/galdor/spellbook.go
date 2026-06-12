@@ -71,6 +71,10 @@ func spellbookList(args []string, w io.Writer, errW io.Writer) int {
 	fs := flag.NewFlagSet("spellbook list", flag.ContinueOnError)
 	fs.SetOutput(errW)
 	dir, _, err := parseDirAndArgs(fs, args)
+	if helpRequested(err) {
+		_, _ = fmt.Fprintln(w, spellbookUsage)
+		return 0
+	}
 	if err != nil {
 		return 64
 	}
@@ -98,6 +102,10 @@ func spellbookShow(args []string, w io.Writer, errW io.Writer) int {
 	fs := flag.NewFlagSet("spellbook show", flag.ContinueOnError)
 	fs.SetOutput(errW)
 	dir, pos, err := parseDirAndArgs(fs, args)
+	if helpRequested(err) {
+		_, _ = fmt.Fprintln(w, spellbookUsage)
+		return 0
+	}
 	if err != nil {
 		return 64
 	}
@@ -121,6 +129,10 @@ func spellbookRender(args []string, w io.Writer, errW io.Writer) int {
 	fs.SetOutput(errW)
 	data := fs.String("data", "", "JSON object of template variables")
 	dir, pos, err := parseDirAndArgs(fs, args)
+	if helpRequested(err) {
+		_, _ = fmt.Fprintln(w, spellbookUsage)
+		return 0
+	}
 	if err != nil {
 		return 64
 	}
@@ -152,6 +164,10 @@ func spellbookDiff(args []string, w io.Writer, errW io.Writer) int {
 	fs := flag.NewFlagSet("spellbook diff", flag.ContinueOnError)
 	fs.SetOutput(errW)
 	dir, pos, err := parseDirAndArgs(fs, args)
+	if helpRequested(err) {
+		_, _ = fmt.Fprintln(w, spellbookUsage)
+		return 0
+	}
 	if err != nil {
 		return 64
 	}

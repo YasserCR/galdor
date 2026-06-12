@@ -23,6 +23,9 @@ func scryTail(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 	format := fs.String("format", "text", "text or json")
 	maxIter := fs.Int("_max-iterations", 0, "internal: cap on number of poll iterations (0 = unbounded; used by tests)")
 	if err := fs.Parse(args); err != nil {
+		if helpRequested(err) {
+			return 0
+		}
 		return 64
 	}
 	if *interval < 10*time.Millisecond {

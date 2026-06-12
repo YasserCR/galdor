@@ -74,6 +74,9 @@ func scryList(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 	limit := fs.Int("limit", 20, "maximum number of runs to return")
 	format := fs.String("format", "text", "text or json")
 	if err := fs.Parse(args); err != nil {
+		if helpRequested(err) {
+			return 0
+		}
 		return 64
 	}
 
@@ -113,6 +116,9 @@ func scryShow(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 	db := fs.String("db", "", "path to the span store")
 	format := fs.String("format", "tree", "tree or json")
 	runID, err := parseRunIDArg(fs, args)
+	if helpRequested(err) {
+		return 0
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "scry: %v\n", err)
 		return 64

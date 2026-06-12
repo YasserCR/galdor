@@ -69,6 +69,8 @@ go install github.com/YasserCR/galdor/cmd/galdor@v0.15.1
 galdor ui --db ./traces.db   # open http://127.0.0.1:7777
 ```
 
+If `galdor` isn't found after installing, the `go install` bin directory isn't on your PATH — add it (`export PATH="$(go env GOPATH)/bin:$PATH"`), or run `galdor doctor` from the full path to diagnose your setup.
+
 ---
 
 ## Quickstart

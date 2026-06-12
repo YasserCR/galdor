@@ -225,9 +225,10 @@ exposes `ResponseFormat` but no binding. This phase closes the loop.
       Capability gating (`StructuredOutput: true`) now means something. Bedrock
       left unsupported (fronts many model families) (v0.14.0)
 - [x] Concept doc (provider) + `examples/structured-output` (v0.14.0)
-- [ ] Refactor existing examples that ask for JSON in the prompt (e.g.
-      plan-and-execute helper) to use structured output where the provider
-      supports it. Backward compatible — text-mode JSON path stays.
+- [ ] *(post-v1.0)* Refactor existing examples that ask for JSON in the
+      prompt (e.g. plan-and-execute helper) to use structured output where
+      the provider supports it. Backward compatible — text-mode JSON path
+      stays.
 
 **Outcome:** The fence-stripping regex and permissive structs that every
 integrator currently writes simply disappear.
@@ -238,24 +239,25 @@ integrator currently writes simply disappear.
 
 Smaller items that compound. Each ships independently.
 
-- [ ] `pkg/pricing` — embedded per-model price table,
+- [ ] *(post-v1.0)* `pkg/pricing` — embedded per-model price table,
       `pricing.For(model).Cost(usage)`. Override-friendly. Documented refresh
       process (single file, PRs welcome). `observability.InstrumentProvider`
-      decorates spans with `cost.usd` when the model is known. (ADR-014)
-- [ ] `schema.Template` — minimal `text/template` wrapper for prompt
-      variables. Explicit non-goals documented: no partials, no composition,
-      no auto format-instructions. (ADR-015)
-- [ ] Granular content capture — `observability.WithCapturePrompt(bool)` and
-      `WithCaptureResponse(bool)` separately. `WithRedactor(func(string) string)`
-      runs before persisting to spans. Existing `WithCaptureContent` stays as
-      a shortcut for both.
+      decorates spans with `cost.usd` when the model is known.
+- [ ] *(post-v1.0, revisit)* `schema.Template` — a minimal `text/template`
+      wrapper for prompt variables. Largely covered today by
+      `spellbook.Spell.Render`; decide whether a schema-level wrapper still
+      adds value before building it.
+- [ ] *(post-v1.0)* Granular content capture —
+      `observability.WithCapturePrompt(bool)` and `WithCaptureResponse(bool)`
+      separately. `WithRedactor(func(string) string)` runs before persisting
+      to spans. Existing `WithCaptureContent` stays as a shortcut for both.
 - [x] `CHANGELOG.md` + tagged GitHub releases for every minor.
       Hand-curated `CHANGELOG.md` shipped; releases tagged through v0.9.0.
       (Release automation à la release-please still optional.)
-- [ ] Doc additions: `$GOBIN` on `PATH` in the CLI install snippet; one
-      paragraph in `docs/concepts/observability.md` clarifying that galdor
-      spans nest under any caller-provided parent span via context
-      propagation.
+- [x] Doc additions: `$GOBIN`-on-`PATH` note in the README install snippet
+      (with a pointer to `galdor doctor`); span-nesting paragraph in
+      `docs/concepts/observability.md` (galdor spans nest under any
+      caller-provided parent span via standard context propagation).
 
 **Outcome:** Removes the most-cited friction points from real integrations
 without expanding core surface area.

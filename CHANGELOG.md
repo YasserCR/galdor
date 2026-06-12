@@ -11,6 +11,17 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+### Fixed
+- **`--help` exits 0 everywhere.** Every verb and subcommand that parses
+  flags treated `-h`/`--help` as a usage error (exit 64); asking for help
+  now prints the usage and exits 0, uniformly across all 9 verbs and their
+  subcommands.
+
+### Docs
+- README install snippet notes the `$GOBIN`-on-PATH gotcha (with a pointer
+  to `galdor doctor`); observability.md documents that galdor spans nest
+  under any caller-provided parent span via standard context propagation.
+
 ## [0.15.1] - 2026-06-12
 
 Post-audit hardening: a second multi-agent audit pass over everything the

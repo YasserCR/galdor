@@ -100,6 +100,9 @@ func mcpServe(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 	var allowHosts stringList
 	fs.Var(&allowHosts, "allow-host", "restrict http_get to this host (repeatable; enables http_get)")
 	if err := fs.Parse(args); err != nil {
+		if helpRequested(err) {
+			return 0
+		}
 		return 64
 	}
 
@@ -215,6 +218,10 @@ func mcpList(ctx context.Context, args []string, w io.Writer, errW io.Writer) in
 	timeout := fs.Duration("timeout", 30*time.Second, "overall timeout for the connection")
 	jsonOut := fs.Bool("json", false, "emit the tool list as JSON")
 	front, command, err := parseClientArgs(fs, args)
+	if helpRequested(err) {
+		_, _ = fmt.Fprintln(w, mcpUsage)
+		return 0
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "mcp ls: %v\n\n%s\n", err, mcpUsage)
 		return 64
@@ -260,6 +267,10 @@ func mcpCall(ctx context.Context, args []string, w io.Writer, errW io.Writer) in
 	fs.SetOutput(errW)
 	timeout := fs.Duration("timeout", 30*time.Second, "overall timeout for the call")
 	front, command, err := parseClientArgs(fs, args)
+	if helpRequested(err) {
+		_, _ = fmt.Fprintln(w, mcpUsage)
+		return 0
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "mcp call: %v\n\n%s\n", err, mcpUsage)
 		return 64

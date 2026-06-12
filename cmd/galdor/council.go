@@ -18,6 +18,10 @@ func councilCmd(ctx context.Context, args []string, w io.Writer, errW io.Writer)
 	fs := flag.NewFlagSet("council", flag.ContinueOnError)
 	fs.SetOutput(errW)
 	if err := fs.Parse(args); err != nil {
+		if helpRequested(err) {
+			_, _ = fmt.Fprintln(w, councilUsage)
+			return 0
+		}
 		return 64
 	}
 	rest := fs.Args()

@@ -32,6 +32,10 @@ func cast(ctx context.Context, args []string, w io.Writer, errW io.Writer) int {
 	// dropped. Partition first so flags are honored wherever they appear.
 	flags, rest := partitionArgs(args, map[string]bool{"db": true, "run-id": true})
 	if err := fs.Parse(flags); err != nil {
+		if helpRequested(err) {
+			_, _ = fmt.Fprintln(w, castUsage)
+			return 0
+		}
 		return 64
 	}
 	if len(rest) < 1 {

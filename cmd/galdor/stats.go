@@ -18,6 +18,9 @@ func scryStats(ctx context.Context, args []string, w io.Writer, errW io.Writer) 
 	by := fs.String("by", "overall", "grouping: overall, provider, or model")
 	format := fs.String("format", "text", "text or json")
 	if err := fs.Parse(args); err != nil {
+		if helpRequested(err) {
+			return 0
+		}
 		return 64
 	}
 

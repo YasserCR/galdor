@@ -19,12 +19,19 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
 )
+
+// helpRequested reports whether err is flag.ErrHelp: the user passed
+// -h/--help and the flag package already printed the flag listing, so the
+// command exits 0 — asking for help is not a usage error.
+func helpRequested(err error) bool { return errors.Is(err, flag.ErrHelp) }
 
 // version is the fallback when nothing better is available. It may be
 // overridden at build time via `-ldflags "-X main.version=vX.Y.Z"`, but

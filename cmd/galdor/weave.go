@@ -26,6 +26,9 @@ func weave(ctx context.Context, args []string, w io.Writer, errW io.Writer) int 
 	check := fs.Bool("check", false, "validate the topology instead of rendering (exit 1 on problems)")
 	format := fs.String("format", "svg", "output format: svg or json")
 	runID, err := parseRunIDArg(fs, args)
+	if helpRequested(err) {
+		return 0
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "weave: %v\n\n%s\n", err, weaveUsage)
 		return 64
