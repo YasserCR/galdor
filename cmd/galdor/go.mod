@@ -3,17 +3,17 @@ module github.com/YasserCR/galdor/cmd/galdor
 go 1.25.11
 
 require (
-	github.com/YasserCR/galdor v0.11.0
-	github.com/YasserCR/galdor/providerset v0.11.0
+	github.com/YasserCR/galdor v0.12.0
+	github.com/YasserCR/galdor/providerset v0.12.0
 	github.com/goccy/go-yaml v1.19.2
 	go.opentelemetry.io/otel/sdk v1.43.0
 )
 
 require (
-	github.com/YasserCR/galdor/providers/anthropic v0.11.0 // indirect
-	github.com/YasserCR/galdor/providers/bedrock v0.11.0 // indirect
-	github.com/YasserCR/galdor/providers/google v0.11.0 // indirect
-	github.com/YasserCR/galdor/providers/openai v0.11.0 // indirect
+	github.com/YasserCR/galdor/providers/anthropic v0.12.0 // indirect
+	github.com/YasserCR/galdor/providers/bedrock v0.12.0 // indirect
+	github.com/YasserCR/galdor/providers/google v0.12.0 // indirect
+	github.com/YasserCR/galdor/providers/openai v0.12.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.10 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.11 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.21 // indirect
