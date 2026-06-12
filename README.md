@@ -39,7 +39,7 @@ Sources (verified May 2026): [langchain-ai/langchain](https://github.com/langcha
 
 ## Status
 
-**`v0.11.0` tagged. Looking for early integrators.**
+**`v0.12.0` tagged. Looking for early integrators.**
 
 The 10-phase roadmap is functionally complete: provider abstraction (Anthropic, OpenAI/MiniMax/Groq/Together/DeepSeek/vLLM/Ollama via `BaseURL` or [`providerset`](providerset/), Google Gemini, AWS Bedrock) · type-safe tools with reflection-derived JSON schemas · directed graph runtime with checkpoints, interrupt/resume and branch-map conditional edges · ReAct and Plan-and-Execute agent helpers · native OTel observability with embedded SQLite trace store, auto-WAL-checkpointing exporter, auto-stamped run ids, and an orphan-span warning banner · embedded web dashboard with live SSE, per-run DAG, time-travel · short-term memory windows + long-term memory backends (in-mem, SQLite/BM25, pgvector, qdrant) · provider-backed and HTTP/TEI embedders · Council multi-agent patterns (Supervisor, Swarm) · MCP client + server over stdio, SSE, and Streamable HTTP · A2A protocol (Google) · inline eval framework with LLM-as-judge · deterministic replay with prompt fingerprinting · per-provider retry/backoff, run/node timeouts, panic recovery, structured logging, goroutine leak gates, capability-aware validation · thinking-block strip middleware for OpenAI-compat thinking models.
 
@@ -52,12 +52,12 @@ Between `v0.1.0` and `v1.0.0`, minor versions may still introduce breaking chang
 ## Install
 
 ```bash
-go get github.com/YasserCR/galdor@v0.11.0
+go get github.com/YasserCR/galdor@v0.12.0
 # plus the provider(s) you need:
-go get github.com/YasserCR/galdor/providers/anthropic@v0.11.0
-go get github.com/YasserCR/galdor/providers/openai@v0.11.0
+go get github.com/YasserCR/galdor/providers/anthropic@v0.12.0
+go get github.com/YasserCR/galdor/providers/openai@v0.12.0
 # or pick a provider at runtime via env var:
-go get github.com/YasserCR/galdor/providerset@v0.11.0
+go get github.com/YasserCR/galdor/providerset@v0.12.0
 ```
 
 The core module pulls only what it needs — providers, memory backends and protocol adapters live in their own Go modules so your dependency tree stays tight.
@@ -65,7 +65,7 @@ The core module pulls only what it needs — providers, memory backends and prot
 For the CLI + dashboard:
 
 ```bash
-go install github.com/YasserCR/galdor/cmd/galdor@v0.11.0
+go install github.com/YasserCR/galdor/cmd/galdor@v0.12.0
 galdor ui --db ./traces.db   # open http://127.0.0.1:7777
 ```
 

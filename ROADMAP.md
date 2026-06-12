@@ -51,6 +51,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] Checkpointer interface + `MemoryCheckpointer` (history-preserving in-process impl)
 - [x] Interrupt / resume via `InterruptBefore` + `Resume` with `OverrideState` for human-in-the-loop edits
 - [x] ReAct helper (`pkg/agent.NewReAct`, `agent.Run` one-shot wrapper) — composes provider + tools + graph
+- [x] CLI: `galdor cast <agent.yaml> "<input>"` — run a ReAct agent from YAML, with `--trace` recording provider/tool/node spans to the store (v0.12.0)
 - [x] Plan-and-Execute helper (`pkg/agent.NewPlanAndExecute` — planner → execute → replan loop with JSON-mode prompts, fence-tolerant parser, max-iter cap)
 
 **Outcome:** First real agent. Feature parity with basic LangGraph.
@@ -100,6 +101,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 
 - [x] Supervisor pattern — `council.NewSupervisor` (router LLM + worker fns + graph-based routing loop)
 - [x] Swarm pattern — `council.NewSwarm` (per-agent ReAct + synthetic `handoff_to_<name>` tools + shared conversation)
+- [x] CLI: `galdor council <topology.yaml>` — supervisor/swarm from YAML (workers = agent blocks) (v0.12.0)
 - [x] MCP client — `pkg/mcp.Client` (initialize + tools/list + tools/call, stdio transport, `Client.AsRegistry` adapts remote tools to galdor `tool.AnyTool`)
 - [x] MCP server — `pkg/mcp.Server` (wraps any `tool.Registry`, exposes it over MCP for Claude Desktop / IDE plugins, optional Strict mode)
 - [x] MCP client transport over Streamable HTTP — `pkg/mcp.NewStreamableHTTPClientTransport` (request/response dialer; stdio + Streamable HTTP cover the spec's forward path) (v0.10.0)

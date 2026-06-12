@@ -42,27 +42,21 @@ galdor will transition to a multi-maintainer governance model **as soon as the p
 
 Copyright on contributions remains with the contributor. The DCO (see [`DCO.txt`](DCO.txt)) certifies that contributors have the right to submit their code under the project's Apache 2.0 license.
 
-The project's `NOTICE` file attributes overall copyright to the original maintainer (personal name) — this preserves flexibility for the project's future (e.g. transferring to a foundation) without binding contributors.
+The project's `NOTICE` file attributes overall copyright to the original maintainer (personal name) — this keeps the project's future stewardship flexible without binding contributors.
 
-## Commercial neutrality
+## Project structure
 
-galdor is and will remain a personal / community project, **not owned by any company**. There will be:
-
-- No "Enterprise" edition.
-- No paid feature tiers.
-- No SaaS gating core functionality.
-
-If a commercial offering ever emerges around galdor it will be in the form of optional **support, consulting or managed hosting**, and will not alter the open source license or feature parity of the upstream project.
+galdor is currently an independent project, maintained by its authors rather than controlled by a vendor. The maintainers' aim is to keep the open source core useful and complete on its own terms. Any change to the project's ownership, structure, or licensing would be made openly and follow the process in **Relicensing** below.
 
 ## Relicensing
 
-The project license (Apache 2.0) will not change without:
+A change to the project license (Apache 2.0) would be made openly:
 
 - An ADR proposing the change with rationale.
-- Explicit sign-off from all maintainers.
+- Sign-off from the maintainers.
 - A reasonable comment window (≥ 30 days) for the community.
 
-DCO is intentionally used (instead of an aggressive CLA) so that no single entity has the unilateral right to relicense contributions.
+Contributions are accepted under the DCO today, with each contributor retaining copyright over their work under Apache 2.0. If the project later adopts a CLA — for example to enable dual licensing — it would be introduced through the same open process.
 
 ## Amendments
 

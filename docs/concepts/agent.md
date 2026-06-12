@@ -164,6 +164,32 @@ agent.PlanExecuteConfig{
 }
 ```
 
+## From the CLI (`galdor cast`)
+
+You can run a ReAct agent without writing Go: `galdor cast <agent.yaml> "<input>"` maps a YAML *agent block* to `agent.Config` and runs it.
+
+```yaml
+version: 1
+agent:
+  provider: anthropic
+  model: claude-haiku-4-5
+  system: "Use tools when helpful."
+  tools:
+    builtins: [math, time]
+    mcp:
+      - command: [galdor, mcp, serve]   # adopt an MCP server's tools
+```
+
+The provider resolves via `providerset` (API key from the environment, never the file); tools come from builtins + MCP servers; custom Go tools stay a library feature (ADR-014). Input can be a positional argument or piped on stdin.
+
+`--trace [--db PATH] [--run-id ID]` records the run — provider, tool and node spans — to the span store, so it shows up in `galdor scry` / `ui` / `weave`:
+
+```bash
+galdor cast agent.yaml "What is 6*7?" --trace --db ./traces.db
+```
+
+See [`examples/cast-agent`](../../examples/cast-agent/). The shared agent-block format is recorded in [ADR-014](../adr/ADR-014-config-format-and-cli-module.md).
+
 ## Gotchas
 
 - **Capability-aware validation runs at construction.** If you set `Tools` against a provider whose `Capabilities().ToolCalling` is false, `NewReAct` returns an error immediately — you don't have to wait for the first wire call to fail. Same for `ForceToolUse` without `Tools`.

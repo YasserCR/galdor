@@ -143,6 +143,26 @@ Each agent activation runs a bounded model → tools → model cycle. It termina
 
 `MaxIterations` per agent and `MaxHops` per swarm both bound runaway loops.
 
+## From the CLI (`galdor council`)
+
+`galdor council <topology.yaml> "<input>"` runs a Supervisor (default) or a Swarm from a YAML file, with each worker declared as an agent block.
+
+```yaml
+version: 1
+mode: supervisor                  # or: swarm
+supervisor: {provider: anthropic, model: claude-sonnet-4-6}   # routing LLM
+max_hops: 6
+workers:
+  - name: mathematician
+    description: "Solves arithmetic."
+    agent: {provider: anthropic, model: claude-haiku-4-5, tools: {builtins: [math]}}
+  - name: historian
+    description: "Answers history questions."
+    agent: {provider: anthropic, model: claude-haiku-4-5}
+```
+
+For `mode: swarm`, drop the `supervisor:` block, set `start:` to the first agent, and give each worker a `handoffs:` list of peers it may transfer to. Every worker's provider/tools resolve exactly like `galdor cast`; the API key is read from the environment. See [`examples/council-team`](../../examples/council-team/) and [ADR-014](../adr/ADR-014-config-format-and-cli-module.md).
+
 ## Gotchas
 
 - Worker / agent names must match `[a-zA-Z0-9_-]+`. `START`, `END`, and `supervisor` are reserved.

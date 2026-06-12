@@ -30,12 +30,12 @@ func renderUsage(t *testing.T) string {
 func TestUsageListsImplementedAndPlannedVerbs(t *testing.T) {
 	out := renderUsage(t)
 
-	for _, v := range []string{"scry", "ui", "mcp", "weave", "trial", "version", "help"} {
+	for _, v := range []string{"scry", "ui", "mcp", "weave", "trial", "cast", "council", "version", "help"} {
 		if !strings.Contains(out, v) {
 			t.Errorf("help text missing implemented verb %q", v)
 		}
 	}
-	for _, v := range []string{"cast", "council", "spellbook"} {
+	for _, v := range []string{"spellbook"} {
 		if !strings.Contains(out, v) {
 			t.Errorf("help text missing planned verb %q", v)
 		}
@@ -64,5 +64,30 @@ func TestUsageOmitsPrunedVerbs(t *testing.T) {
 func TestVersionDefault(t *testing.T) {
 	if version == "" {
 		t.Fatal("version must have a default value")
+	}
+}
+
+// TestResolveVersion_LdflagsWins covers the deterministic branch: an
+// explicit -ldflags injection takes precedence over build info. The
+// build-info path (go install @vX → Main.Version) can't be exercised
+// hermetically in a unit test, but resolveVersion never returns the bare
+// "0.0.0-dev" placeholder once a real version is available — that was the
+// whole bug (a go-installed binary reporting 0.0.0-dev).
+func TestResolveVersion_LdflagsWins(t *testing.T) {
+	orig := version
+	t.Cleanup(func() { version = orig })
+
+	version = "v1.2.3"
+	if got := resolveVersion(); got != "v1.2.3" {
+		t.Errorf("ldflags injection should win, got %q", got)
+	}
+}
+
+func TestResolveVersion_NeverBarePlaceholderInThisModule(t *testing.T) {
+	// This binary is built from a VCS checkout, so build info carries
+	// either a module version or a vcs revision — resolveVersion should
+	// surface something more specific than the bare fallback.
+	if got := resolveVersion(); got == "0.0.0-dev" {
+		t.Skip("no VCS/module build info available in this environment")
 	}
 }

@@ -1,0 +1,46 @@
+# A galdor multi-agent team, run with:
+#   galdor council topology.yaml "<input>"
+#
+# Supervisor mode: a routing LLM (the `supervisor:` block) delegates each
+# turn to one of the workers, then returns a final answer. Each worker is
+# an agent block. Needs ANTHROPIC_API_KEY (swap provider + key as needed).
+version: 1
+mode: supervisor
+
+supervisor:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+max_hops: 6
+
+workers:
+  - name: mathematician
+    description: "Solves arithmetic and numeric questions."
+    agent:
+      provider: anthropic
+      model: claude-haiku-4-5
+      system: "You compute precise numeric answers."
+      tools:
+        builtins: [math]
+
+  - name: historian
+    description: "Answers questions about history and dates."
+    agent:
+      provider: anthropic
+      model: claude-haiku-4-5
+      system: "You answer history questions concisely."
+
+# Swarm mode is also available — peers hand off to each other instead of a
+# central router:
+#
+#   mode: swarm
+#   start: mathematician
+#   workers:
+#     - name: mathematician
+#       description: "..."
+#       handoffs: [historian]      # who this agent may transfer to
+#       agent: {provider: anthropic, model: claude-haiku-4-5}
+#     - name: historian
+#       description: "..."
+#       handoffs: [mathematician]
+#       agent: {provider: anthropic, model: claude-haiku-4-5}

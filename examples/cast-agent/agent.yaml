@@ -1,0 +1,21 @@
+# A galdor agent, run with `galdor cast agent.yaml "<input>"`.
+#
+# The file is an agent block: provider + model, plus an optional system
+# prompt and tools. Needs ANTHROPIC_API_KEY in the environment (swap the
+# provider + key for any backend providerset knows).
+version: 1
+
+agent:
+  provider: anthropic
+  model: claude-haiku-4-5
+  system: "You are a concise assistant. Use tools when they help."
+  max_iterations: 6
+
+  # A config-driven agent can bind builtin tools and MCP-served tools.
+  # (Custom Go tools stay a library feature — ADR-014.)
+  tools:
+    builtins: [math, time]
+    # base_dir: ./docs          # uncomment to add file_read, confined here
+    # mcp:
+    #   - command: [galdor, mcp, serve]    # adopt galdor's own builtins over stdio
+    #   - url: http://127.0.0.1:4000       # or a remote Streamable HTTP server

@@ -113,7 +113,7 @@ func mcpServe(ctx context.Context, args []string, w io.Writer, errW io.Writer) i
 		return 64
 	}
 
-	srv := mcp.NewServer(reg, mcp.ServerInfo{Name: "galdor-builtins", Version: version})
+	srv := mcp.NewServer(reg, mcp.ServerInfo{Name: "galdor-builtins", Version: resolvedVersion})
 
 	// SIGINT/SIGTERM trigger a clean shutdown of the serve loop.
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
@@ -349,7 +349,7 @@ func dialTarget(ctx context.Context, front, command []string, errW io.Writer) (c
 		if terr != nil {
 			return nil, nil, nil, terr
 		}
-		c := mcp.NewClient(transport, mcp.WithClientInfo(mcp.ClientInfo{Name: "galdor-cli", Version: version})) //nolint:contextcheck // the client's dispatch loop has its own lifecycle (ended by Close), not the per-call ctx
+		c := mcp.NewClient(transport, mcp.WithClientInfo(mcp.ClientInfo{Name: "galdor-cli", Version: resolvedVersion})) //nolint:contextcheck // the client's dispatch loop has its own lifecycle (ended by Close), not the per-call ctx
 		if ierr := c.Initialize(ctx); ierr != nil {
 			_ = c.Close()
 			return nil, nil, nil, fmt.Errorf("initialize: %w", ierr)
@@ -379,7 +379,7 @@ func dialStdio(ctx context.Context, command []string, errW io.Writer) (*mcp.Clie
 	}
 	// Client reads the subprocess's stdout and writes to its stdin.
 	transport := mcp.NewStdioTransport(stdout, stdin)
-	client := mcp.NewClient(transport, mcp.WithClientInfo(mcp.ClientInfo{Name: "galdor-cli", Version: version})) //nolint:contextcheck // the client's dispatch loop has its own lifecycle (ended by Close), not the per-call ctx
+	client := mcp.NewClient(transport, mcp.WithClientInfo(mcp.ClientInfo{Name: "galdor-cli", Version: resolvedVersion})) //nolint:contextcheck // the client's dispatch loop has its own lifecycle (ended by Close), not the per-call ctx
 	cleanup := func() {
 		_ = client.Close() // closes the pipes, signaling EOF to the child
 		// Give the child a moment to exit cleanly; CommandContext kills it

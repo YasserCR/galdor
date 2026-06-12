@@ -81,7 +81,7 @@ type versioned interface{ schemaVersion() int }
 // an error with a line:col position, courtesy of goccy/go-yaml), and
 // verifies the declared schema version.
 func loadConfigFile(path string, dst versioned) error {
-	raw, err := os.ReadFile(path) // #nosec G304 -- config path is supplied by the CLI user
+	raw, err := os.ReadFile(path) // #nosec G304 G703 -- config path is supplied by the CLI user invoking their own config
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}

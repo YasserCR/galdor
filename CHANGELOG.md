@@ -11,6 +11,42 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-12
+
+The config-driven verbs are complete: an agent and a multi-agent team now
+run from a YAML file, on the same agent block `trial` already used. Green
+under `go test -race`, `go vet`, golangci-lint v2.12.2 and gosec across the
+root and the CLI module.
+
+### Added
+- **`galdor cast <agent.yaml> "<input>"`** — run a ReAct agent from a YAML
+  agent block (provider + model + optional system/tools), no Go required.
+  Input is a positional argument or piped on stdin. `--trace [--db PATH]
+  [--run-id ID]` records the run — provider, tool and node spans — to the
+  span store, so it shows up in `galdor scry` / `ui` / `weave`. Flags are
+  honored wherever they appear (a "--" terminator protects literal-dash
+  input). `examples/cast-agent`.
+- **`galdor council <topology.yaml> "<input>"`** — run a multi-agent
+  orchestration from YAML. `mode: supervisor` (default) wires a routing LLM
+  that delegates to named worker agents; `mode: swarm` wires peers that hand
+  off to each other. Each worker is an agent block. `examples/council-team`.
+
+### Fixed
+- **`galdor version` reports the real version when installed via `go install`.**
+  It previously always printed `0.0.0-dev`: the version was only ever set by
+  an `-ldflags` injection that no build actually performed, and
+  `go install …/cmd/galdor@vX` passes no ldflags. It now falls back to the
+  module version Go embeds in the binary (`runtime/debug.ReadBuildInfo`), so
+  a go-installed binary reports its tag, a local build reports the VCS
+  revision, and an explicit ldflags injection still wins. The MCP
+  server/client info reports the same resolved version.
+
+### Build
+- Submodule `require` pins bumped v0.11.0 → v0.12.0; the `cmd/galdor` module
+  is tagged last (its `go.sum` seals against the published siblings, per
+  ADR-014 D3). New dependency `go.opentelemetry.io/otel/sdk` in the CLI
+  module (for `cast --trace`).
+
 ## [0.11.0] - 2026-06-11
 
 Config-driven evaluation from the CLI, and the module-structure change that
@@ -741,7 +777,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/YasserCR/galdor/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/YasserCR/galdor/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/YasserCR/galdor/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/YasserCR/galdor/compare/v0.9.0...v0.9.1
