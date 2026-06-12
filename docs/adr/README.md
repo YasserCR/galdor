@@ -16,6 +16,9 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-008](ADR-008-observability-instrumentation.md) | Observability instrumentation | Accepted |
 | [ADR-009](ADR-009-sqlite-span-store-and-scry-cli.md) | SQLite span store and `galdor scry` CLI | Accepted |
 | [ADR-010](ADR-010-web-ui-architecture.md) | Web UI architecture (`galdor ui`) | Accepted |
+| [ADR-011](ADR-011-parse-json-helper.md) | `schema.ParseJSON[T]` tolerant JSON helper | Accepted |
+| [ADR-012](ADR-012-typed-provider-errors.md) | Typed provider errors | Accepted |
+| [ADR-013](ADR-013-cli-surface-pruning.md) | CLI surface pruning (`serve`/`recast`/`forge` dropped) | Accepted |
 
 ## Conventions
 

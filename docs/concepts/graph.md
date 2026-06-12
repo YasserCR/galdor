@@ -210,6 +210,18 @@ _    = spec.RenderSVG(os.Stdout)
 
 The embedded web UI uses the same mechanism to render every graph it sees.
 
+### 7. Inspect a recorded graph from the CLI (`galdor weave`)
+
+The topology is captured at run time alongside the trace, so you don't need the Go program to visualize or validate it after the fact:
+
+```bash
+galdor weave <run-id> -o graph.svg        # render the topology to an SVG file
+galdor weave <run-id> --format json       # dump the raw Spec
+galdor weave <run-id> --check             # validate edges/entry; exit 1 on problems
+```
+
+`weave` reads the same `Spec` `Inspect()` produces (persisted per run in the trace store), so `--check` catches dangling edges, an unknown entry, and unreachable nodes without re-running the graph. Only runs executed through a `graph.Runnable` record a topology.
+
 ## Gotchas
 
 - **State is value-typed.** Nodes receive a copy; they should return a new `S` rather than mutating it in place. The runtime does not deep-copy substructures (maps, slices, pointers) — if you mutate one of those, you'll see the mutation across hops.

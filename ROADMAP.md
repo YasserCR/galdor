@@ -77,7 +77,7 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] CSS + templates embedded via `embed.FS` — no external assets
 - [x] SVG timeline (Gantt-style) on the run detail page
 - [x] Live updates via SSE (`/api/stream/runs`) + vanilla JS row upsert
-- [x] Workflow graph (static DAG of `Graph[S]`): `Runnable.Inspect()` returns a serializable `graph.Spec`; `Spec.RenderSVG` produces a self-contained layered SVG; UI exposes `/graph` viewer + `POST /api/graph/svg`
+- [x] Workflow graph (static DAG of `Graph[S]`): `Runnable.Inspect()` returns a serializable `graph.Spec`; `Spec.RenderSVG` produces a self-contained layered SVG; UI exposes `/graph` viewer + `POST /api/graph/svg`; CLI `galdor weave <run-id>` renders/validates a recorded run's topology (v0.10.0)
 
 **Outcome:** Self-hosted "Langsmith-local" working.
 
@@ -102,6 +102,8 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] Swarm pattern — `council.NewSwarm` (per-agent ReAct + synthetic `handoff_to_<name>` tools + shared conversation)
 - [x] MCP client — `pkg/mcp.Client` (initialize + tools/list + tools/call, stdio transport, `Client.AsRegistry` adapts remote tools to galdor `tool.AnyTool`)
 - [x] MCP server — `pkg/mcp.Server` (wraps any `tool.Registry`, exposes it over MCP for Claude Desktop / IDE plugins, optional Strict mode)
+- [x] MCP client transport over Streamable HTTP — `pkg/mcp.NewStreamableHTTPClientTransport` (request/response dialer; stdio + Streamable HTTP cover the spec's forward path) (v0.10.0)
+- [x] CLI: `galdor mcp serve` (builtins over stdio/Streamable HTTP, guard-gated file_read/http_get) + `galdor mcp ls`/`call` (debugging client over a URL or `-- <command>`) (v0.10.0)
 - [x] A2A protocol — `pkg/a2a` (Agent Card publishing + discovery, `tasks/send`, `tasks/get`, multi-turn input-required state, server is an `http.Handler` wrapping any `Handler` function)
 
 **Outcome:** Multi-agent systems and ecosystem interop.
@@ -266,8 +268,8 @@ first — without adding framework surface area.
 
 - [ ] `examples/integration-http-interpret` — full HTTP service: provider +
       structured output + observability + graceful shutdown + health endpoint.
-      Copy-paste starter, not a `pkg/serve` abstraction. (Decision recorded
-      in ADR-016 on why we resist `pkg/serve`.)
+      Copy-paste starter, not a `pkg/serve` abstraction. (ADR-013 records
+      why we resist `pkg/serve`.)
 - [x] `docs/migration/from-langchain-python.md` — concrete mappings
       (`JsonOutputParser` → `schema.ParseJSON`, LCEL pipe → "write a Go
       function", `RunnableWithFallbacks` → `provider.RetryPolicy` + typed
@@ -291,7 +293,7 @@ because the cliffs the first one hit are paved.
 These remain off the table, regardless of integrator pull:
 
 - **Declarative chains** (`prompt | llm | parser`). Plain Go functions are the
-  composition primitive. (Captured in ADR-016.)
+  composition primitive.
 - **A zoo of overlapping abstractions** (`Runnable`, `Chain`, `Agent`, `Tool`,
   `Memory` where the same task expresses four ways). Current core size is the
   ceiling, not the floor.
@@ -299,3 +301,11 @@ These remain off the table, regardless of integrator pull:
   modules, the way provider adapters are isolated.
 - **`pkg/serve` HTTP framework helper.** Ship the example, not the
   abstraction. Revisit only after ≥3 integrations converge on the same shape.
+  (ADR-013 D1.)
+- **Project scaffolding** (`galdor forge` or equivalent). Templates freeze a
+  moving pre-v1.0 API and rot every release — the pattern the ecosystem
+  retired (create-react-app deprecated 2025, Buffalo archived 2024,
+  LangChain templates). The supported path is Go's own `gonew` over
+  `examples/` — thirteen compiler-verified living templates:
+  `gonew github.com/YasserCR/galdor/examples/agent-react your.module/app`.
+  (ADR-013 D2.)

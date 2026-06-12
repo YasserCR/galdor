@@ -146,6 +146,34 @@ Streamable HTTP is the post-2024-11-05 default and what the official TypeScript 
 
 Bind both HTTP transports if you need maximum compatibility — they're independent listeners and the same `*Server` can `Serve` either.
 
+On the client side, `NewStreamableHTTPClientTransport(url)` dials a Streamable HTTP server: it POSTs each request, queues the reply for `Recv`, and echoes the `Mcp-Session-Id` the server mints on initialize. It is a request/response client (initialize / list / call) — the surface `Client` and `AsRegistry` need — and does not handle server-initiated requests.
+
+## From the CLI (`galdor mcp`)
+
+The CLI wraps the same `Server` and `Client` for two jobs: serving galdor's builtin tools, and debugging any MCP server.
+
+**Serve builtins.** stdio by default (the transport Claude Desktop and most hosts launch), or Streamable HTTP with `--http`:
+
+```bash
+galdor mcp serve                                   # stdio: time + math
+galdor mcp serve --base-dir ./docs                 # adds file_read, confined to ./docs
+galdor mcp serve --allow-host api.example.com      # adds http_get, host-restricted
+galdor mcp serve --http 127.0.0.1:4000             # Streamable HTTP listener
+```
+
+`time` and `math` need no configuration and are always served. `file_read` appears only with `--base-dir` (so an LLM is never handed an unconfined filesystem read); `http_get` only with `--allow-host` (repeatable) or `--allow-any-host`. Narrow further with `--tools time,math`.
+
+**Inspect a server.** `ls` lists tools, `call` invokes one. The target is either an `http(s)://` URL (Streamable HTTP) or a subprocess after `--` (stdio):
+
+```bash
+galdor mcp ls   http://127.0.0.1:4000
+galdor mcp ls   -- npx -y @modelcontextprotocol/server-everything
+galdor mcp call http://127.0.0.1:4000 math '{"op":"add","a":2,"b":3}'
+galdor mcp call echo '{"text":"hi"}' -- some-mcp-server      # tool+args before --, command after
+```
+
+The CLI client speaks stdio and Streamable HTTP — the two transports the spec carries forward. (The SSE *server* remains available for legacy hosts; the client targets the modern transports.) Under the hood `galdor mcp ls -- galdor mcp serve` is the same `Client`/`Server` pair this page documents, wired end to end.
+
 ## Gotchas
 
 - Tool errors come back as a regular response with `isError: true` and the error text in `content`. JSON-RPC errors (`Error != nil`) are reserved for transport-level failures (parse error, method not found, invalid params).

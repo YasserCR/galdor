@@ -11,6 +11,46 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-11
+
+CLI surface: two verbs whose engines already shipped now have a command, and
+the binary stops advertising verbs it never intends to build. No library
+behavior changes for existing code; the one new library symbol is a client
+transport. Green under `go test -race`, `go vet`, golangci-lint v2.12.2 and
+gosec across the root module.
+
+### Added
+- **`galdor mcp`** — serve galdor's builtin tools over MCP, or inspect any
+  MCP server. `galdor mcp serve` exposes `time`/`math` (and, guard-gated,
+  `file_read` via `--base-dir` and `http_get` via `--allow-host`/
+  `--allow-any-host`) over stdio (default) or Streamable HTTP (`--http`).
+  `galdor mcp ls` / `galdor mcp call` are a debugging client against either
+  an `http(s)://` URL or a subprocess after `--`.
+- **`galdor weave <run-id>`** — render a recorded run's graph topology to
+  SVG (`-o`), dump it as JSON (`--format json`), or validate it
+  (`--check`: dangling edges, unknown entry, unreachable nodes). Reads the
+  same `graph.Spec` the dashboard renders, captured per run in the trace
+  store.
+- **`mcp.NewStreamableHTTPClientTransport(url)`** — a client-side
+  Streamable HTTP transport, the dialer counterpart of
+  `NewStreamableHTTPTransport`. Request/response only (initialize / list /
+  call); echoes the server-minted `Mcp-Session-Id`. This is what lets the
+  CLI client (and any caller) reach a Streamable HTTP server.
+
+### Changed
+- **CLI surface pruned (ADR-013).** `serve`, `recast` and `forge` were
+  removed from the binary — `serve`/`forge` contradict explicit non-goals
+  (no `pkg/serve`; no scaffolding — templates rot against a moving pre-v1.0
+  API, the pattern create-react-app/Buffalo/LangChain retired), and
+  `recast` is subsumed by `scry replay`. The supported scaffolding path is
+  Go's own `gonew` over the compiler-verified `examples/`. The usage text
+  now separates implemented Commands from Planned verbs, so the binary
+  never advertises capability it lacks.
+
+### Build
+- Submodule `require` pins bumped from v0.9.1 to v0.10.0 across providers/*,
+  memory/*, providerset and examples.
+
 ## [0.9.1] - 2026-06-11
 
 Post-audit follow-up: three provider fixes whose earlier cleanup only landed
@@ -664,7 +704,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/YasserCR/galdor/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/YasserCR/galdor/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/YasserCR/galdor/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/YasserCR/galdor/compare/v0.7.0...v0.8.0

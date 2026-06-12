@@ -3,11 +3,11 @@ module github.com/YasserCR/galdor/providerset
 go 1.25.11
 
 require (
-	github.com/YasserCR/galdor v0.9.1
-	github.com/YasserCR/galdor/providers/anthropic v0.9.1
-	github.com/YasserCR/galdor/providers/bedrock v0.9.1
-	github.com/YasserCR/galdor/providers/google v0.9.1
-	github.com/YasserCR/galdor/providers/openai v0.9.1
+	github.com/YasserCR/galdor v0.10.0
+	github.com/YasserCR/galdor/providers/anthropic v0.10.0
+	github.com/YasserCR/galdor/providers/bedrock v0.10.0
+	github.com/YasserCR/galdor/providers/google v0.10.0
+	github.com/YasserCR/galdor/providers/openai v0.10.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.21
 )
 

@@ -2,20 +2,19 @@
 //
 // Verbs (themed, mapping to conceptual operations):
 //
-//	cast       run an agent from configuration
-//	scry       explore traces (CLI / live tail)
-//	weave      validate or visualize a workflow graph
-//	spellbook  manage the prompt registry
-//	council    run a multi-agent orchestration
-//	trial      run an evaluation suite
-//	recast     replay a run from a checkpoint
-//	forge      bootstrap a new project
-//	serve      run an agent as an HTTP/gRPC service
-//	ui         open the embedded observability UI
-//	mcp        run an MCP client or server
+//	scry       explore traces (CLI / live tail)        — implemented
+//	ui         open the embedded observability UI       — implemented
+//	mcp        serve builtins / inspect an MCP server   — implemented
+//	weave      validate or visualize a workflow graph   — implemented
+//	trial      run an evaluation suite                  — planned
+//	cast       run an agent from configuration          — planned
+//	council    run a multi-agent orchestration          — planned
+//	spellbook  manage the prompt registry               — planned
 //
-// During Phase 0 every verb is a placeholder. Real implementations land in
-// their respective phases (see ROADMAP.md).
+// Planned verbs print "not yet implemented" until their release lands
+// (see ROADMAP.md). The verbs serve, recast and forge were removed from
+// the surface — ADR-013 records why (serve and forge contradict explicit
+// non-goals; recast is subsumed by `scry replay`).
 package main
 
 import (
@@ -49,17 +48,19 @@ func main() {
 		os.Exit(code)
 	case "ui":
 		os.Exit(runUI(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
+	case "mcp":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		code := mcpCmd(ctx, os.Args[2:], os.Stdout, os.Stderr)
+		stop()
+		os.Exit(code)
+	case "weave":
+		os.Exit(weave(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
 	case
 		"cast",
-		"weave",
 		"spellbook",
 		"council",
-		"trial",
-		"recast",
-		"forge",
-		"serve",
-		"mcp":
-		_, _ = fmt.Fprintf(os.Stderr, "galdor %s: not yet implemented (Phase 0)\n", os.Args[1])
+		"trial":
+		_, _ = fmt.Fprintf(os.Stderr, "galdor %s: not yet implemented — see ROADMAP.md\n", os.Args[1])
 		os.Exit(64)
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "galdor: unknown command %q\n\n", os.Args[1])
@@ -75,21 +76,17 @@ Usage:
   galdor <command> [arguments]
 
 Commands:
-  cast       Run an agent from configuration
   scry       Explore traces
-  weave      Validate or visualize a workflow graph
-  spellbook  Manage the prompt registry
-  council    Run a multi-agent orchestration
-  trial      Run an evaluation suite
-  recast     Replay a run from a checkpoint
-  forge      Bootstrap a new project
-  serve      Run an agent as a service
   ui         Open the embedded observability dashboard (HTTP)
-  mcp        Run an MCP client or server
+  mcp        Serve builtin tools over MCP, or inspect any MCP server
+  weave      Validate or visualize a run's workflow graph
   version    Print version information
   help       Show this help
 
-Implemented today: scry, ui, version, help. The remaining commands are
-planned stubs and print "not yet implemented" when run. See ROADMAP.md.
+Planned (print "not yet implemented" when run — see ROADMAP.md):
+  trial      Run an evaluation suite
+  cast       Run an agent from configuration
+  council    Run a multi-agent orchestration
+  spellbook  Manage the prompt registry
 `)
 }

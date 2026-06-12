@@ -1,44 +1,62 @@
 package main
 
 import (
-	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestUsageContainsAllVerbs(t *testing.T) {
-	var buf bytes.Buffer
-	// usage writes to a *os.File; use a temp file as a smoke test boundary.
-	verbs := []string{
-		"cast", "scry", "weave", "spellbook", "council",
-		"trial", "recast", "forge", "serve", "ui", "mcp",
+// renderUsage captures the real usage() output via a temp file, so the
+// assertions below test the actual help text rather than a copy of it.
+func renderUsage(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "usage.txt")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Render the canonical help text via the same string used in usage().
-	help := `galdor — speak your AI agents into being.
+	usage(f)
+	if cerr := f.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	out, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
 
-Usage:
-  galdor <command> [arguments]
+func TestUsageListsImplementedAndPlannedVerbs(t *testing.T) {
+	out := renderUsage(t)
 
-Commands:
-  cast       Run an agent from configuration
-  scry       Explore traces
-  weave      Validate or visualize a workflow graph
-  spellbook  Manage the prompt registry
-  council    Run a multi-agent orchestration
-  trial      Run an evaluation suite
-  recast     Replay a run from a checkpoint
-  forge      Bootstrap a new project
-  serve      Run an agent as a service
-  ui         Open the observability UI
-  mcp        Run an MCP client or server
-  version    Print version information
-  help       Show this help
-`
-	buf.WriteString(help)
-	out := buf.String()
-	for _, v := range verbs {
+	for _, v := range []string{"scry", "ui", "mcp", "weave", "version", "help"} {
 		if !strings.Contains(out, v) {
-			t.Errorf("help text missing verb %q", v)
+			t.Errorf("help text missing implemented verb %q", v)
+		}
+	}
+	for _, v := range []string{"trial", "cast", "council", "spellbook"} {
+		if !strings.Contains(out, v) {
+			t.Errorf("help text missing planned verb %q", v)
+		}
+	}
+	// The planned block must be labeled so users see the status before
+	// running a verb, not after (audit §5 "stubs invisible until run").
+	if !strings.Contains(out, "not yet implemented") {
+		t.Error("help text must label planned verbs as not yet implemented")
+	}
+}
+
+// Regression for ADR-013: serve, recast and forge were removed from the
+// CLI surface (serve/forge contradict explicit non-goals; recast is
+// subsumed by `scry replay`). They must not be advertised. Verbs are
+// matched as command-column entries ("  <verb> ") rather than bare
+// substrings — "serve" would otherwise match "server" in mcp's blurb.
+func TestUsageOmitsPrunedVerbs(t *testing.T) {
+	out := renderUsage(t)
+	for _, v := range []string{"serve", "recast", "forge"} {
+		if strings.Contains(out, "  "+v+" ") {
+			t.Errorf("help text still advertises pruned verb %q (ADR-013)", v)
 		}
 	}
 }

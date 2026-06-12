@@ -1,3 +1,4 @@
+
 # galdor Architecture
 
 This document is a working overview of the galdor architecture. Authoritative decisions live in [`docs/adr/`](docs/adr/); this file summarizes them and is updated as new decisions land.
@@ -26,7 +27,7 @@ This document is a working overview of the galdor architecture. Authoritative de
 
 | Path | Purpose | Phase |
 |------|---------|-------|
-| `cmd/galdor/` | Single binary CLI (`galdor cast`, `scry`, `weave`, ...) | 0+ |
+| `cmd/galdor/` | Single binary CLI (`galdor scry`, `ui`, `mcp`, `weave`; further verbs planned per ADR-013) | 0+ |
 | `pkg/provider/` | `Provider` interface and shared types | 1 |
 | `pkg/tool/` | Type-safe tool system with generics | 2 |
 | `pkg/graph/` | Generic graph runtime over goroutines/channels | 3 |
@@ -67,19 +68,13 @@ galdor's observability stack lives in the same binary:
 
 - **Tracer:** OTel-native spans for every LLM call, tool, node and edge.
 - **Embedded backend:** spans written to a local SQLite store by default. Because the tracer is OTel-native, spans can also be exported to any OTel-compatible collector for scale.
-- **Web UI:** served by the binary itself on a local port (default `:6006`), rendering runs, span trees, input/output diffs and graph visualizations.
+- **Web UI:** served by the binary itself on a local port (default `127.0.0.1:7777`), rendering runs, span trees, input/output diffs and graph visualizations.
 - **Replay engine:** any run can be reconstructed from its spans and re-executed, optionally with provider mocks.
 - **Eval framework:** LLM-as-judge, custom scorers and regression datasets, with CI-friendly exit codes.
 
-## Open ADRs
+## Architecture decision records
 
-- **ADR-001** — Foundational decisions (this commit).
-- **ADR-002** — Cancellation model for partially executed graphs.
-- **ADR-003** — Retry and backoff policy per provider.
-- **ADR-004** — Streaming event schema (alignment with OTel GenAI conventions).
-- **ADR-005** — Checkpoint serialization format (JSON vs protobuf).
-- **ADR-006** — Cross-provider prompt caching policy.
-- **ADR-007** — Cost tracking model.
-- **ADR-008** — Tool sandboxing and permissioning (shell, file system).
-
-See [`docs/adr/`](docs/adr/) for the canonical records as they land.
+Thirteen ADRs are recorded and Accepted (ADR-001 … ADR-013), covering the
+foundational decisions, the provider/tool/graph/agent shapes, observability
+and the SQLite store, the Web UI, typed errors, and the CLI surface. See
+[`docs/adr/`](docs/adr/) for the canonical index and records.
