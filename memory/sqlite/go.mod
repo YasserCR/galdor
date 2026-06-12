@@ -3,7 +3,7 @@ module github.com/YasserCR/galdor/memory/sqlite
 go 1.25.11
 
 require (
-	github.com/YasserCR/galdor v0.13.0
+	github.com/YasserCR/galdor v0.14.0
 	modernc.org/sqlite v1.50.1
 )
 

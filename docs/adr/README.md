@@ -20,6 +20,7 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-012](ADR-012-typed-provider-errors.md) | Typed provider errors | Accepted |
 | [ADR-013](ADR-013-cli-surface-pruning.md) | CLI surface pruning (`serve`/`recast`/`forge` dropped) | Accepted |
 | [ADR-014](ADR-014-config-format-and-cli-module.md) | Config format (YAML) and the `cmd/galdor` module split | Accepted |
+| [ADR-015](ADR-015-structured-output.md) | Schema-bound structured output | Accepted |
 
 ## Conventions
 

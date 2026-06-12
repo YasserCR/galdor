@@ -156,5 +156,4 @@ msgs[0].CacheControl = schema.EphemeralCache()
 
 - [Provider](provider.md) — `Request` and `Response` carry these types.
 - [Tool](tool.md) — `ToolDef` schemas are generated from Go structs; `ExecuteCalls` returns results you turn into `ToolResultMessage` instances.
-- [ADR-001](../adr/ADR-001-foundational-decisions.md) — the rationale for the canonical type set.
 - Examples: any example under [`examples/`](../../examples/) — they all import this package.

@@ -39,7 +39,7 @@ Add `--json` for machine-readable output.
 ## Tools (optional)
 
 A config-driven subject can bind builtin tools and MCP-served tools — the
-boundary is that custom Go tools stay a library feature (ADR-014):
+boundary is that custom Go tools stay a library feature:
 
 ```yaml
 subject:

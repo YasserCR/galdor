@@ -32,6 +32,6 @@ also be piped on stdin.
 - **Each worker is an agent block** — provider + model (+ tools, system),
   resolved exactly like `galdor cast`. The provider comes from
   `providerset` with the key read from the environment.
-- **The boundary** (ADR-014): workers bind builtin + MCP tools; custom Go
+- **The boundary**: workers bind builtin + MCP tools; custom Go
   tools/workers stay a library feature. Wrap your own logic as an MCP
   server (`galdor mcp serve`) to bind it back.

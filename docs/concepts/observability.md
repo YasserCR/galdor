@@ -146,5 +146,4 @@ Templates and CSS are compiled into the binary via `embed.FS`, so the framework 
 
 - [provider](provider.md), [tool](tool.md), [graph](graph.md) — the surfaces being instrumented.
 - [replay](replay.md) — consumes captured prompt/completion spans.
-- [`ADR-008`](../adr/ADR-008-observability-instrumentation.md), [`ADR-009`](../adr/ADR-009-sqlite-span-store-and-scry-cli.md), [`ADR-010`](../adr/ADR-010-web-ui-architecture.md).
 - [`examples/observability-trace`](../../examples/observability-trace/), [`examples/scry-store`](../../examples/scry-store/).

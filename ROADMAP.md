@@ -216,21 +216,18 @@ The biggest ergonomic gap when porting from LangChain. Providers (Gemini,
 OpenAI, Anthropic tool-mode) all support real schema-bound responses; galdor
 exposes `ResponseFormat` but no binding. This phase closes the loop.
 
-- [ ] `schema.JSONOf[T any]` — generic ResponseFormat that compiles a Go type
-      to JSON Schema via `internal/jsonschema` and threads it through
-      `provider.Request.ResponseFormat`. (ADR-013)
-- [ ] Per-provider adapter wiring — Google `response_schema`, OpenAI
-      `response_format: json_schema`, Anthropic forced-tool with JSON schema.
-      Capability gating already in place (`StructuredOutput: true`); now it
-      means something.
-- [ ] `Response.Parsed[T]` accessor — returns `(T, error)`, populated when the
-      request used `JSONOf[T]`. Falls back to `ParseJSON[T]` on the raw text
-      when the provider returned schema but did not enforce it.
+- [x] `provider.JSONSchemaFor[T]` + `provider.GenerateStructured[T]` — derive
+      a JSON Schema from a Go type, thread it through
+      `provider.Request.ResponseFormat`, and decode the reply back into `T`
+      (tolerant of code fences / prose via `schema.ParseJSON`) (v0.14.0)
+- [x] Per-provider wiring — Google `response_schema`, OpenAI
+      `response_format: json_schema`, Anthropic forced-tool with the schema.
+      Capability gating (`StructuredOutput: true`) now means something. Bedrock
+      left unsupported (fronts many model families) (v0.14.0)
+- [x] Concept doc (provider) + `examples/structured-output` (v0.14.0)
 - [ ] Refactor existing examples that ask for JSON in the prompt (e.g.
-      plan-and-execute helper) to use `JSONOf[T]` where the provider supports
-      it. Backward compatible — text-mode JSON path stays.
-- [ ] `docs/patterns/structured-output.md` with the full "Gemini receives a
-      real schema, returns parsed `T`" example.
+      plan-and-execute helper) to use structured output where the provider
+      supports it. Backward compatible — text-mode JSON path stays.
 
 **Outcome:** The fence-stripping regex and permissive structs that every
 integrator currently writes simply disappear.

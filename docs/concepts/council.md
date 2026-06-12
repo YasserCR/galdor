@@ -161,7 +161,7 @@ workers:
     agent: {provider: anthropic, model: claude-haiku-4-5}
 ```
 
-For `mode: swarm`, drop the `supervisor:` block, set `start:` to the first agent, and give each worker a `handoffs:` list of peers it may transfer to. Every worker's provider/tools resolve exactly like `galdor cast`; the API key is read from the environment. See [`examples/council-team`](../../examples/council-team/) and [ADR-014](../adr/ADR-014-config-format-and-cli-module.md).
+For `mode: swarm`, drop the `supervisor:` block, set `start:` to the first agent, and give each worker a `handoffs:` list of peers it may transfer to. Every worker's provider/tools resolve exactly like `galdor cast`; the API key is read from the environment. See [`examples/council-team`](../../examples/council-team/).
 
 ## Gotchas
 

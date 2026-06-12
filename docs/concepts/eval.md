@@ -177,11 +177,11 @@ min_pass: 0.8
 parallel: 3
 ```
 
-- **Subject** is an *agent block* — the same shape `galdor cast`/`council` reuse. The provider is built via `providerset`; the API key is read from the environment (`<PROVIDER>_API_KEY`, then `LLM_API_KEY`, or an explicit `api_key_env`), never from the file. A subject may declare tools (builtins + MCP servers); custom Go tools/scorers stay library-only (ADR-014).
+- **Subject** is an *agent block* — the same shape `galdor cast`/`council` reuse. The provider is built via `providerset`; the API key is read from the environment (`<PROVIDER>_API_KEY`, then `LLM_API_KEY`, or an explicit `api_key_env`), never from the file. A subject may declare tools (builtins + MCP servers); custom Go scorers stay library-only.
 - **Scorers**: `contains`, `exact`, `regex` (needs `pattern`), `llm_judge` (needs a `judge` block + `rubric`). Add `name:` to disambiguate two scorers of the same type in the report.
 - **Strict parsing**: a typo in a key fails with its `[line:col]` position; `version: 1` is required.
 
-See [`examples/trial-suite`](../../examples/trial-suite/) for a complete suite. The format and the reasoning behind it (YAML, `goccy/go-yaml`, the agent block, the tool boundary) are recorded in [ADR-014](../adr/ADR-014-config-format-and-cli-module.md).
+See [`examples/trial-suite`](../../examples/trial-suite/) for a complete suite.
 
 ## Gotchas
 

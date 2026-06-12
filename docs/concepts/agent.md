@@ -2,8 +2,6 @@
 
 `pkg/agent` ships high-level agent loops built on top of `pkg/graph`, `pkg/provider` and `pkg/tool`. There are two patterns today: **ReAct** (the canonical `model → tools → model` loop) and **Plan-and-Execute** (a planner LLM emits a multi-step plan, an executor sub-agent runs each step, a replanner decides whether to continue, revise, or finish). Both compile to ordinary `graph.Runnable[S]` values — everything from [Graph](graph.md) applies: streaming, checkpointing, interrupts, hooks.
 
-The design rationale is in [ADR-007](../adr/ADR-007-agent-helpers.md).
-
 ## The shape
 
 ```go
@@ -180,7 +178,7 @@ agent:
       - command: [galdor, mcp, serve]   # adopt an MCP server's tools
 ```
 
-The provider resolves via `providerset` (API key from the environment, never the file); tools come from builtins + MCP servers; custom Go tools stay a library feature (ADR-014). Input can be a positional argument or piped on stdin.
+The provider resolves via `providerset` (API key from the environment, never the file); tools come from builtins + MCP servers; custom Go tools stay a library feature. Input can be a positional argument or piped on stdin.
 
 `--trace [--db PATH] [--run-id ID]` records the run — provider, tool and node spans — to the span store, so it shows up in `galdor scry` / `ui` / `weave`:
 
@@ -188,7 +186,7 @@ The provider resolves via `providerset` (API key from the environment, never the
 galdor cast agent.yaml "What is 6*7?" --trace --db ./traces.db
 ```
 
-See [`examples/cast-agent`](../../examples/cast-agent/). The shared agent-block format is recorded in [ADR-014](../adr/ADR-014-config-format-and-cli-module.md).
+See [`examples/cast-agent`](../../examples/cast-agent/) for a complete file.
 
 ## Gotchas
 
@@ -205,5 +203,4 @@ See [`examples/cast-agent`](../../examples/cast-agent/). The shared agent-block 
 - [Tool](tool.md) — building and registering tools.
 - [Multi-agent pattern](../patterns/multi-agent.md) — when one ReAct is not enough.
 - [Human-in-the-loop pattern](../patterns/human-in-the-loop.md) — pausing an agent for review.
-- [ADR-007](../adr/ADR-007-agent-helpers.md) — design decisions for the helper layer.
 - Examples: [`agent-react`](../../examples/agent-react/), [`tools-loop`](../../examples/tools-loop/), [`integration-support-bot`](../../examples/integration-support-bot/).

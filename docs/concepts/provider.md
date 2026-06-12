@@ -13,7 +13,7 @@ type Provider interface {
 }
 ```
 
-A `Provider` must be safe for concurrent use, must propagate context cancellation to its underlying HTTP requests, and must return one of the package sentinels (`ErrUnsupported`, `ErrInvalidRequest`, `ErrAuth`, `ErrRateLimited`, `ErrServer`, `ErrContextWindow`) wrapped in a `*APIError` when something goes wrong. The rationale and full contract live in [ADR-002](../adr/ADR-002-provider-abstraction-shape.md).
+A `Provider` must be safe for concurrent use, must propagate context cancellation to its underlying HTTP requests, and must return one of the package sentinels (`ErrUnsupported`, `ErrInvalidRequest`, `ErrAuth`, `ErrRateLimited`, `ErrServer`, `ErrContextWindow`) wrapped in a `*APIError` when something goes wrong.
 
 `Request` and `Response` are provider-agnostic and serializable; they trade in `schema.Message`, `schema.ToolDef` and `schema.ToolCall` — see [Schema](schema.md).
 
@@ -128,6 +128,28 @@ if err := p.Capabilities().ValidateRequest(req); err != nil {
 
 `agent.Config.validate()` runs the same check at construction so misconfigured agents fail at startup instead of at first call. `provider.ValidateToolCalls(msg)` is the symmetric check on a response message: every `ToolCall` has a non-empty `ID`, non-empty `Name`, and `Arguments` that is either empty or syntactically valid JSON.
 
+### Structured output (a Go type in, a Go value out)
+
+Constrain a model's reply to the shape of a Go struct and get it back decoded:
+
+```go
+type Recipe struct {
+    Title       string   `json:"title" jsonschema:"the dish name"`
+    Minutes     int      `json:"minutes"`
+    Ingredients []string `json:"ingredients"`
+}
+
+recipe, err := provider.GenerateStructured[Recipe](ctx, p, provider.Request{
+    Model:    "claude-haiku-4-5",
+    Messages: []schema.Message{schema.UserMessage("a quick pancake recipe")},
+})
+// recipe.Title == "Pancakes", recipe.Ingredients == [...]
+```
+
+`GenerateStructured` derives a JSON Schema from `Recipe` (using the same struct tags tools use), asks the provider to return JSON matching it, and decodes the reply — tolerating code fences or surrounding prose. To set the schema yourself (a hand-written one, or to reuse it across calls), `provider.JSONSchemaFor[Recipe]()` returns the schema bytes for `Request.ResponseFormat.Schema`.
+
+Works with any provider whose `Capabilities().StructuredOutput` is true — **OpenAI** (and OpenAI-compatible hosts), **Google**, and **Anthropic**. On a provider that doesn't support it, `Generate` returns `ErrUnsupported` rather than free-form text. Object schemas are emitted closed (`additionalProperties: false`) with every non-`omitempty` field required, so make optional fields `omitempty` or pointers.
+
 ## Gotchas
 
 - **`Request.Model` is the raw provider model id.** galdor does not use LiteLLM-style prefixes; pass `"claude-haiku-4-5"`, not `"anthropic/claude-haiku-4-5"`. If you are migrating from a LiteLLM config, strip the prefix before forwarding the value to `Request.Model`.
@@ -143,5 +165,4 @@ if err := p.Capabilities().ValidateRequest(req); err != nil {
 - [Schema](schema.md) — the `Message`, `ToolDef`, `ToolCall` and `Usage` types `Request` and `Response` trade in.
 - [Tool](tool.md) — how a `Registry` produces the `[]schema.ToolDef` you put on `Request.Tools`.
 - [Observability](observability.md) — `observability.InstrumentProvider` wraps any `Provider` and emits GenAI-conventions OTel spans.
-- [ADR-002](../adr/ADR-002-provider-abstraction-shape.md) — the design decisions behind the abstraction.
 - Examples: [`provider-interface`](../../examples/provider-interface/), [`observability-trace`](../../examples/observability-trace/).

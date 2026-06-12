@@ -50,5 +50,11 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 			Message:  "decode response: " + err.Error(),
 		})
 	}
-	return responseFromWire(&msg, raw), nil
+	out := responseFromWire(&msg, raw)
+	// A json_schema request was sent as a forced tool call; surface the
+	// tool input as the message text so the caller reads JSON.
+	if rf := req.ResponseFormat; rf != nil && rf.Type == provider.ResponseFormatJSONSchema {
+		out = extractStructuredOutput(out, rf.Name)
+	}
+	return out, nil
 }

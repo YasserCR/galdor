@@ -46,7 +46,7 @@ type RunOptions[S any] struct {
 }
 ```
 
-Two special node names are reserved: `graph.START` (the implicit entry; install one outgoing edge from it) and `graph.END` (the terminal sink). Design rationale: [ADR-005](../adr/ADR-005-graph-runtime-shape.md). Checkpoint and interrupt design: [ADR-006](../adr/ADR-006-checkpointing-and-interrupts.md).
+Two special node names are reserved: `graph.START` (the implicit entry; install one outgoing edge from it) and `graph.END` (the terminal sink).
 
 ## Things you do with it
 
@@ -237,6 +237,4 @@ galdor weave <run-id> --check             # validate edges/entry; exit 1 on prob
 - [Agent](agent.md) — `NewReAct` and `NewPlanAndExecute` return `*Runnable[State]` and `*Runnable[PlanExecuteState]`; everything in this guide applies to them.
 - [Observability](observability.md) — wires `Hooks[S]` to emit OTel spans automatically.
 - [Human-in-the-loop pattern](../patterns/human-in-the-loop.md) — the full interrupt/resume workflow.
-- [ADR-005](../adr/ADR-005-graph-runtime-shape.md) — runtime design rationale.
-- [ADR-006](../adr/ADR-006-checkpointing-and-interrupts.md) — checkpoint and interrupt semantics.
 - Examples: [`graph-counter`](../../examples/graph-counter/), [`graph-interrupt`](../../examples/graph-interrupt/).

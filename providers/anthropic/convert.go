@@ -114,6 +114,21 @@ func buildRequest(req provider.Request, stream bool) (*messageRequest, error) {
 		out.ToolChoice = tc
 	}
 
+	// Structured output. Anthropic has no json_schema response_format, so a
+	// schema-constrained request is expressed as a single forced tool whose
+	// input_schema is the requested schema. The model "calls" the tool with
+	// the structured result, which Generate unwraps back into the message
+	// text. This overrides any caller-supplied tools/tool_choice.
+	if rf := req.ResponseFormat; rf != nil && rf.Type == provider.ResponseFormatJSONSchema {
+		name := structuredToolName(rf.Name)
+		out.Tools = []wireTool{{
+			Name:        name,
+			Description: "Respond by calling this tool with the structured result.",
+			InputSchema: rf.Schema,
+		}}
+		out.ToolChoice = &wireToolChoice{Type: "tool", Name: name}
+	}
+
 	if uid, ok := req.Metadata["user_id"]; ok && uid != "" {
 		out.Metadata = &wireMetadata{UserID: uid}
 	}
@@ -253,6 +268,34 @@ func toolChoiceToWire(c provider.ToolChoice) *wireToolChoice {
 
 // responseFromWire collapses a non-streaming Anthropic response into a
 // galdor provider.Response.
+// structuredToolName is the name of the synthetic tool used to express a
+// json_schema structured-output request. It reuses the caller's schema
+// name when present so buildRequest and Generate agree on it.
+func structuredToolName(name string) string {
+	if name != "" {
+		return name
+	}
+	return "structured_output"
+}
+
+// extractStructuredOutput rewrites a forced structured-output tool call
+// into the message text (the structured JSON), so a json_schema request
+// reads back like a normal text response. If no matching tool call is
+// present (e.g. the model refused), resp is returned unchanged.
+func extractStructuredOutput(resp *provider.Response, schemaName string) *provider.Response {
+	name := structuredToolName(schemaName)
+	for _, tc := range resp.Message.ToolCalls {
+		if tc.Name == name {
+			resp.Message = schema.Message{
+				Role:    schema.RoleAssistant,
+				Content: []schema.ContentPart{schema.TextPart(string(tc.Arguments))},
+			}
+			return resp
+		}
+	}
+	return resp
+}
+
 func responseFromWire(r *messageResponse, raw []byte) *provider.Response {
 	msg := schema.Message{Role: schema.RoleAssistant}
 	for _, b := range r.Content {

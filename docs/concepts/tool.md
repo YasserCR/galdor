@@ -46,7 +46,6 @@ func ExecuteCalls(ctx context.Context, reg *Registry, calls []schema.ToolCall) [
 func AsToolResultMessages(results []Result) []schema.Message
 ```
 
-The full rationale lives in [ADR-004](../adr/ADR-004-tool-system-shape.md).
 
 ## Things you do with it
 
@@ -142,7 +141,7 @@ reg, _ := tool.NewRegistry(now, math, httpGet, fileRead)
 - `http_get` — GET-only, host-allowlist gated, HTTPS-only by default, body capped at `MaxBytes`.
 - `file_read` — reads files under a `BaseDir` confinement, rejects symlinks by default, body capped.
 
-A shell / process-execution tool is intentionally **not** shipped — it requires the sandboxing scheme tracked in [ADR-008](../adr/ADR-008-observability-instrumentation.md) and would need to be opt-in per deployment. Write your own if your environment permits it.
+A shell / process-execution tool is intentionally **not** shipped — running arbitrary processes needs a sandboxing scheme that should be opt-in per deployment. Write your own if your environment permits it.
 
 ### 5. Bypass a tool's typed surface
 
@@ -167,5 +166,4 @@ This is the path `ExecuteCalls` takes internally. Decode errors come back wrappe
 - [Schema](schema.md) — `ToolDef` and `ToolCall` are the wire types tools serialize into.
 - [Agent](agent.md) — `agent.Config.Tools` plugs a `*Registry` into the ReAct or Plan-and-Execute loop.
 - [MCP server pattern](../patterns/mcp-server.md) — expose a registry over the Model Context Protocol.
-- [ADR-004](../adr/ADR-004-tool-system-shape.md) — generics + reflection-derived schemas, panic recovery, builtin scope.
 - Examples: [`tools-loop`](../../examples/tools-loop/), [`agent-react`](../../examples/agent-react/).

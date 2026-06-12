@@ -88,4 +88,3 @@ agent:
 
 - [agent](agent.md), [eval](eval.md), [council](council.md) — the verbs whose agent blocks can reference a spell via `system_spell`.
 - [provider](provider.md), [schema](schema.md) — what a rendered spell ultimately becomes.
-- [ADR-001](../adr/ADR-001-foundational-decisions.md) — the package-naming rule that justifies the themed name.

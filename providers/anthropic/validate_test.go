@@ -9,22 +9,26 @@ import (
 	"github.com/YasserCR/galdor/pkg/schema"
 )
 
-// Regression for audit M7: Capabilities.ValidateRequest was never called,
-// so a request asking for a feature the provider doesn't support (here,
-// structured output, which Anthropic reports as unsupported) was silently
-// served as free-form text. Generate must now reject it. The error is
-// returned before any network call.
-func TestGenerate_RejectsUnsupportedResponseFormat(t *testing.T) {
-	p, err := New(Config{APIKey: "test-key"})
+// Anthropic now supports structured output (json_schema via a forced
+// tool), so ValidateRequest must NOT reject a ResponseFormat request with
+// ErrUnsupported. (The end-to-end translation is covered in
+// structured_test.go; here we only assert the capability gate lets it
+// through — the call fails later on the fake key, not on validation.)
+func TestGenerate_AcceptsStructuredOutput(t *testing.T) {
+	p, err := New(Config{APIKey: "test-key", BaseURL: "http://127.0.0.1:0"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = p.Generate(context.Background(), provider.Request{
-		Model:          "claude-haiku-4-5",
-		Messages:       []schema.Message{schema.UserMessage("hi")},
-		ResponseFormat: &provider.ResponseFormat{},
+		Model:    "claude-haiku-4-5",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+		ResponseFormat: &provider.ResponseFormat{
+			Type:   provider.ResponseFormatJSONSchema,
+			Schema: []byte(`{"type":"object"}`),
+			Name:   "x",
+		},
 	})
-	if !errors.Is(err, provider.ErrUnsupported) {
-		t.Fatalf("Generate must reject ResponseFormat when StructuredOutput is unsupported (regression of M7), got %v", err)
+	if errors.Is(err, provider.ErrUnsupported) {
+		t.Fatalf("structured output must not be rejected as unsupported anymore, got %v", err)
 	}
 }

@@ -181,5 +181,4 @@ Each module's integration tests are gated by an env var: `GALDOR_PGVECTOR_URL` (
 
 - [provider](provider.md), [schema](schema.md) — the types `Embedder` and `Window` flow into.
 - [observability](observability.md) — wrap any `Embedder` call site in a span by instrumenting the upstream `Provider`.
-- [`ADR-001`](../adr/ADR-001-foundational-decisions.md) — the in-tree vs. out-of-tree backend split.
 - [`examples/memory-rag`](../../examples/memory-rag/) — full chunk → embed → SQLite → retrieve flow.

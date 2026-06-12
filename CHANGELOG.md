@@ -11,6 +11,37 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-12
+
+Schema-bound structured output: a Go type in, a decoded Go value out.
+Green under `go test -race`, `go vet`, golangci-lint v2.12.2 and gosec
+across the root and the affected provider modules.
+
+### Added
+- **`provider.GenerateStructured[T]`** — constrain a model's reply to the
+  shape of a Go struct and get it back decoded in one call. It derives a
+  JSON Schema from `T` (the same `json` / `jsonschema` tags tools use),
+  sets `Request.ResponseFormat`, calls `Generate`, and decodes the reply
+  via `schema.ParseJSON` (tolerating code fences / surrounding prose).
+- **`provider.JSONSchemaFor[T]`** — the derived schema bytes on their own,
+  for setting `ResponseFormat.Schema` by hand or reusing across calls.
+- **Anthropic structured output.** Anthropic now reports
+  `StructuredOutput: true`: a `json_schema` request is expressed as a
+  single forced tool whose `input_schema` is the schema, and the tool reply
+  is unwrapped back into the message text. Structured output now works with
+  OpenAI, Google, and Anthropic. Bedrock stays unsupported (it fronts
+  several model families).
+- `examples/structured-output`.
+
+### Docs
+- Removed ADR references and design-rationale notes from the user-facing
+  concept docs and example READMEs — they now read as implementer
+  documentation, not maintainer notes. (ADRs stay under `docs/adr/`.)
+
+### Build
+- Submodule `require` pins bumped v0.13.0 → v0.14.0; `cmd/galdor` tagged
+  last. No new dependencies.
+
 ## [0.13.0] - 2026-06-12
 
 The prompt registry ships, completing the CLI surface — every advertised
@@ -806,7 +837,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/YasserCR/galdor/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/YasserCR/galdor/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/YasserCR/galdor/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/YasserCR/galdor/compare/v0.10.0...v0.11.0

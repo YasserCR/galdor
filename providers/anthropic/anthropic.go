@@ -85,7 +85,7 @@ func (p *Provider) Capabilities() provider.Capabilities {
 	return provider.Capabilities{
 		Streaming:        true,
 		ToolCalling:      true,
-		StructuredOutput: false, // No JSON-mode parity yet; tools cover the common case.
+		StructuredOutput: true, // json_schema is expressed as a forced single tool call.
 		PromptCaching:    true,
 		VisionInput:      true,
 		Reasoning:        true,

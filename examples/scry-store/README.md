@@ -56,7 +56,7 @@ run demo-run-1 — 7 spans
 - **Span tree fidelity.** Provider and tool spans nest under the
   node span that triggered them because the graph runtime's
   hooks return a child-bearing `context.Context` from
-  `BeforeNode` — see ADR-008 for the wiring.
+  `BeforeNode`.
 - **Status, duration and the most useful attributes show up in
   the tree.** `galdor scry show --format json <run-id>` returns
   every attribute on every span for richer programmatic
