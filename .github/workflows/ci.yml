@@ -18,10 +18,14 @@ defaults:
     shell: bash
 
 env:
-  # Linted/tested modules. Whitespace-separated module roots, relative to repo root.
-  # examples/ is its own module so it can carry local replace directives
-  # without polluting the root go.mod (root must stay replace-free so
-  # `go install github.com/YasserCR/galdor/cmd/galdor@<tag>` keeps working).
+  # Modules whose go.mod/go.sum the tidy check verifies. Whitespace-separated
+  # roots, relative to repo root. examples/ and the library submodules carry
+  # local replace directives, so plain `go mod tidy` is self-consistent.
+  # cmd/galdor is deliberately EXCLUDED: it is a go-install'able binary module
+  # (no replace directives allowed), so its go.sum seals against the
+  # freshly-published sibling versions only at release time (ADR-014 D3). Its
+  # code is still built/vetted/tested via the workspace jobs below, and
+  # lint/gosec/govulncheck cover it through GOWORK.
   GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai providerset memory/sqlite memory/pgvector memory/qdrant examples"
   # Auto-download a toolchain matching go.mod when the runner's cached
   # Go is older than what we require. The govulncheck-driven 1.25.11
@@ -88,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -112,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -137,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
     steps:
       - name: Checkout
         uses: actions/checkout@v5

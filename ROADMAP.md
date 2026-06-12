@@ -115,8 +115,9 @@ Each item below is tracked against the ADRs in [`docs/adr/`](docs/adr/) for cont
 - [x] Versioned datasets — `eval.Dataset{Name, Version, Cases}` with JSON loader/saver, dup-ID validation
 - [x] CI integration with exit codes — `eval.RunAndExit`, `Report.Meets(threshold)`, parallel runner with worker pool
 - [x] `examples/eval-suite` — end-to-end offline demo using a scripted Subject + scripted LLM judge
+- [x] CLI: `galdor trial <suite.yaml>` — declarative eval suites in YAML (subject = agent block, builtin scorers), CI exit codes; config format + module split in ADR-014, `examples/trial-suite` (v0.11.0)
 
-**Outcome:** Inline regression testing for prompts and agents.
+**Outcome:** Inline regression testing for prompts and agents — from Go or from a YAML file in CI.
 
 ## Phase 9 — Replay + Time Travel
 

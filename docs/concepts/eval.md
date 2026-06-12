@@ -157,6 +157,32 @@ func (r *Report) WriteJSON(w io.Writer) error
 
 Per-scorer `Aggregate` carries `Mean`, `Pass`, `Fail`. The `Version` field is stamped from `Dataset.Version` so a regression can be attributed to "model changed" vs. "dataset changed".
 
+## From the CLI (`galdor trial`)
+
+You don't need to write Go to run a suite. `galdor trial <suite.yaml>` maps a YAML file to `eval.Config`, runs it, prints the report, and exits with a CI-friendly code: `0` (pass rate ≥ `min_pass`), `1` (below it), `2` (setup error). Add `--json` for machine-readable output.
+
+```yaml
+version: 1
+dataset:
+  name: geography
+  cases:
+    - {id: geo-ec, input: "Capital of Ecuador?", expected: Quito}
+subject:                       # an "agent block": provider + model (+ tools, system, …)
+  provider: anthropic
+  model: claude-haiku-4-5
+scorers:
+  - {type: contains}
+  - {type: llm_judge, judge: {provider: openai, model: gpt-4o}, rubric: "…"}
+min_pass: 0.8
+parallel: 3
+```
+
+- **Subject** is an *agent block* — the same shape `galdor cast`/`council` reuse. The provider is built via `providerset`; the API key is read from the environment (`<PROVIDER>_API_KEY`, then `LLM_API_KEY`, or an explicit `api_key_env`), never from the file. A subject may declare tools (builtins + MCP servers); custom Go tools/scorers stay library-only (ADR-014).
+- **Scorers**: `contains`, `exact`, `regex` (needs `pattern`), `llm_judge` (needs a `judge` block + `rubric`). Add `name:` to disambiguate two scorers of the same type in the report.
+- **Strict parsing**: a typo in a key fails with its `[line:col]` position; `version: 1` is required.
+
+See [`examples/trial-suite`](../../examples/trial-suite/) for a complete suite. The format and the reasoning behind it (YAML, `goccy/go-yaml`, the agent block, the tool boundary) are recorded in [ADR-014](../adr/ADR-014-config-format-and-cli-module.md).
+
 ## Gotchas
 
 - A scorer that returns an error degrades to `{Value: 0, Pass: false}` with the error in `Explanation`. The case still produces a result; the report stays well-formed.

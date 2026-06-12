@@ -11,6 +11,43 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-11
+
+Config-driven evaluation from the CLI, and the module-structure change that
+makes config-driven verbs possible without bloating the core. Green under
+`go test -race`, `go vet`, golangci-lint v2.12.2 and gosec across the root
+and the new CLI module.
+
+### Added
+- **`galdor trial <suite.yaml>`** — run a declarative evaluation suite, no
+  Go required. The YAML maps to `pkg/eval`: a dataset of cases, a subject
+  (an *agent block* — provider + model + optional tools/system), and
+  scorers (`contains`, `exact`, `regex`, `llm_judge`). Exit code is a CI
+  gate (0 pass / 1 below `min_pass` / 2 setup error); `--json` for
+  machine-readable output. `examples/trial-suite` ships a complete suite.
+- **Declarative config format (ADR-014).** YAML parsed with
+  `goccy/go-yaml` into typed structs under strict mode: an unknown key
+  fails with its `[line:col]` position, and `version: 1` is required.
+  Providers resolve via `providerset` with the API key read from the
+  environment (never the file); tools resolve from builtins + MCP servers.
+  Custom Go tools/scorers stay library-only.
+
+### Changed
+- **`cmd/galdor` is now its own Go module (ADR-014 D3).** A config-driven
+  verb must construct providers via `providerset`, which pulls the adapter
+  stack and the AWS SDK. Splitting the binary into its own module keeps the
+  **core module (`pkg/`, `internal/`) provider-free and dependency-light —
+  unchanged at 6 direct**; library consumers of `pkg/...` never pull
+  `providerset`, the adapters, or the AWS SDK. Still one binary;
+  `go install github.com/YasserCR/galdor/cmd/galdor@v0.11.0` is unchanged.
+
+### Build
+- New module `github.com/YasserCR/galdor/cmd/galdor` (11 modules total),
+  tagged last in the release so its `go.sum` seals against the published
+  siblings. New dependency `github.com/goccy/go-yaml` (MIT, pure-Go) lives
+  in the CLI module only. Submodule `require` pins bumped v0.10.0 →
+  v0.11.0.
+
 ## [0.10.0] - 2026-06-11
 
 CLI surface: two verbs whose engines already shipped now have a command, and
@@ -704,7 +741,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/YasserCR/galdor/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/YasserCR/galdor/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/YasserCR/galdor/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/YasserCR/galdor/compare/v0.8.0...v0.9.0

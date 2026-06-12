@@ -1,0 +1,45 @@
+# A galdor eval suite, run with `galdor trial suite.yaml`.
+#
+# The schema maps 1:1 to pkg/eval: a dataset of cases, a subject (an agent
+# block), and scorers. Exit code is a CI gate — 0 (pass), 1 (below
+# min_pass), 2 (setup error).
+#
+# This suite uses a real provider, so it needs ANTHROPIC_API_KEY in the
+# environment. Swap `provider:` (and the key) for any backend providerset
+# knows: openai, google, bedrock, groq, together, mistral, …
+version: 1
+
+dataset:
+  name: geography
+  version: "1"
+  cases:
+    - id: geo-ec
+      input: "What is the capital of Ecuador? Answer with one word."
+      expected: Quito
+    - id: geo-pe
+      input: "What is the capital of Peru? Answer with one word."
+      expected: Lima
+    - id: geo-co
+      input: "What is the capital of Colombia? Answer with one word."
+      expected: Bogotá
+
+# The subject is an agent block: provider + model, optionally tools and a
+# system prompt. The same block shape is reused by `galdor cast`/`council`.
+subject:
+  provider: anthropic
+  model: claude-haiku-4-5
+  system: "Answer factual questions as concisely as possible."
+
+# A case passes when every scorer passes. `contains` is a cheap lexical
+# check; `llm_judge` asks a (typically stronger) model to grade a rubric.
+scorers:
+  - type: contains
+  - type: llm_judge
+    judge:
+      provider: anthropic
+      model: claude-sonnet-4-6
+    rubric: "Score 100 only if the answer names the correct capital city and nothing incorrect."
+    pass_threshold: 0.7
+
+min_pass: 0.8   # fail the gate (exit 1) if fewer than 80% of cases pass
+parallel: 3

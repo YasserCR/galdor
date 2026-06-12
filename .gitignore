@@ -6,6 +6,8 @@
 /bin/
 /dist/
 /galdor
+# The CLI binary built inside its own module dir (cmd/galdor is its own module).
+/cmd/galdor/galdor
 # Stray binaries produced by `go build .` inside an example dir.
 /integration-*
 /eval-*

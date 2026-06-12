@@ -6,7 +6,7 @@
 //	ui         open the embedded observability UI       — implemented
 //	mcp        serve builtins / inspect an MCP server   — implemented
 //	weave      validate or visualize a workflow graph   — implemented
-//	trial      run an evaluation suite                  — planned
+//	trial      run an evaluation suite from YAML         — implemented
 //	cast       run an agent from configuration          — planned
 //	council    run a multi-agent orchestration          — planned
 //	spellbook  manage the prompt registry               — planned
@@ -55,11 +55,15 @@ func main() {
 		os.Exit(code)
 	case "weave":
 		os.Exit(weave(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
+	case "trial":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		code := trial(ctx, os.Args[2:], os.Stdout, os.Stderr)
+		stop()
+		os.Exit(code)
 	case
 		"cast",
 		"spellbook",
-		"council",
-		"trial":
+		"council":
 		_, _ = fmt.Fprintf(os.Stderr, "galdor %s: not yet implemented — see ROADMAP.md\n", os.Args[1])
 		os.Exit(64)
 	default:
@@ -80,11 +84,11 @@ Commands:
   ui         Open the embedded observability dashboard (HTTP)
   mcp        Serve builtin tools over MCP, or inspect any MCP server
   weave      Validate or visualize a run's workflow graph
+  trial      Run an evaluation suite from a YAML file
   version    Print version information
   help       Show this help
 
 Planned (print "not yet implemented" when run — see ROADMAP.md):
-  trial      Run an evaluation suite
   cast       Run an agent from configuration
   council    Run a multi-agent orchestration
   spellbook  Manage the prompt registry

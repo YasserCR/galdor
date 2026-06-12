@@ -27,7 +27,7 @@ This document is a working overview of the galdor architecture. Authoritative de
 
 | Path | Purpose | Phase |
 |------|---------|-------|
-| `cmd/galdor/` | Single binary CLI (`galdor scry`, `ui`, `mcp`, `weave`; further verbs planned per ADR-013) | 0+ |
+| `cmd/galdor/` | Single binary CLI (`galdor scry`, `ui`, `mcp`, `weave`, `trial`; further verbs planned). **Its own Go module** so the config-driven verbs can depend on `providerset` without pulling the provider stack into the core (ADR-014 D3). | 0+ |
 | `pkg/provider/` | `Provider` interface and shared types | 1 |
 | `pkg/tool/` | Type-safe tool system with generics | 2 |
 | `pkg/graph/` | Generic graph runtime over goroutines/channels | 3 |

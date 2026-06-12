@@ -30,12 +30,12 @@ func renderUsage(t *testing.T) string {
 func TestUsageListsImplementedAndPlannedVerbs(t *testing.T) {
 	out := renderUsage(t)
 
-	for _, v := range []string{"scry", "ui", "mcp", "weave", "version", "help"} {
+	for _, v := range []string{"scry", "ui", "mcp", "weave", "trial", "version", "help"} {
 		if !strings.Contains(out, v) {
 			t.Errorf("help text missing implemented verb %q", v)
 		}
 	}
-	for _, v := range []string{"trial", "cast", "council", "spellbook"} {
+	for _, v := range []string{"cast", "council", "spellbook"} {
 		if !strings.Contains(out, v) {
 			t.Errorf("help text missing planned verb %q", v)
 		}
