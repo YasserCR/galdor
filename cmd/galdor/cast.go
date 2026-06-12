@@ -41,7 +41,11 @@ func cast(ctx context.Context, args []string, w io.Writer, errW io.Writer) int {
 	agentPath := rest[0]
 
 	// Input: the positional(s) after the file, or stdin when piped.
-	input := readCommandInput(rest[1:])
+	input, inErr := readCommandInput(rest[1:])
+	if inErr != nil {
+		_, _ = fmt.Fprintf(errW, "cast: %v\n", inErr)
+		return 64
+	}
 	if input == "" {
 		_, _ = fmt.Fprintf(errW, "cast: no input — pass it as an argument or pipe it on stdin\n\n%s\n", castUsage)
 		return 64
@@ -132,17 +136,29 @@ func partitionArgs(args []string, valueFlags map[string]bool) (flags, positional
 	return flags, positional
 }
 
+// maxStdinInput caps how much piped input cast/council read. Inputs at or
+// over the cap are rejected (not silently truncated).
+const maxStdinInput = 1 << 20 // 1 MiB
+
 // readCommandInput returns the input for cast/council: the joined
-// arguments after the config file, or piped stdin when none are given.
-func readCommandInput(inputArgs []string) string {
+// arguments after the config file, or piped stdin when none are given. A
+// stdin read error or an input at/over maxStdinInput is an error — never
+// a silent empty/truncated input.
+func readCommandInput(inputArgs []string) (string, error) {
 	if len(inputArgs) > 0 {
-		return strings.Join(inputArgs, " ")
+		return strings.Join(inputArgs, " "), nil
 	}
-	if isPipedStdin() {
-		piped, _ := io.ReadAll(io.LimitReader(stdin, 1<<20))
-		return strings.TrimSpace(string(piped))
+	if !isPipedStdin() {
+		return "", nil
 	}
-	return ""
+	piped, err := io.ReadAll(io.LimitReader(stdin, maxStdinInput))
+	if err != nil {
+		return "", fmt.Errorf("read stdin: %w", err)
+	}
+	if len(piped) >= maxStdinInput {
+		return "", fmt.Errorf("stdin input exceeds the %d-byte limit", maxStdinInput)
+	}
+	return strings.TrimSpace(string(piped)), nil
 }
 
 // isPipedStdin reports whether stdin is a pipe/redirect (not a terminal),

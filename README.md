@@ -22,7 +22,7 @@ The table below was last verified against each project's repo, releases and offi
 | Observability story | OTel-native, with an embedded SQLite trace store + dashboard served from the same binary | LangSmith (closed-source SaaS) | callbacks only, no OTel | callbacks; the shipped tracing target is Langfuse, not OTel | OTel-native; Genkit Monitoring (the hosted dashboard) is Google-Cloud only |
 | End-to-end self-hostable (incl. dashboard) | yes | no — self-hosted LangSmith requires the paid Enterprise plan | yes (BYO observability stack) | yes (Apache framework + self-hosted Langfuse) | partial — OTel exporters point anywhere, but the polished Genkit Monitoring dashboard is GCP-only |
 | Dependency footprint | core module pulls 6 direct + 13 indirect (the OTel + SQLite stack) | n/a | monolithic module; `go.sum` is 1,523 lines (≈200+ unique upstream modules) | core + per-component modules under `eino-ext` | per-plugin Go packages under `firebase/genkit/go/plugins/*` |
-| MCP (Anthropic spec) | client + server, stdio | client + tool-as-server, first-party | client only, via 3rd-party adapters (e.g. `i2y/langchaingo-mcp-adapter`) | client only, first-party | client + server, first-party (stdio / SSE / StreamableHTTP) |
+| MCP (Anthropic spec) | client + server; stdio, SSE, Streamable HTTP | client + tool-as-server, first-party | client only, via 3rd-party adapters (e.g. `i2y/langchaingo-mcp-adapter`) | client only, first-party | client + server, first-party (stdio / SSE / StreamableHTTP) |
 | A2A (Google spec) | client + server | not first-party | no | no | **no** — even though Google authored A2A, its Go support lives in the separate `a2aproject/a2a-go` SDK and in ADK Go, not in Genkit |
 | Multi-agent built in | Supervisor + Swarm in `pkg/council` | LangGraph: supervisor, hierarchy, swarm | `agents` package (ReAct, conversational); no supervisor/swarm/hierarchy | DeepAgent (supervisor + sub-agent delegation) + graph orchestration | Flows + tool-calling agents; supervisor/swarm not first-class |
 | Replay (record real run → deterministic re-run) | yes (record-to-fixture, replay anywhere) | LangSmith dataset replay (in the SaaS) | no (mock + conformance suite, not record/replay) | no | no documented offline fixture replay |
@@ -39,7 +39,7 @@ Sources (verified May 2026): [langchain-ai/langchain](https://github.com/langcha
 
 ## Status
 
-**`v0.15.0` tagged. Looking for early integrators.**
+**`v0.15.1` tagged. Looking for early integrators.**
 
 The 10-phase roadmap is functionally complete: provider abstraction (Anthropic, OpenAI/MiniMax/Groq/Together/DeepSeek/vLLM/Ollama via `BaseURL` or [`providerset`](providerset/), Google Gemini, AWS Bedrock) · type-safe tools with reflection-derived JSON schemas · directed graph runtime with checkpoints, interrupt/resume and branch-map conditional edges · ReAct and Plan-and-Execute agent helpers · native OTel observability with embedded SQLite trace store, auto-WAL-checkpointing exporter, auto-stamped run ids, and an orphan-span warning banner · embedded web dashboard with live SSE, per-run DAG, time-travel · short-term memory windows + long-term memory backends (in-mem, SQLite/BM25, pgvector, qdrant) · provider-backed and HTTP/TEI embedders · Council multi-agent patterns (Supervisor, Swarm) · MCP client + server over stdio, SSE, and Streamable HTTP · A2A protocol (Google) · inline eval framework with LLM-as-judge · schema-bound structured output (a Go struct in, a decoded value out) · deterministic replay with prompt fingerprinting · per-provider retry/backoff, run/node timeouts, panic recovery, structured logging, goroutine leak gates, capability-aware validation · thinking-block strip middleware for OpenAI-compat thinking models.
 
@@ -52,12 +52,12 @@ Between `v0.1.0` and `v1.0.0`, minor versions may still introduce breaking chang
 ## Install
 
 ```bash
-go get github.com/YasserCR/galdor@v0.15.0
+go get github.com/YasserCR/galdor@v0.15.1
 # plus the provider(s) you need:
-go get github.com/YasserCR/galdor/providers/anthropic@v0.15.0
-go get github.com/YasserCR/galdor/providers/openai@v0.15.0
+go get github.com/YasserCR/galdor/providers/anthropic@v0.15.1
+go get github.com/YasserCR/galdor/providers/openai@v0.15.1
 # or pick a provider at runtime via env var:
-go get github.com/YasserCR/galdor/providerset@v0.15.0
+go get github.com/YasserCR/galdor/providerset@v0.15.1
 ```
 
 The core module pulls only what it needs — providers, memory backends and protocol adapters live in their own Go modules so your dependency tree stays tight.
@@ -65,7 +65,7 @@ The core module pulls only what it needs — providers, memory backends and prot
 For the CLI + dashboard:
 
 ```bash
-go install github.com/YasserCR/galdor/cmd/galdor@v0.15.0
+go install github.com/YasserCR/galdor/cmd/galdor@v0.15.1
 galdor ui --db ./traces.db   # open http://127.0.0.1:7777
 ```
 
@@ -355,6 +355,7 @@ Each one is a runnable end-to-end demo with its own README.
 | [`integration-approval-gate`](examples/integration-approval-gate/) | `InterruptBefore` + `MemoryCheckpointer` + `Resume`. Banking-style transfers with low/high/over-cap scenarios. |
 | [`integration-mcp-server`](examples/integration-mcp-server/) | Wraps a `tool.Registry` as an MCP server over stdio, connectable from Claude Desktop. |
 | [`integration-cost-tracked`](examples/integration-cost-tracked/) | `BudgetProvider` middleware enforcing a token cap with $-denominated reporting. |
+| [`integration-http-interpret`](examples/integration-http-interpret/) | A complete HTTP service wrapping an agent: structured output, tracing, health endpoint, graceful shutdown. |
 
 Smaller, feature-focused examples live alongside:
 
@@ -369,6 +370,11 @@ Smaller, feature-focused examples live alongside:
 | [`scry-store`](examples/scry-store/) | Working with the SQLite trace store |
 | [`provider-interface`](examples/provider-interface/) | Implementing a custom `Provider` |
 | [`eval-suite`](examples/eval-suite/) | `eval.Config` + scorers + `RunAndExit` |
+| [`structured-output`](examples/structured-output/) | `GenerateStructured[T]`: a Go struct in, a decoded value out |
+| [`trial-suite`](examples/trial-suite/) | A `galdor trial` eval suite in YAML — the CI gate, no Go |
+| [`cast-agent`](examples/cast-agent/) | A `galdor cast` agent in YAML, with `--trace` into the dashboard |
+| [`council-team`](examples/council-team/) | A `galdor council` supervisor/swarm topology in YAML |
+| [`spellbook`](examples/spellbook/) | Versioned prompt templates managed with `galdor spellbook` |
 
 ---
 
@@ -428,15 +434,28 @@ The persistent backends require caller-stable IDs so re-ingesting the same chunk
 ## CLI
 
 ```bash
+# Observability
 galdor ui              --db ./traces.db
 galdor scry list       --db ./traces.db
-galdor scry show       --db ./traces.db <run-id>
+galdor scry show       <run-id> --db ./traces.db
 galdor scry stats      --db ./traces.db [--by overall|provider|model]
 galdor scry tail       --db ./traces.db [--interval 1s]
-galdor scry replay     --db ./traces.db <run-id> [-o fixture.json]
+galdor scry replay     <run-id> --db ./traces.db [-o fixture.json]
+galdor weave           <run-id> --db ./traces.db [-o graph.svg | --check]
+
+# Config-driven agents (YAML in, no Go required)
+galdor cast            agent.yaml "your input"  [--trace]
+galdor council         topology.yaml "your input"
+galdor trial           suite.yaml               # eval gate for CI (exit 0/1/2)
+
+# Tooling
+galdor mcp serve       [--http ADDR] [--base-dir DIR] [--allow-host H]
+galdor mcp ls|call     <URL> | -- <command>
+galdor spellbook       list|show|diff|render [--dir DIR]
+galdor doctor          # check your environment for setup problems
 ```
 
-`scry` is the introspection family (Old English: *to perceive, to discern*). Every command honors `$GALDOR_DB` and `~/.galdor/traces.db` as fallback paths.
+`scry` is the introspection family (Old English: *to perceive, to discern*). Every trace-reading command honors `$GALDOR_DB` and `~/.galdor/traces.db` as fallback paths.
 
 ---
 

@@ -344,8 +344,14 @@ func formatDuration(nanos int64) string {
 }
 
 func encodeJSON(errW io.Writer, enc *json.Encoder, v any) int {
+	return encodeJSONAs("scry", errW, enc, v)
+}
+
+// encodeJSONAs is encodeJSON with the verb name used in the error prefix,
+// so a failure inside `mcp ls --json` says "mcp", not "scry".
+func encodeJSONAs(verb string, errW io.Writer, enc *json.Encoder, v any) int {
 	if err := enc.Encode(v); err != nil {
-		_, _ = fmt.Fprintf(errW, "scry: encode json: %v\n", err)
+		_, _ = fmt.Fprintf(errW, "%s: encode json: %v\n", verb, err)
 		return 70
 	}
 	return 0

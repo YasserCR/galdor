@@ -229,14 +229,15 @@ func sortSpells(s []Spell) {
 }
 
 // safeName rejects spell/version labels that could escape the store
-// directory (path separators, "..", empty). The file store joins these
-// into a path, so they must be single, non-traversing segments.
+// directory (path separators, "..", NUL bytes, empty). The file store
+// joins these into a path, so they must be single, non-traversing
+// segments.
 func safeName(s string) error {
 	if s == "" {
 		return fmt.Errorf("spellbook: name/version must not be empty")
 	}
-	if s == "." || s == ".." || strings.ContainsAny(s, `/\`) || strings.Contains(s, "..") {
-		return fmt.Errorf("spellbook: invalid name/version %q (no path separators or '..')", s)
+	if s == "." || s == ".." || strings.ContainsAny(s, "/\\\x00") || strings.Contains(s, "..") {
+		return fmt.Errorf("spellbook: invalid name/version %q (no path separators, NUL, or '..')", s)
 	}
 	return nil
 }

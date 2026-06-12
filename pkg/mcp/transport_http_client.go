@@ -41,9 +41,14 @@ func NewStreamableHTTPClientTransport(rawURL string, opts ...HTTPClientOption) (
 		return nil, fmt.Errorf("mcp: url has no host: %q", rawURL)
 	}
 	t := &httpClientTransport{
-		url:     rawURL,
-		client:  &http.Client{Timeout: 60 * time.Second},
-		replies: make(chan []byte, 8),
+		url:    rawURL,
+		client: &http.Client{Timeout: 60 * time.Second},
+		// The Client's dispatch loop drains this continuously, so the
+		// buffer only needs to absorb bursts of concurrent replies. With
+		// more than maxBufferedReplies replies arriving before the loop
+		// drains, Send applies backpressure (it blocks, with ctx/done as
+		// escapes) rather than dropping a frame.
+		replies: make(chan []byte, maxBufferedReplies),
 		done:    make(chan struct{}),
 	}
 	for _, opt := range opts {
@@ -51,6 +56,12 @@ func NewStreamableHTTPClientTransport(rawURL string, opts ...HTTPClientOption) (
 	}
 	return t, nil
 }
+
+// maxBufferedReplies bounds how many replies can be queued for Recv
+// before Send applies backpressure. Sized comfortably above the Server's
+// own dispatch concurrency (64) so a burst of concurrent calls never
+// stalls a Send in practice.
+const maxBufferedReplies = 64
 
 // HTTPClientOption configures NewStreamableHTTPClientTransport.
 type HTTPClientOption func(*httpClientTransport)

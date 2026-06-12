@@ -51,3 +51,16 @@ func TestTaskStore_RejectsOverlongID(t *testing.T) {
 		t.Errorf("error code = %d, want ErrCodeInvalidParams", reply.Error.Code)
 	}
 }
+
+// Task.snapshot must deep-copy Metadata: tasks/send merges Metadata on
+// task reuse, so a snapshot handed to a tasks/get reader would otherwise
+// alias the live map and observe (or race with) the merge.
+func TestTaskSnapshot_CopiesMetadata(t *testing.T) {
+	t.Parallel()
+	live := &Task{ID: "t1", Metadata: map[string]any{"k": "original"}}
+	snap := live.snapshot()
+	live.Metadata["k"] = "mutated-after-snapshot"
+	if snap.Metadata["k"] != "original" {
+		t.Fatalf("snapshot aliases the live Metadata map: %v", snap.Metadata["k"])
+	}
+}

@@ -218,14 +218,21 @@ func (m Message) Text() string {
 }
 
 // snapshot returns a copy of the task safe to hand out (or encode)
-// after the caller releases the task's lock. The History slice is
-// copied so a subsequent append on the live task can't mutate or
-// re-slice the backing array observed by the snapshot's reader.
+// after the caller releases the task's lock. The History slice and the
+// Metadata map are copied so a subsequent append/merge on the live task
+// (tasks/send merges Metadata on reuse) can't mutate state observed by
+// the snapshot's reader.
 func (t *Task) snapshot() Task {
 	cp := *t
 	if t.History != nil {
 		cp.History = make([]Message, len(t.History))
 		copy(cp.History, t.History)
+	}
+	if t.Metadata != nil {
+		cp.Metadata = make(map[string]any, len(t.Metadata))
+		for k, v := range t.Metadata {
+			cp.Metadata[k] = v
+		}
 	}
 	return cp
 }

@@ -19,7 +19,7 @@ This document is a working overview of the galdor architecture. Authoritative de
 +-------------------------------------------------------------+
 |  Observability Core (OTel-native, embedded backend)         |
 +-------------------------------------------------------------+
-|  Storage (in-memory, embedded SQLite, optional Postgres)    |
+|  Storage (in-memory, embedded SQLite; OTel export for scale)|
 +-------------------------------------------------------------+
 ```
 
@@ -27,7 +27,7 @@ This document is a working overview of the galdor architecture. Authoritative de
 
 | Path | Purpose | Phase |
 |------|---------|-------|
-| `cmd/galdor/` | Single binary CLI (`galdor scry`, `ui`, `mcp`, `weave`, `trial`; further verbs planned). **Its own Go module** so the config-driven verbs can depend on `providerset` without pulling the provider stack into the core (ADR-014 D3). | 0+ |
+| `cmd/galdor/` | Single binary CLI (`scry`, `ui`, `mcp`, `weave`, `trial`, `cast`, `council`, `spellbook`, `doctor`). **Its own Go module** so the config-driven verbs can depend on `providerset` without pulling the provider stack into the core (ADR-014 D3). | 0+ |
 | `pkg/provider/` | `Provider` interface and shared types | 1 |
 | `pkg/tool/` | Type-safe tool system with generics | 2 |
 | `pkg/graph/` | Generic graph runtime over goroutines/channels | 3 |
@@ -74,7 +74,8 @@ galdor's observability stack lives in the same binary:
 
 ## Architecture decision records
 
-Thirteen ADRs are recorded and Accepted (ADR-001 … ADR-013), covering the
+Fifteen ADRs are recorded and Accepted (ADR-001 … ADR-015), covering the
 foundational decisions, the provider/tool/graph/agent shapes, observability
-and the SQLite store, the Web UI, typed errors, and the CLI surface. See
-[`docs/adr/`](docs/adr/) for the canonical index and records.
+and the SQLite store, the Web UI, typed errors, the CLI surface, the
+declarative config format and CLI module split, and schema-bound structured
+output. See [`docs/adr/`](docs/adr/) for the canonical index and records.

@@ -25,7 +25,11 @@ func councilCmd(ctx context.Context, args []string, w io.Writer, errW io.Writer)
 		_, _ = fmt.Fprintf(errW, "council: expected a topology file\n\n%s\n", councilUsage)
 		return 64
 	}
-	input := readCommandInput(rest[1:])
+	input, inErr := readCommandInput(rest[1:])
+	if inErr != nil {
+		_, _ = fmt.Fprintf(errW, "council: %v\n", inErr)
+		return 64
+	}
 	if input == "" {
 		_, _ = fmt.Fprintf(errW, "council: no input — pass it as an argument or pipe it on stdin\n\n%s\n", councilUsage)
 		return 64

@@ -67,7 +67,7 @@ func weave(ctx context.Context, args []string, w io.Writer, errW io.Writer) int 
 	case "json":
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		return encodeJSON(errW, enc, spec)
+		return encodeJSONAs("weave", errW, enc, spec)
 	case "svg":
 		return weaveRenderSVG(spec, *outFile, w, errW)
 	default:

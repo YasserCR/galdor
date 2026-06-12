@@ -109,6 +109,18 @@ const (
 // document describing the required output. When Type is
 // ResponseFormatJSONObject, the model is asked to emit any valid JSON
 // object without a schema constraint.
+//
+// Provider notes:
+//   - On Anthropic, a JSONSchema request is expressed as a single forced
+//     tool, so it REPLACES any Tools/ToolChoice on the same request — set
+//     one or the other, not both. The structured JSON is surfaced as the
+//     message text by Generate; on Stream the raw tool-call deltas are
+//     what arrives, so prefer Generate (or GenerateStructured) for
+//     schema-bound output there. Combining with Reasoning.Enabled is
+//     rejected by the Anthropic API (extended thinking is incompatible
+//     with a forced tool choice).
+//   - OpenAI and Google support JSONSchema natively in both Generate and
+//     Stream (the JSON arrives as ordinary text content).
 type ResponseFormat struct {
 	Type   ResponseFormatType
 	Schema []byte

@@ -48,6 +48,10 @@ type Chunk struct {
 	// Embedding is the dense vector representation of Text. Stores
 	// that operate on text-only retrieval (e.g., BM25) may leave it
 	// nil; vector stores require it to be populated before Add.
+	//
+	// Do not mutate a slice returned by Store.Retrieve — depending on
+	// the backend it may share memory with internal store state. Copy
+	// it first if you need to modify it.
 	Embedding []float32
 
 	// Metadata carries through from the parent Document.

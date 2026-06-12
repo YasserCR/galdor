@@ -120,7 +120,7 @@ func TestOpen_RejectsNonDir(t *testing.T) {
 func TestFileBook_RejectsPathTraversal(t *testing.T) {
 	t.Parallel()
 	b, _ := spellbook.Open(t.TempDir())
-	for _, bad := range []string{"../etc", "a/b", "..", ""} {
+	for _, bad := range []string{"../etc", "a/b", "..", "", "x\x00y"} {
 		if _, err := b.Get(bad, "v1"); err == nil {
 			t.Errorf("Get(%q) should reject traversal", bad)
 		}

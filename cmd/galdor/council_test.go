@@ -127,3 +127,61 @@ func TestCouncil_Validation(t *testing.T) {
 		})
 	}
 }
+
+// TestCouncil_SupervisorTwoWorkersKeepTheirConfigs pins per-worker closure
+// capture: each Worker.Run must use ITS agent (distinct base_url/system),
+// not the last loop iteration's. The router delegates to both workers in
+// turn; each worker's fake backend returns a distinct marker, and the
+// final answer composes both — wrong capture would hit one backend twice.
+func TestCouncil_SupervisorTwoWorkersKeepTheirConfigs(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	// Two counting backends so a wrong capture (both workers hitting the
+	// same base_url) is detectable.
+	countingServer := func(reply string) (*httptest.Server, *atomic.Int32) {
+		var hits atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			hits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, fmt.Sprintf(`{
+				"id":"c","object":"chat.completion","model":"fake",
+				"choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],
+				"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+			}`, reply))
+		}))
+		t.Cleanup(srv.Close)
+		return srv, &hits
+	}
+	workerA, hitsA := countingServer("MARKER-ALPHA")
+	workerB, hitsB := countingServer("MARKER-BETA")
+	// Router: delegate to alpha, then beta, then finish.
+	router := statefulOpenAIServer(t,
+		`{"worker":"alpha","task":"go"}`,
+		`{"worker":"beta","task":"go"}`,
+		`{"final":"done"}`,
+	)
+
+	path := writeTemp(t, "topology.yaml", fmt.Sprintf(`version: 1
+mode: supervisor
+supervisor: {provider: openai, model: fake, base_url: %s}
+workers:
+  - name: alpha
+    description: "a"
+    agent: {provider: openai, model: fake, base_url: %s}
+  - name: beta
+    description: "b"
+    agent: {provider: openai, model: fake, base_url: %s}
+`, router.URL, workerA.URL, workerB.URL))
+
+	var out, errOut bytes.Buffer
+	code := councilCmd(context.Background(), []string{path, "input"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit %d; stderr=%s", code, errOut.String())
+	}
+	// A wrong closure capture would send both tasks to the SAME backend.
+	if got := hitsA.Load(); got != 1 {
+		t.Errorf("worker alpha backend hits = %d, want 1 (closure capture broken?)", got)
+	}
+	if got := hitsB.Load(); got != 1 {
+		t.Errorf("worker beta backend hits = %d, want 1 (closure capture broken?)", got)
+	}
+}

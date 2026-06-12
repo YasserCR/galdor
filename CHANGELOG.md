@@ -11,6 +11,47 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-06-12
+
+Post-audit hardening: a second multi-agent audit pass over everything the
+v0.9.1–v0.15.0 series shipped. The code findings were small; each fix has a
+regression test. Green under `go test -race`, `go vet`, golangci-lint
+v2.12.2 and gosec across the affected modules.
+
+### Fixed
+- **A2A task snapshots no longer alias the live Metadata map.** A
+  `tasks/get` snapshot shared the map with the stored task, so the
+  Metadata merge a concurrent `tasks/send` performs could race with (or
+  bleed into) the snapshot's reader. Snapshots now deep-copy Metadata.
+- **`spellbook` rejects NUL bytes in spell names/versions**, alongside the
+  existing path-separator and `..` checks.
+- **`cast`/`council` stdin handling is explicit.** A stdin read error or a
+  piped input at/over the 1 MiB cap is now an error, never a silent empty
+  or truncated input. `trial` rejects a non-positive `timeout_per_case`.
+- **JSON-encode failures name the right verb** (`mcp ls --json` no longer
+  reports its error as `scry:`).
+
+### Changed
+- The MCP Streamable HTTP **client** transport buffers up to 64 in-flight
+  replies (was 8) and documents the backpressure behavior.
+- `provider.ResponseFormat` documents the per-provider behavior: on
+  Anthropic a JSONSchema request replaces Tools/ToolChoice and is
+  Generate-oriented (Stream surfaces raw tool deltas); OpenAI/Google
+  support it natively in both paths. `memory.Chunk.Embedding` documents
+  that retrieved slices must not be mutated.
+
+### Docs
+- README: the CLI section now lists every verb (mcp, weave, trial, cast,
+  council, spellbook, doctor were missing), the examples tables include the
+  six new examples, and the comparison table reflects the client-side
+  Streamable HTTP transport. ARCHITECTURE.md reconciled (15 ADRs, layered
+  view, full verb list). `.gitignore` covers example-directory binaries.
+
+### Tests
+- New regressions: A2A snapshot Metadata copy, spellbook NUL-byte
+  rejection, and a two-worker supervisor test pinning per-worker closure
+  capture (verifying a reported audit finding was a false positive).
+
 ## [0.15.0] - 2026-06-12
 
 Ecosystem & adoption: lower the friction of the first integration. Green
@@ -861,7 +902,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/YasserCR/galdor/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/YasserCR/galdor/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/YasserCR/galdor/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/YasserCR/galdor/compare/v0.12.0...v0.13.0

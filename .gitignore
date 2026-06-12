@@ -8,7 +8,8 @@
 /galdor
 # The CLI binary built inside its own module dir (cmd/galdor is its own module).
 /cmd/galdor/galdor
-# Stray binaries produced by `go build .` inside an example dir.
+# Stray binaries produced by `go build .` inside an example dir (the binary
+# is named after the directory, both at the repo root and inside the dir).
 /integration-*
 /eval-*
 /memory-*
@@ -17,6 +18,21 @@
 /observability-*
 /provider-*
 /scry-*
+/structured-output
+/trial-suite
+/cast-agent
+/council-team
+/spellbook
+examples/*/integration-*
+examples/*/eval-suite
+examples/*/memory-rag
+examples/*/graph-*
+examples/*/tools-loop
+examples/*/observability-trace
+examples/*/provider-interface
+examples/*/scry-store
+examples/*/agent-react
+examples/*/structured-output
 
 # Test
 *.test

@@ -241,7 +241,7 @@ func mcpList(ctx context.Context, args []string, w io.Writer, errW io.Writer) in
 	if *jsonOut {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		return encodeJSON(errW, enc, tools)
+		return encodeJSONAs("mcp ls", errW, enc, tools)
 	}
 	info := client.ServerInfo()
 	_, _ = fmt.Fprintf(w, "%s %s — %d tool(s)\n", info.Name, info.Version, len(tools))

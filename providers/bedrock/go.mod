@@ -8,7 +8,7 @@ go 1.25.11
 replace github.com/YasserCR/galdor => ../..
 
 require (
-	github.com/YasserCR/galdor v0.15.0
+	github.com/YasserCR/galdor v0.15.1
 	github.com/aws/aws-sdk-go-v2 v1.41.10
 	github.com/aws/aws-sdk-go-v2/config v1.32.21
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.20

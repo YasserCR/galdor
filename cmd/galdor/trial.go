@@ -185,6 +185,10 @@ func buildEvalConfig(ctx context.Context, tc TrialConfig, errW io.Writer) (eval.
 			cleanup()
 			return eval.Config{}, func() {}, fmt.Errorf("timeout_per_case: %w", perr)
 		}
+		if d <= 0 {
+			cleanup()
+			return eval.Config{}, func() {}, fmt.Errorf("timeout_per_case must be positive, got %q", tc.TimeoutPerCase)
+		}
 		cfg.TimeoutPerCase = d
 	}
 	return cfg, cleanup, nil
