@@ -58,7 +58,7 @@ This document is a working overview of the galdor architecture. Authoritative de
 
 ## Boundaries
 
-- `pkg/` is the public API. Anything here is subject to SemVer once v1.0 ships.
+- `pkg/` is the public API, **stable under SemVer as of v1.0.0** — breaking changes only in a future major version.
 - `internal/` is implementation. It can change without notice.
 - `providers/<name>/` and `memory/<backend>/` are independent Go modules so the core stays dependency-light. A user only pulls the adapters they need.
 

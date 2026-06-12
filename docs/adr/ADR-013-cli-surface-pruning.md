@@ -159,8 +159,8 @@ so the binary never advertises capability it doesn't have — the audit's
 ## References
 
 - ROADMAP.md — "Explicit Non-Goals": `pkg/serve`; Phase 14 `galdor doctor`.
-- Pre-alpha audit §5 ("CLI announces stubs"), post-audit verification
-  (debug/post-refactor, private notes).
+- Pre-alpha audit §5 ("CLI announces stubs") and its follow-up
+  verification.
 - React team, "Sunsetting Create React App", Feb 2025 —
   https://react.dev/blog/2025/02/14/sunsetting-create-react-app
 - gobuffalo/buffalo — archived Feb 2024 —

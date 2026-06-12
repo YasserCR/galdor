@@ -107,4 +107,4 @@ The DCO certifies *origin* without transferring *copyright*. It's the lightest l
 
 ## Reporting security issues
 
-Do **not** open public issues for security vulnerabilities. Email the maintainers privately (contact will be added to `SECURITY.md` once published). Expect an acknowledgement within 72 hours.
+Do **not** open public issues for security vulnerabilities. Report privately via GitHub Security Advisories — see [`SECURITY.md`](SECURITY.md). Expect an acknowledgement within 72 hours.

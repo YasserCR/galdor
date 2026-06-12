@@ -17,7 +17,7 @@ The table below was last verified against each project's repo, releases and offi
 
 | | galdor | LangChain Python + LangSmith | LangChainGo | Eino | Genkit Go |
 |---|---|---|---|---|---|
-| Latest release | pre-alpha, v0.x | langchain-core v1.4.0 (May 2026) | v0.1.14 (Oct 2025) | v0.8.13 stable, v0.9.0-alpha active (May 2026) — pre-1.0 | mcp plugin v1.8.0 GA (May 2026) |
+| Latest release | v1.0.0 (Jun 2026) | langchain-core v1.4.0 (May 2026) | v0.1.14 (Oct 2025) | v0.8.13 stable, v0.9.0-alpha active (May 2026) — pre-1.0 | mcp plugin v1.8.0 GA (May 2026) |
 | Language / runtime | Go | Python | Go | Go | Go |
 | Observability story | OTel-native, with an embedded SQLite trace store + dashboard served from the same binary | LangSmith (closed-source SaaS) | callbacks only, no OTel | callbacks; the shipped tracing target is Langfuse, not OTel | OTel-native; Genkit Monitoring (the hosted dashboard) is Google-Cloud only |
 | End-to-end self-hostable (incl. dashboard) | yes | no — self-hosted LangSmith requires the paid Enterprise plan | yes (BYO observability stack) | yes (Apache framework + self-hosted Langfuse) | partial — OTel exporters point anywhere, but the polished Genkit Monitoring dashboard is GCP-only |
@@ -39,25 +39,25 @@ Sources (verified May 2026): [langchain-ai/langchain](https://github.com/langcha
 
 ## Status
 
-**`v0.15.1` tagged. Looking for early integrators.**
+**`v1.0.0` released. Looking for early integrators.**
 
 The 10-phase roadmap is functionally complete: provider abstraction (Anthropic, OpenAI/MiniMax/Groq/Together/DeepSeek/vLLM/Ollama via `BaseURL` or [`providerset`](providerset/), Google Gemini, AWS Bedrock) · type-safe tools with reflection-derived JSON schemas · directed graph runtime with checkpoints, interrupt/resume and branch-map conditional edges · ReAct and Plan-and-Execute agent helpers · native OTel observability with embedded SQLite trace store, auto-WAL-checkpointing exporter, auto-stamped run ids, and an orphan-span warning banner · embedded web dashboard with live SSE, per-run DAG, time-travel · short-term memory windows + long-term memory backends (in-mem, SQLite/BM25, pgvector, qdrant) · provider-backed and HTTP/TEI embedders · Council multi-agent patterns (Supervisor, Swarm) · MCP client + server over stdio, SSE, and Streamable HTTP · A2A protocol (Google) · inline eval framework with LLM-as-judge · schema-bound structured output (a Go struct in, a decoded value out) · deterministic replay with prompt fingerprinting · per-provider retry/backoff, run/node timeouts, panic recovery, structured logging, goroutine leak gates, capability-aware validation · thinking-block strip middleware for OpenAI-compat thinking models.
 
 **What's next:** real-world integration feedback. If you're shipping agents in Go and the table at the top resonates, try galdor on your stack and open an issue — the framework has covered the surface; the remaining edges only show up in actual deployments. The [pragma-galdor](https://github.com/YasserCR/galdor/blob/main/docs/patterns/queue-worker.md) retro is one such report, and it shaped most of v0.1.0; more would be welcome.
 
-Between `v0.1.0` and `v1.0.0`, minor versions may still introduce breaking changes — pin a specific tag in your `go.mod` if you need reproducibility. See [`ROADMAP.md`](ROADMAP.md) for full phase tracking.
+As of `v1.0.0`, the public API under `pkg/` is **stable under SemVer**: breaking changes only land in a future v2. See [`ROADMAP.md`](ROADMAP.md) for full phase tracking and what's next.
 
 ---
 
 ## Install
 
 ```bash
-go get github.com/YasserCR/galdor@v0.15.1
+go get github.com/YasserCR/galdor@v1.0.0
 # plus the provider(s) you need:
-go get github.com/YasserCR/galdor/providers/anthropic@v0.15.1
-go get github.com/YasserCR/galdor/providers/openai@v0.15.1
+go get github.com/YasserCR/galdor/providers/anthropic@v1.0.0
+go get github.com/YasserCR/galdor/providers/openai@v1.0.0
 # or pick a provider at runtime via env var:
-go get github.com/YasserCR/galdor/providerset@v0.15.1
+go get github.com/YasserCR/galdor/providerset@v1.0.0
 ```
 
 The core module pulls only what it needs — providers, memory backends and protocol adapters live in their own Go modules so your dependency tree stays tight.
@@ -65,7 +65,7 @@ The core module pulls only what it needs — providers, memory backends and prot
 For the CLI + dashboard:
 
 ```bash
-go install github.com/YasserCR/galdor/cmd/galdor@v0.15.1
+go install github.com/YasserCR/galdor/cmd/galdor@v1.0.0
 galdor ui --db ./traces.db   # open http://127.0.0.1:7777
 ```
 

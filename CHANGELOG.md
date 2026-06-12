@@ -11,6 +11,26 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-12
+
+galdor 1.0. The public API under `pkg/` is now **stable under SemVer**:
+breaking changes only land in a future major version. `internal/` remains
+implementation detail, and the CLI's YAML config format is versioned
+independently (`version: 1`).
+
+What 1.0 means here, concretely: four provider adapters (Anthropic, OpenAI
++ compatible hosts, Google, Bedrock) behind one capability-gated interface;
+type-safe tools with reflection-derived schemas; a generic graph runtime
+with checkpoints, interrupts and streaming; ReAct and Plan-and-Execute
+helpers; Supervisor/Swarm multi-agent; MCP client + server (stdio, SSE,
+Streamable HTTP) and A2A; memory backends (in-mem, SQLite/BM25, pgvector,
+qdrant) with provider-backed embedders; schema-bound structured output; an
+eval framework with CI gates; deterministic replay; OTel-native
+observability with an embedded SQLite store and dashboard; and a
+nine-verb CLI (`scry`, `ui`, `mcp`, `weave`, `trial`, `cast`, `council`,
+`spellbook`, `doctor`) whose config-driven verbs run agents, teams and
+eval suites from YAML — no Go required.
+
 ### Fixed
 - **`--help` exits 0 everywhere.** Every verb and subcommand that parses
   flags treated `-h`/`--help` as a usage error (exit 64); asking for help
@@ -21,10 +41,17 @@ hygiene (docs, build metadata).
 - README install snippet notes the `$GOBIN`-on-PATH gotcha (with a pointer
   to `galdor doctor`); observability.md documents that galdor spans nest
   under any caller-provided parent span via standard context propagation.
+- `SECURITY.md` added (private reporting via GitHub Security Advisories);
+  README/ARCHITECTURE state the SemVer commitment; ROADMAP labels remaining
+  items as post-v1.0.
+
+### Build
+- Submodule `require` pins bumped v0.15.1 → v1.0.0; `cmd/galdor` tagged
+  last. No new dependencies.
 
 ## [0.15.1] - 2026-06-12
 
-Post-audit hardening: a second multi-agent audit pass over everything the
+Post-audit hardening: a second full audit pass over everything the
 v0.9.1–v0.15.0 series shipped. The code findings were small; each fix has a
 regression test. Green under `go test -race`, `go vet`, golangci-lint
 v2.12.2 and gosec across the affected modules.
@@ -913,7 +940,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/YasserCR/galdor/compare/v0.15.1...v1.0.0
 [0.15.1]: https://github.com/YasserCR/galdor/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/YasserCR/galdor/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/YasserCR/galdor/compare/v0.13.0...v0.14.0
