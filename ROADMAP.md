@@ -267,19 +267,18 @@ without expanding core surface area.
 Materials that make the second, third, and tenth integration cheaper than the
 first — without adding framework surface area.
 
-- [ ] `examples/integration-http-interpret` — full HTTP service: provider +
+- [x] `examples/integration-http-interpret` — full HTTP service: provider +
       structured output + observability + graceful shutdown + health endpoint.
-      Copy-paste starter, not a `pkg/serve` abstraction. (ADR-013 records
-      why we resist `pkg/serve`.)
+      Copy-paste starter, not a `pkg/serve` abstraction. (v0.15.0)
 - [x] `docs/migration/from-langchain-python.md` — concrete mappings
       (`JsonOutputParser` → `schema.ParseJSON`, LCEL pipe → "write a Go
       function", `RunnableWithFallbacks` → `provider.RetryPolicy` + typed
       errors).
-- [ ] Public integrator-feedback intake — `docs/feedback/` + issue template
-      `integration-report.yml`. Each shipped migration writes one up; the
-      current report becomes the seed entry.
-- [ ] `galdor doctor` CLI — sanity-checks `$GOBIN`, provider env vars, SQLite
-      store reachability, prints first-call diagnostics.
+- [x] Public integrator-feedback intake — `docs/feedback/` + GitHub issue
+      templates (bug / feature / integration-feedback) (v0.15.0)
+- [x] `galdor doctor` CLI — checks the Go toolchain, whether go-installed
+      binaries land on PATH, provider credential env vars, and trace-store
+      reachability (v0.15.0)
 
 **Outcome:** Adoption cost halves between integration #1 and integration #N
 because the cliffs the first one hit are paved.

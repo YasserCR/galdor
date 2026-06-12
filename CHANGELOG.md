@@ -11,6 +11,30 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-06-12
+
+Ecosystem & adoption: lower the friction of the first integration. Green
+under `go test -race`, `go vet`, golangci-lint v2.12.2 and gosec across the
+root and the CLI module.
+
+### Added
+- **`galdor doctor`** — an environment check that prints a checklist: the
+  Go toolchain (and whether `go` is on PATH for building from source),
+  whether the `go install` bin directory is on PATH, which provider
+  credential env vars are set (values never printed), and whether the trace
+  store is reachable/writable. Exits 1 on a hard failure, 0 otherwise.
+- **`examples/integration-http-interpret`** — a complete copy-paste HTTP
+  service wrapping an agent: structured output as the API contract, OTel
+  tracing into the SQLite store, a health endpoint, and graceful shutdown.
+  The "ship the example, not the abstraction" answer to "how do I serve an
+  agent" — galdor has no `pkg/serve` on purpose.
+- **Feedback intake** — `docs/feedback/` and GitHub issue templates (bug
+  report, feature request, integration feedback).
+
+### Build
+- Submodule `require` pins bumped v0.14.0 → v0.15.0; `cmd/galdor` tagged
+  last. No new dependencies.
+
 ## [0.14.0] - 2026-06-12
 
 Schema-bound structured output: a Go type in, a decoded Go value out.
@@ -837,7 +861,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/YasserCR/galdor/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/YasserCR/galdor/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/YasserCR/galdor/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/YasserCR/galdor/compare/v0.11.0...v0.12.0

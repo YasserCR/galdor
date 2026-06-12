@@ -30,9 +30,8 @@ func renderUsage(t *testing.T) string {
 func TestUsageListsAllVerbs(t *testing.T) {
 	out := renderUsage(t)
 
-	// Every shipped verb appears in the usage. As of v0.13.0 all verbs are
-	// implemented — there is no "planned" block.
-	for _, v := range []string{"scry", "ui", "mcp", "weave", "trial", "cast", "council", "spellbook", "version", "help"} {
+	// Every shipped verb appears in the usage; there is no "planned" block.
+	for _, v := range []string{"scry", "ui", "mcp", "weave", "trial", "cast", "council", "spellbook", "doctor", "version", "help"} {
 		if !strings.Contains(out, v) {
 			t.Errorf("help text missing verb %q", v)
 		}

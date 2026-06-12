@@ -10,6 +10,7 @@
 //	cast       run an agent from a YAML file             — implemented
 //	council    run a multi-agent orchestration from YAML — implemented
 //	spellbook  manage versioned prompt templates         — implemented
+//	doctor     check the environment for setup problems   — implemented
 //
 // The verbs serve, recast and forge were removed from the surface —
 // ADR-013 records why (serve and forge contradict explicit non-goals;
@@ -106,6 +107,8 @@ func main() {
 		os.Exit(code)
 	case "spellbook":
 		os.Exit(spellbookCmd(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
+	case "doctor":
+		os.Exit(doctor(context.Background(), os.Args[2:], os.Stdout, os.Stderr))
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "galdor: unknown command %q\n\n", os.Args[1])
 		usage(os.Stderr)
@@ -128,6 +131,7 @@ Commands:
   cast       Run an agent from a YAML file
   council    Run a multi-agent orchestration from a YAML file
   spellbook  Manage versioned prompt templates
+  doctor     Check your environment for common setup problems
   version    Print version information
   help       Show this help
 `)
