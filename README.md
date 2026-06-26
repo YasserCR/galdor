@@ -41,7 +41,7 @@ Sources (verified May 2026): [langchain-ai/langchain](https://github.com/langcha
 
 **`v1.0.0` released. Looking for early integrators.**
 
-The 10-phase roadmap is functionally complete: provider abstraction (Anthropic, OpenAI/MiniMax/Groq/Together/DeepSeek/vLLM/Ollama via `BaseURL` or [`providerset`](providerset/), Google Gemini, AWS Bedrock) · type-safe tools with reflection-derived JSON schemas · directed graph runtime with checkpoints, interrupt/resume and branch-map conditional edges · ReAct and Plan-and-Execute agent helpers · native OTel observability with embedded SQLite trace store, auto-WAL-checkpointing exporter, auto-stamped run ids, and an orphan-span warning banner · embedded web dashboard with live SSE, per-run DAG, time-travel · short-term memory windows + long-term memory backends (in-mem, SQLite/BM25, pgvector, qdrant) · provider-backed and HTTP/TEI embedders · Council multi-agent patterns (Supervisor, Swarm) · MCP client + server over stdio, SSE, and Streamable HTTP · A2A protocol (Google) · inline eval framework with LLM-as-judge · schema-bound structured output (a Go struct in, a decoded value out) · deterministic replay with prompt fingerprinting · per-provider retry/backoff, run/node timeouts, panic recovery, structured logging, goroutine leak gates, capability-aware validation · thinking-block strip middleware for OpenAI-compat thinking models.
+The 10-phase roadmap is functionally complete: provider abstraction (Anthropic, OpenAI/MiniMax/Groq/Together/DeepSeek/vLLM/Ollama via `BaseURL` or [`providerset`](providerset/), Google Gemini, AWS Bedrock) · type-safe tools with reflection-derived JSON schemas · directed graph runtime with checkpoints, interrupt/resume and branch-map conditional edges · ReAct and Plan-and-Execute agent helpers · native OTel observability with embedded SQLite trace store, auto-WAL-checkpointing exporter, auto-stamped run ids, and an orphan-span warning banner · embedded web dashboard with live SSE, per-run DAG, time-travel · short-term memory windows + long-term memory backends (in-mem, SQLite/BM25, pgvector, qdrant, S3 Vectors) · provider-backed and HTTP/TEI embedders · Council multi-agent patterns (Supervisor, Swarm) · MCP client + server over stdio, SSE, and Streamable HTTP · A2A protocol (Google) · inline eval framework with LLM-as-judge · schema-bound structured output (a Go struct in, a decoded value out) · deterministic replay with prompt fingerprinting · per-provider retry/backoff, run/node timeouts, panic recovery, structured logging, goroutine leak gates, capability-aware validation · thinking-block strip middleware for OpenAI-compat thinking models.
 
 **What's next:** real-world integration feedback. If you're shipping agents in Go and the table at the top resonates, try galdor on your stack and open an issue — the framework has covered the surface; the remaining edges only show up in actual deployments. The [pragma-galdor](https://github.com/YasserCR/galdor/blob/main/docs/patterns/queue-worker.md) retro is one such report, and it shaped most of v0.1.0; more would be welcome.
 
@@ -403,14 +403,15 @@ Embedders ship in the same provider modules: `openai.NewEmbedder` (covers OpenAI
 | SQLite + BM25 | `memory/sqlite` | single-process production, embedded apps |
 | pgvector | `memory/pgvector` | Postgres-centric stacks |
 | qdrant | `memory/qdrant` | dedicated vector DB |
+| S3 Vectors | `memory/s3vectors` | serverless AWS-native vector storage (no DB to operate) |
 
-All four implement the same `memory.Store` interface, so you swap by changing one constructor. A few semantics differ by design, so check these when porting:
+All five implement the same `memory.Store` interface, so you swap by changing one constructor. A few semantics differ by design, so check these when porting:
 
-| | in-memory | SQLite + BM25 | pgvector | qdrant |
-|---|---|---|---|---|
-| Empty `Chunk.ID` on `Add` | auto-assigned (UUID) | **rejected** | **rejected** | **rejected** |
-| Query mode | lexical + vector | lexical (BM25) + vector | vector-only | vector-only |
-| Chunks without an embedding | allowed | allowed (lexical) | rejected | rejected |
+| | in-memory | SQLite + BM25 | pgvector | qdrant | S3 Vectors |
+|---|---|---|---|---|---|
+| Empty `Chunk.ID` on `Add` | auto-assigned (UUID) | **rejected** | **rejected** | **rejected** | **rejected** |
+| Query mode | lexical + vector | lexical (BM25) + vector | vector-only | vector-only | vector-only |
+| Chunks without an embedding | allowed | allowed (lexical) | rejected | rejected | rejected |
 
 The persistent backends require caller-stable IDs so re-ingesting the same chunk is an idempotent upsert (a random ID would create duplicates) — that's why they reject an empty ID rather than minting one. The vector-only backends need an embedding on every chunk and every query.
 

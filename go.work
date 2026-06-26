@@ -6,6 +6,7 @@ use (
 	./examples
 	./memory/pgvector
 	./memory/qdrant
+	./memory/s3vectors
 	./memory/sqlite
 	./providers/anthropic
 	./providers/bedrock

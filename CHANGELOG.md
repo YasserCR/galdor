@@ -11,6 +11,24 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-26
+
+### Added
+- **Amazon S3 Vectors memory backend** (`memory/s3vectors`): a serverless,
+  AWS-native `memory.Store` — a drop-in alternative to `memory/pgvector` and
+  `memory/qdrant` for deployments that want durable vector storage without
+  operating a database. Credentials resolve via the default AWS credential
+  chain; the vector index is auto-created on `Open` (the vector bucket must
+  pre-exist); the chunk body is stored as non-filterable metadata so it
+  round-trips with query results. Verified end-to-end against a live S3 Vectors
+  bucket, including `PutVectors` batching, query pagination, multi-page delete,
+  and multi-key `$and` metadata filters.
+
+### Changed
+- Bumped `aws-sdk-go-v2` to v1.42.0 and `smithy-go` to v1.27.1 across the
+  AWS-touching modules (required by the S3 Vectors SDK; backward-compatible —
+  the only core change is a retry preview gated behind an opt-in env flag).
+
 ## [1.0.0] - 2026-06-12
 
 galdor 1.0. The public API under `pkg/` is now **stable under SemVer**:
