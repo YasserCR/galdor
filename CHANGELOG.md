@@ -11,6 +11,16 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-10
+
+### Security
+- **Bump the minimum Go to 1.25.12** across every module to pick up the
+  standard-library fix for **GO-2026-5856** (Encrypted Client Hello privacy leak
+  in `crypto/tls`), which govulncheck found reachable via the web UI
+  (`internal/ui`), the MCP HTTP client (`pkg/mcp`) and graph SVG rendering
+  (`pkg/graph`). `GOTOOLCHAIN=auto` pulls the patched toolchain; no source
+  changes. `govulncheck` is clean under go1.25.12.
+
 ## [1.2.0] - 2026-07-10
 
 ### Added

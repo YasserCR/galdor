@@ -2,7 +2,7 @@ module github.com/YasserCR/galdor/providers/openai
 
 go 1.25.12
 
-require github.com/YasserCR/galdor v1.2.0
+require github.com/YasserCR/galdor v1.2.1
 
 require github.com/google/uuid v1.6.0 // indirect
 

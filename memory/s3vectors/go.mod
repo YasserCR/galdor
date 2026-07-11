@@ -3,7 +3,7 @@ module github.com/YasserCR/galdor/memory/s3vectors
 go 1.25.12
 
 require (
-	github.com/YasserCR/galdor v1.2.0
+	github.com/YasserCR/galdor v1.2.1
 	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.21
 	github.com/aws/aws-sdk-go-v2/service/s3vectors v1.8.0

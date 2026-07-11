@@ -3,8 +3,8 @@ module github.com/YasserCR/galdor/memory/okf
 go 1.25.12
 
 require (
-	github.com/YasserCR/galdor v1.2.0
-	github.com/YasserCR/galdor/memory/sqlite v1.2.0
+	github.com/YasserCR/galdor v1.2.1
+	github.com/YasserCR/galdor/memory/sqlite v1.2.1
 )
 
 require (
