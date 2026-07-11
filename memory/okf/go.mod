@@ -1,6 +1,6 @@
 module github.com/YasserCR/galdor/memory/okf
 
-go 1.25.11
+go 1.25.12
 
 require (
 	github.com/YasserCR/galdor v1.2.0

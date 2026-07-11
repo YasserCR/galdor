@@ -28,7 +28,7 @@ env:
   # lint/gosec/govulncheck cover it through GOWORK.
   GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai providerset memory/sqlite memory/pgvector memory/qdrant memory/okf examples"
   # Auto-download a toolchain matching go.mod when the runner's cached
-  # Go is older than what we require. The govulncheck-driven 1.25.11
+  # Go is older than what we require. The govulncheck-driven 1.25.12
   # floor is enforced by go.mod itself; this env lets the build pull
   # the patched toolchain without manual setup-go pinning.
   GOTOOLCHAIN: auto
@@ -44,7 +44,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ['1.25.11']
+        go: ['1.25.12']
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -57,7 +57,7 @@ jobs:
           cache: true
 
       - name: Verify go.mod is tidy (each module)
-        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25.11'
+        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25.12'
         run: |
           for mod in $GALDOR_MODULES; do
             echo "::group::tidy $mod"
@@ -80,7 +80,7 @@ jobs:
         run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
       - name: Upload coverage
-        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25.11'
+        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25.12'
         uses: actions/upload-artifact@v5
         with:
           name: coverage
@@ -100,7 +100,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.11'
+          go-version: '1.25.12'
           cache: true
 
       - name: golangci-lint (${{ matrix.module }})
@@ -124,7 +124,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.11'
+          go-version: '1.25.12'
           cache: true
 
       - name: Install govulncheck
@@ -149,7 +149,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.11'
+          go-version: '1.25.12'
           cache: true
 
       - name: Install gosec
