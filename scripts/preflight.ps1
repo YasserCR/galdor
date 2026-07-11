@@ -35,7 +35,8 @@ $Modules = @(
     "providerset",
     "memory/sqlite",
     "memory/pgvector",
-    "memory/qdrant"
+    "memory/qdrant",
+    "memory/okf"
 )
 $ModulesWithExamples = $Modules + @("examples")
 

@@ -21,6 +21,8 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-013](ADR-013-cli-surface-pruning.md) | CLI surface pruning (`serve`/`recast`/`forge` dropped) | Accepted |
 | [ADR-014](ADR-014-config-format-and-cli-module.md) | Config format (YAML) and the `cmd/galdor` module split | Accepted |
 | [ADR-015](ADR-015-structured-output.md) | Schema-bound structured output | Accepted |
+| [ADR-016](ADR-016-okf-knowledge-backend.md) | OKF knowledge backend (`memory/okf`) | Accepted |
+| [ADR-017](ADR-017-hybrid-retriever-rrf.md) | Hybrid retrieval via Reciprocal Rank Fusion | Accepted |
 
 ## Conventions
 

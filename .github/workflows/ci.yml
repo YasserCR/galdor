@@ -26,7 +26,7 @@ env:
   # freshly-published sibling versions only at release time (ADR-014 D3). Its
   # code is still built/vetted/tested via the workspace jobs below, and
   # lint/gosec/govulncheck cover it through GOWORK.
-  GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai providerset memory/sqlite memory/pgvector memory/qdrant examples"
+  GALDOR_MODULES: ". providers/anthropic providers/bedrock providers/google providers/openai providerset memory/sqlite memory/pgvector memory/qdrant memory/okf examples"
   # Auto-download a toolchain matching go.mod when the runner's cached
   # Go is older than what we require. The govulncheck-driven 1.25.11
   # floor is enforced by go.mod itself; this env lets the build pull
@@ -92,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant', 'memory/okf']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -116,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant', 'memory/okf']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -141,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant']
+        module: ['.', 'cmd/galdor', 'providers/anthropic', 'providers/bedrock', 'providers/google', 'providers/openai', 'providerset', 'memory/sqlite', 'memory/pgvector', 'memory/qdrant', 'memory/okf']
     steps:
       - name: Checkout
         uses: actions/checkout@v5

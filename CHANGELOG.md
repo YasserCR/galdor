@@ -11,6 +11,31 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-10
+
+### Added
+- **Hybrid retrieval via Reciprocal Rank Fusion** (`memory.HybridRetriever`):
+  fuses any number of retrieval sources (e.g. a lexical BM25 store and a dense
+  vector retriever) with RRF (k=60), reusing the existing `Store`, `Retriever`
+  and `Embedder` unchanged. A new `memory.Searcher` interface (the read half of
+  `Store`) is what sources satisfy. Additive, pure-Go, no new dependencies.
+  See ADR-017.
+- **OKF knowledge backend** (`memory/okf`): a `memory.Store` over Open Knowledge
+  Format bundles (markdown + YAML frontmatter in a git tree). Loads a bundle,
+  chunks concept-first (folding title/description/tags into the indexed text),
+  and retrieves via BM25 by wrapping the SQLite/FTS5 store. Ships
+  `okf.NewSearchTool` for ReAct agents. Tag-membership filtering and link-graph
+  outlinks are handled inside the module (via a reserved `FilterTag` key and
+  metadata) without changing the core `memory.Query` contract. The frontmatter
+  parser is dependency-free. See ADR-016.
+- **`examples/okf-rag`**: end-to-end RAG over an embedded OKF bundle with
+  `--mode bm25` and `--mode hybrid`, composing the OKF store's BM25 with a dense
+  retriever under `HybridRetriever`.
+
+### Docs
+- ADR-016 (OKF backend) and ADR-017 (hybrid RRF); `docs/concepts/memory.md` and
+  `docs/patterns/rag.md` document the new retriever and backend.
+
 ## [1.1.0] - 2026-06-26
 
 ### Added

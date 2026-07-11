@@ -4,6 +4,7 @@ use (
 	.
 	./cmd/galdor
 	./examples
+	./memory/okf
 	./memory/pgvector
 	./memory/qdrant
 	./memory/s3vectors

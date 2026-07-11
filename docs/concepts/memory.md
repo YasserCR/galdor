@@ -106,6 +106,23 @@ hits, _ := retriever.Retrieve(ctx, memory.Query{Text: "capital of Ecuador"})
 
 `Retriever` is the convenience wrapper: it embeds `Query.Text` when `Embedding` is empty and forwards to the underlying `Store`. Use it so caller code doesn't need to know whether the backend is lexical, vector, or hybrid.
 
+### Hybrid retrieval (RRF)
+
+`HybridRetriever` fuses several retrieval `Sources` with Reciprocal Rank Fusion (RRF, k=60) — the standard way to combine a lexical (BM25) ranking with a dense (vector) one without calibrating scores between them. Any `memory.Store` or `*memory.Retriever` is a `Searcher`, so a lexical source and a dense source compose directly:
+
+```go
+hybrid := &memory.HybridRetriever{
+    Sources: []memory.Searcher{
+        &memory.Retriever{Store: bm25Store},                    // lexical
+        &memory.Retriever{Store: vecStore, Embedder: embedder}, // dense
+    },
+    K: 5,
+}
+hits, _ := hybrid.Retrieve(ctx, memory.Query{Text: "recurring revenue"})
+```
+
+Each source gets the same `Query`; the dense `Retriever` embeds the text internally, the lexical one ignores the embedding. See ADR-017 and [`examples/okf-rag`](../../examples/okf-rag/).
+
 ## Chunkers
 
 All three live under [`pkg/memory/chunk`](../../pkg/memory/chunk/) and implement the same one-method interface.
@@ -153,6 +170,8 @@ OpenAI's embedder also covers Mistral / MiniMax / Together / Groq / Azure / vLLM
 | `sqlite.Store` | `memory/sqlite` | FTS5 BM25, or cosine over BLOB embeddings | single-process production |
 | `pgvector.Store` | `memory/pgvector` | cosine via `vector(N)` column | Postgres stacks |
 | `qdrant.Store` | `memory/qdrant` | cosine over HTTP | dedicated vector DB |
+| `s3vectors.Store` | `memory/s3vectors` | cosine via Amazon S3 Vectors | serverless AWS vector storage |
+| `okf.Store` | `memory/okf` | FTS5 BM25 over an OKF bundle | knowledge in git (markdown + frontmatter) |
 
 ```go
 sql, _ := sqlite.Open("./corpus.db")
@@ -182,3 +201,4 @@ Each module's integration tests are gated by an env var: `GALDOR_PGVECTOR_URL` (
 - [provider](provider.md), [schema](schema.md) — the types `Embedder` and `Window` flow into.
 - [observability](observability.md) — wrap any `Embedder` call site in a span by instrumenting the upstream `Provider`.
 - [`examples/memory-rag`](../../examples/memory-rag/) — full chunk → embed → SQLite → retrieve flow.
+- [`examples/okf-rag`](../../examples/okf-rag/) — BM25 and hybrid (RRF) retrieval over an OKF knowledge bundle.

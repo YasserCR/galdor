@@ -167,9 +167,21 @@ against `chunk.Metadata`. Use it for tenant isolation
   prompt-injection risk of the underlying source. Treat retrieved
   text as user input, not as trusted instructions.
 
+## Hybrid and knowledge-in-git variants
+
+- **Hybrid retrieval.** When exact terms matter as much as meaning (identifiers,
+  SQL, product names), fuse a BM25 ranking with a dense one using
+  `memory.HybridRetriever` (RRF, ADR-017) instead of choosing one. Any `Store`
+  or `Retriever` is a fusion `Source`.
+- **Knowledge in git (OKF).** The `memory/okf` backend retrieves over an Open
+  Knowledge Format bundle — markdown + YAML frontmatter versioned in git, no
+  vector database required. It is a BM25 `Store` you can also compose into a
+  hybrid, and it ships an `okf_search` tool for agents (ADR-016).
+
 ## Links
 
 - Runnable example: [examples/memory-rag](../../examples/memory-rag/)
+- Runnable example: [examples/okf-rag](../../examples/okf-rag/) — BM25 + hybrid over an OKF bundle
 - Concept: [memory](../concepts/memory.md)
 - Concept: [provider](../concepts/provider.md)
 - Related: [replay-tests](replay-tests.md) — once RAG works, lock

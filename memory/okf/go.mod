@@ -1,10 +1,10 @@
-module github.com/YasserCR/galdor/memory/sqlite
+module github.com/YasserCR/galdor/memory/okf
 
 go 1.25.11
 
 require (
 	github.com/YasserCR/galdor v1.2.0
-	modernc.org/sqlite v1.50.1
+	github.com/YasserCR/galdor/memory/sqlite v1.2.0
 )
 
 require (
@@ -17,9 +17,13 @@ require (
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
+	modernc.org/sqlite v1.50.1 // indirect
 )
 
-// During development the parent module is resolved from the local
-// workspace. This replace is also respected when building this module
-// standalone (e.g. `cd memory/sqlite && go test ./...`).
+// During development the parent module and the sqlite backend are resolved
+// from the local workspace. These replaces are also respected when building
+// this module standalone (e.g. `cd memory/okf && go test ./...`); they are
+// ignored by external consumers doing `go get`.
 replace github.com/YasserCR/galdor => ../..
+
+replace github.com/YasserCR/galdor/memory/sqlite => ../sqlite
