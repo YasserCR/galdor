@@ -159,8 +159,9 @@ adapter you import; rebuild on every Go security release.
   no SaaS in the path — nothing is shipped externally.
 **Operator responsibility**: when content capture is on,
 encrypt-at-rest the trace store; restrict who can read it; redact
-PII upstream if your prompts carry it; pair with a future ADR-008
-(tool sandboxing) when running untrusted prompts.
+PII upstream if your prompts carry it; and sandbox tool execution
+yourself when running untrusted prompts — galdor validates tool
+inputs but does not isolate tool bodies.
 
 ### LLM07: Insecure Plugin Design
 **Risk**: tools (galdor's name: "tools" / "plugins") have

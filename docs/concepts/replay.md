@@ -136,7 +136,7 @@ Order-insensitive lookup by fingerprint. The fingerprint map is built once at co
 - "Content was not captured" applies only to runs recorded *without* `WithCaptureContent(true)`. Fix the recording side, not the replay side.
 - `LoadFromStore` filters to `observability.SpanProviderGenerate` spans only; `galdor.provider.stream` spans aren't replayable today.
 - `provider.Stream` returns `provider.ErrUnsupported` on a replay provider. If your agent uses streaming in production, switch to non-streaming for the replay (or wrap a streaming consumer to fold to a single `Generate`).
-- Fingerprints depend on `schema.Message` JSON. Any field changes in `pkg/schema` (rare, gated by ADR) invalidate existing fixtures.
+- Fingerprints depend on `schema.Message` JSON. Field changes in `pkg/schema` are rare, but any of them invalidate existing fixtures — re-record after upgrading across one.
 
 ## See also
 

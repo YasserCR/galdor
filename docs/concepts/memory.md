@@ -121,7 +121,7 @@ hybrid := &memory.HybridRetriever{
 hits, _ := hybrid.Retrieve(ctx, memory.Query{Text: "recurring revenue"})
 ```
 
-Each source gets the same `Query`; the dense `Retriever` embeds the text internally, the lexical one ignores the embedding. See ADR-017 and [`examples/okf-rag`](../../examples/okf-rag/).
+Each source gets the same `Query`; the dense `Retriever` embeds the text internally, the lexical one ignores the embedding. See [`examples/okf-rag`](../../examples/okf-rag/).
 
 ## Chunkers
 

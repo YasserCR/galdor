@@ -3,7 +3,7 @@ module github.com/YasserCR/galdor/memory/pgvector
 go 1.25.12
 
 require (
-	github.com/YasserCR/galdor v1.2.1
+	github.com/YasserCR/galdor v1.2.2
 	github.com/jackc/pgx/v5 v5.9.2
 )
 

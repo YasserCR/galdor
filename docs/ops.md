@@ -12,7 +12,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ./myagent ./cmd/myagent
 ```
 
 No CGO is required. The SQLite-backed memory and trace stores use
-`modernc.org/sqlite`, a pure-Go driver (see ADR-009), so
+`modernc.org/sqlite`, a pure-Go driver, so
 `CGO_ENABLED=0` produces a fully static, cross-compilable binary —
 the recommended build for containers and air-gapped targets.
 

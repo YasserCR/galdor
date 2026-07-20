@@ -4,7 +4,7 @@ Five minutes from `go get` to a traced ReAct agent with a typed tool.
 
 ## 1. Install
 
-galdor needs Go 1.25 or newer ([ADR-003](adr/ADR-003-bump-go-floor-to-1.25.md)).
+galdor needs Go 1.25 or newer.
 
 ```bash
 go get github.com/YasserCR/galdor@latest

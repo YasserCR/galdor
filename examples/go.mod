@@ -3,9 +3,9 @@ module github.com/YasserCR/galdor/examples
 go 1.25.12
 
 require (
-	github.com/YasserCR/galdor v1.2.1
-	github.com/YasserCR/galdor/memory/okf v1.2.1
-	github.com/YasserCR/galdor/memory/sqlite v1.2.1
+	github.com/YasserCR/galdor v1.2.2
+	github.com/YasserCR/galdor/memory/okf v1.2.2
+	github.com/YasserCR/galdor/memory/sqlite v1.2.2
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0

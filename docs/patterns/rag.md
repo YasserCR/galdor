@@ -171,12 +171,12 @@ against `chunk.Metadata`. Use it for tenant isolation
 
 - **Hybrid retrieval.** When exact terms matter as much as meaning (identifiers,
   SQL, product names), fuse a BM25 ranking with a dense one using
-  `memory.HybridRetriever` (RRF, ADR-017) instead of choosing one. Any `Store`
+  `memory.HybridRetriever` (RRF) instead of choosing one. Any `Store`
   or `Retriever` is a fusion `Source`.
 - **Knowledge in git (OKF).** The `memory/okf` backend retrieves over an Open
   Knowledge Format bundle — markdown + YAML frontmatter versioned in git, no
   vector database required. It is a BM25 `Store` you can also compose into a
-  hybrid, and it ships an `okf_search` tool for agents (ADR-016).
+  hybrid, and it ships an `okf_search` tool for agents.
 
 ## Links
 

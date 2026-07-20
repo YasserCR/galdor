@@ -10,7 +10,7 @@ If you have 15 minutes, start with the [quickstart](quickstart.md). After that, 
 
 ## Concepts
 
-One page per package. Each follows the same shape: what it's for, the core types, the things you do with it, gotchas, and links to ADRs and examples.
+One page per package. Each follows the same shape: what it's for, the core types, the things you do with it, gotchas, and links to examples.
 
 - [Provider](concepts/provider.md) — `pkg/provider`: the LLM abstraction, retries, capabilities, streaming.
 - [Providerset](concepts/providerset.md) — `providerset`: pick a provider at runtime via env or `Config`, OpenAI-compatible aliases.

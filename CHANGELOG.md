@@ -11,6 +11,27 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-07-20
+
+Documentation-only release. No source, API or dependency changes — the module
+pins move to v1.2.2 so the published tags stay internally consistent.
+
+### Docs
+- Dropped ADR references from the user-facing pages under `docs/`. Those pages
+  are for people implementing against galdor; the record of why a decision was
+  made belongs to `docs/adr/`, which is unchanged and still linked from
+  `docs/README.md`. Touches `quickstart.md`, `ops.md`, `security.md`,
+  `concepts/memory.md`, `concepts/replay.md` and `patterns/rag.md`.
+- `docs/security.md`: the LLM06 operator note told readers to "pair with a
+  future ADR-008 (tool sandboxing)" — but ADR-008 is observability
+  instrumentation and no sandboxing ADR exists, so the pointer was dead and
+  implied a mitigation galdor does not ship. It now states the real boundary:
+  galdor validates tool inputs but does not isolate tool bodies, so sandboxing
+  untrusted tool execution is the operator's job.
+- `docs/concepts/replay.md`: the fixture-invalidation gotcha now says what to do
+  when `pkg/schema` fields change (re-record) rather than noting that such
+  changes are ADR-gated.
+
 ## [1.2.1] - 2026-07-10
 
 ### Security
