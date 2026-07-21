@@ -4,35 +4,46 @@ import (
 	"context"
 	"strings"
 
-	"github.com/YasserCR/galdor/memory/sqlite"
 	"github.com/YasserCR/galdor/pkg/memory"
+	"github.com/YasserCR/galdor/pkg/memory/bm25"
 	"github.com/YasserCR/galdor/pkg/tool"
 )
 
-// FilterTag is a reserved Query.Filter key understood by (*Store).Retrieve.
-// Because OKF tags are a list but memory.Query.Filter does exact key/value
-// matching, tag membership is handled here (post-filter) instead of by
-// widening the core Query contract. `Filter[FilterTag] = "revenue"` keeps
-// only results whose concept carries that tag.
-const FilterTag = "tag"
+// Reserved Query.Filter keys understood by (*Store).Retrieve. They are not
+// stored metadata but query-time directives that the core memory.Query
+// contract (exact key/value matching) cannot express, so the OKF store
+// applies them as post-filters:
+//
+//   - FilterTag keeps only results whose concept carries the given tag
+//     (OKF tags are a list, not a scalar).
+//   - FilterSince / FilterUntil keep only results whose timestamp is >= /
+//     <= the given value, compared as ISO-8601 strings (lexicographic
+//     order matches chronological order for that format). A concept with
+//     no timestamp is excluded whenever either bound is set.
+//
+// Every other Filter entry (including MetaSection) is a real metadata key
+// pushed down to the underlying store as an exact match.
+const (
+	FilterTag   = "tag"
+	FilterSince = "since"
+	FilterUntil = "until"
+)
 
 // Store is a memory.Store over an OKF bundle. It is a lexical (BM25)
-// backend: it wraps galdor's SQLite/FTS5 store — reusing that proven BM25
-// implementation — and adds OKF-aware concerns (concept-first chunks,
-// tag-membership filtering). It is a drop-in memory.Store; compose it with
-// a vector Retriever under a memory.HybridRetriever for hybrid search
-// (see examples/okf-rag).
+// backend: it wraps galdor's native BM25 index (memory/bm25), whose
+// code-aware tokenizer keeps compound identifiers (customer_id) findable
+// both whole and by their parts, and adds OKF-aware concerns (concept-first
+// chunks, tag-membership filtering). It is a drop-in memory.Store; compose
+// it with a vector Retriever under a memory.HybridRetriever for hybrid
+// search (see examples/okf-rag).
 type Store struct {
-	inner *sqlite.Store
+	inner *bm25.Store
 }
 
 // NewStore builds an in-memory BM25 store from pre-chunked concepts
 // (typically the output of ChunkConcepts). The caller owns Close.
 func NewStore(ctx context.Context, chunks []memory.Chunk) (*Store, error) {
-	inner, err := sqlite.Open(":memory:")
-	if err != nil {
-		return nil, err
-	}
+	inner := bm25.New()
 	if err := inner.Add(ctx, chunks); err != nil {
 		_ = inner.Close()
 		return nil, err
@@ -57,40 +68,65 @@ func (s *Store) Add(ctx context.Context, chunks []memory.Chunk) error {
 	return s.inner.Add(ctx, chunks)
 }
 
-// Retrieve runs a BM25 query. The reserved FilterTag key is applied as a
-// tag-membership post-filter; every other Filter entry is pushed down to
-// the underlying store as an exact metadata match. Retrieve implements
-// memory.Store.
+// Retrieve runs a BM25 query. The reserved keys (FilterTag, FilterSince,
+// FilterUntil) are applied as post-filters; every other Filter entry is
+// pushed down to the underlying store as an exact metadata match. Retrieve
+// implements memory.Store.
 func (s *Store) Retrieve(ctx context.Context, q memory.Query) ([]memory.Result, error) {
-	wantTag := ""
-	if len(q.Filter) > 0 {
-		if t, ok := q.Filter[FilterTag]; ok && t != "" {
-			wantTag = t
-			// Copy the filter without the reserved key so we never mutate
-			// the caller's map and the store sees only real metadata keys.
-			rest := make(map[string]string, len(q.Filter))
-			for k, v := range q.Filter {
-				if k != FilterTag {
-					rest[k] = v
-				}
+	wantTag, since, until := "", "", ""
+	if hasReservedFilter(q.Filter) {
+		// Copy the filter without the reserved keys so we never mutate the
+		// caller's map and the store sees only real metadata keys.
+		rest := make(map[string]string, len(q.Filter))
+		for k, v := range q.Filter {
+			switch k {
+			case FilterTag:
+				wantTag = v
+			case FilterSince:
+				since = v
+			case FilterUntil:
+				until = v
+			default:
+				rest[k] = v
 			}
-			if len(rest) == 0 {
-				rest = nil
-			}
-			q.Filter = rest
 		}
+		if len(rest) == 0 {
+			rest = nil
+		}
+		q.Filter = rest
 	}
 	res, err := s.inner.Retrieve(ctx, q)
-	if err != nil || wantTag == "" {
+	if err != nil || (wantTag == "" && since == "" && until == "") {
 		return res, err
 	}
 	filtered := res[:0]
 	for _, r := range res {
-		if hasTag(r.Chunk.Metadata[MetaTags], wantTag) {
-			filtered = append(filtered, r)
+		if wantTag != "" && !hasTag(r.Chunk.Metadata[MetaTags], wantTag) {
+			continue
 		}
+		if since != "" || until != "" {
+			ts := r.Chunk.Metadata[MetaTimestamp]
+			if ts == "" || (since != "" && ts < since) || (until != "" && ts > until) {
+				continue
+			}
+		}
+		filtered = append(filtered, r)
 	}
 	return filtered, nil
+}
+
+// hasReservedFilter reports whether the filter carries any key the OKF
+// store handles itself as a post-filter rather than a metadata match.
+func hasReservedFilter(filter map[string]string) bool {
+	if len(filter) == 0 {
+		return false
+	}
+	for _, k := range []string{FilterTag, FilterSince, FilterUntil} {
+		if v, ok := filter[k]; ok && v != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Delete removes every chunk of a concept. Delete implements memory.Store.
@@ -119,7 +155,13 @@ type SearchInput struct {
 	Query string `json:"query"`
 	Type  string `json:"type,omitempty"`
 	Tag   string `json:"tag,omitempty"`
-	K     int    `json:"k,omitempty"`
+	// Since / Until bound results by ISO-8601 timestamp (inclusive).
+	Since string `json:"since,omitempty"`
+	Until string `json:"until,omitempty"`
+	// Section keeps only chunks from a conventional body section
+	// ("schema", "examples", "citations").
+	Section string `json:"section,omitempty"`
+	K       int    `json:"k,omitempty"`
 }
 
 // SearchHit is one result row returned by the search tool.
@@ -148,12 +190,21 @@ func NewSearchTool(s memory.Store) (tool.Tool[SearchInput, SearchOutput], error)
 			"Optionally filter by concept type (e.g. Metric, \"Warehouse Table\") or a tag.",
 		func(ctx context.Context, in SearchInput) (SearchOutput, error) {
 			q := memory.Query{Text: in.Query, K: in.K}
-			filter := make(map[string]string, 2)
+			filter := make(map[string]string, 5)
 			if in.Type != "" {
 				filter[MetaType] = in.Type
 			}
 			if in.Tag != "" {
 				filter[FilterTag] = in.Tag
+			}
+			if in.Since != "" {
+				filter[FilterSince] = in.Since
+			}
+			if in.Until != "" {
+				filter[FilterUntil] = in.Until
+			}
+			if in.Section != "" {
+				filter[MetaSection] = in.Section
 			}
 			if len(filter) > 0 {
 				q.Filter = filter

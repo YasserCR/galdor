@@ -123,6 +123,8 @@ hits, _ := hybrid.Retrieve(ctx, memory.Query{Text: "recurring revenue"})
 
 Each source gets the same `Query`; the dense `Retriever` embeds the text internally, the lexical one ignores the embedding. See [`examples/okf-rag`](../../examples/okf-rag/).
 
+For a git-versioned markdown corpus — a BM25 `Store` with a link graph, progressive-disclosure browsing and agent tools on top — see the [OKF](okf.md) backend, which composes into a hybrid exactly like any other source.
+
 ## Chunkers
 
 All three live under [`pkg/memory/chunk`](../../pkg/memory/chunk/) and implement the same one-method interface.

@@ -11,6 +11,58 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-21
+
+### Added
+- **`memory/okf`: complete OKF v0.1 implementation.** The backend now covers
+  the whole spec (audited section by section against the official `SPEC.md`),
+  not just ingest + search:
+  - `LoadBundle`/`LoadBundleFS` return a `*Bundle` carrying everything beyond
+    the concepts: per-directory `index.md` progressive disclosure (with
+    `IndexFor`/`SynthesizeIndex`), `log.md` change history parsed into
+    date-grouped entries with their conventional kind markers, numbered
+    citations (`Citations`/`ParseCitations`) and the declared `okf_version`.
+  - The link graph: `Outlinks`/`Inlinks`/`Neighborhood`, plus `GraphExpander` —
+    a `memory.Store` decorator that appends a hit's graph neighbors to
+    retrieval results with decayed scores.
+  - Hierarchy navigation: `Children`/`Dirs`/`Parent`/`Concept`, and a second
+    ReAct tool, `okf_browse` (`NewBrowseTool`), so an agent can explore a
+    bundle before searching it.
+  - Producer side: `Marshal` and `WriteBundle` render concepts and whole
+    bundles back to disk. Producer-defined frontmatter keys are preserved
+    under the `fm.` metadata prefix and written back, so round-tripping keeps
+    unknown fields.
+  - `Validate`/`HasErrors`: the strict conformance counterpart to the
+    permissive loader — frontmatter presence, required `type`, reserved-file
+    structure, timestamps, broken links and spec-version checks, each reported
+    as an error or warning.
+  - New retrieval filters: `FilterSince`/`FilterUntil` (ISO-8601 timestamp
+    post-filters), `MetaSection` (restrict to `# Schema`/`# Examples`/
+    `# Citations` chunks), and the `resource` URI folded into the indexed text.
+- **`pkg/memory/bm25`: native BM25 lexical store.** An in-memory inverted
+  index (Okapi BM25, Lucene-style IDF) behind a code-aware `Tokenizer` that
+  indexes a compound identifier whole AND by its parts — `customer_id` matches
+  queries for `customer_id`, `customer` or `id`, and the concept carrying the
+  literal identifier outranks one that merely mentions the parts.
+  Goroutine-safe, exact metadata filters, `Delete`, idempotent re-ingestion by
+  stable chunk ID.
+
+### Changed
+- `memory/okf`'s store now wraps `pkg/memory/bm25` instead of the SQLite/FTS5
+  store: the lexical path is dependency-lighter, scores are standard BM25
+  values, and compound identifiers rank exactly. The SQLite store is unchanged
+  and remains the vector/hybrid backend (`examples/okf-rag` still composes
+  both under `memory.HybridRetriever`).
+
+### Security
+- `memory/pgvector`: bump `golang.org/x/text` v0.29.0 → v0.39.0 to fix
+  **GO-2026-5970** (infinite loop on invalid input), reachable via
+  `pgxpool.New`.
+
+### Docs
+- New `docs/concepts/okf.md` concept page for the OKF backend, linked from the
+  docs index, the memory concept page and the RAG pattern.
+
 ## [1.2.2] - 2026-07-20
 
 Documentation-only release. No source, API or dependency changes — the module

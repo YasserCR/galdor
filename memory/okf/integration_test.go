@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/YasserCR/galdor/memory/sqlite"
 	"github.com/YasserCR/galdor/pkg/memory"
 )
 
@@ -67,12 +68,17 @@ func TestIntegration_HybridComposition(t *testing.T) {
 	t.Cleanup(func() { _ = lexical.Close() })
 
 	// Dense source: same chunks, embedded with the offline hashing embedder.
+	// The dense side needs vector search, so it uses the SQLite store
+	// directly — okf.NewStore is now a purely lexical BM25 backend.
 	embedder := memory.NewHashingEmbedder(256)
-	dense, err := NewStore(ctx, embedChunks(ctx, t, embedder, chunks))
+	dense, err := sqlite.Open(":memory:")
 	if err != nil {
-		t.Fatalf("dense NewStore: %v", err)
+		t.Fatalf("dense open: %v", err)
 	}
 	t.Cleanup(func() { _ = dense.Close() })
+	if addErr := dense.Add(ctx, embedChunks(ctx, t, embedder, chunks)); addErr != nil {
+		t.Fatalf("dense Add: %v", addErr)
+	}
 
 	hybrid := &memory.HybridRetriever{
 		Sources: []memory.Searcher{

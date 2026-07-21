@@ -175,8 +175,10 @@ against `chunk.Metadata`. Use it for tenant isolation
   or `Retriever` is a fusion `Source`.
 - **Knowledge in git (OKF).** The `memory/okf` backend retrieves over an Open
   Knowledge Format bundle — markdown + YAML frontmatter versioned in git, no
-  vector database required. It is a BM25 `Store` you can also compose into a
-  hybrid, and it ships an `okf_search` tool for agents.
+  vector database required. It is a BM25 `Store` you can compose into a hybrid,
+  and it adds a knowledge layer on top: a link graph with graph-expanded
+  retrieval, progressive-disclosure browsing, and `okf_search` / `okf_browse`
+  tools for agents. See the [OKF concept](../concepts/okf.md).
 
 ## Links
 

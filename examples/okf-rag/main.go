@@ -11,7 +11,7 @@
 //	go run ./examples/okf-rag --mode hybrid "how is recurring revenue measured"
 //
 // Note: BM25 scores are corpus-relative. On this 4-concept bundle a term
-// shared by most concepts (e.g. "mrr") scores near zero — its IDF is tiny —
+// shared by most concepts (e.g. "mrr") gets a small IDF and scores low,
 // while a discriminative term ("retention") scores clearly. The ranking is
 // what matters; the hybrid mode's RRF scores are rank-based and always
 // meaningful.
@@ -20,8 +20,9 @@
 //
 //  1. An embedded OKF bundle (markdown + YAML frontmatter) is loaded and
 //     chunked concept-first by the memory/okf backend.
-//  2. --mode bm25: the concepts are queried lexically (SQLite/FTS5 BM25),
-//     which nails exact identifiers like `mrr_amount`.
+//  2. --mode bm25: the concepts are queried lexically via galdor's native
+//     BM25 index, whose code-aware tokenizer nails exact identifiers like
+//     `mrr_amount` (indexed whole and as `mrr` + `amount`).
 //  3. --mode hybrid: the same concepts are ALSO embedded (offline
 //     HashingEmbedder) into a vector store, and a memory.HybridRetriever
 //     fuses the BM25 and dense rankings with RRF (k=60).

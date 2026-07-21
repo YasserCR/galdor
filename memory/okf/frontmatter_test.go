@@ -3,24 +3,25 @@ package okf
 import "testing"
 
 func TestSplitFrontmatter(t *testing.T) {
-	fm, body := splitFrontmatter("---\ntype: Metric\n---\nhello\nworld")
-	if fm != "type: Metric" {
-		t.Fatalf("fm = %q", fm)
+	fm, body, present := splitFrontmatter("---\ntype: Metric\n---\nhello\nworld")
+	if fm != "type: Metric" || !present {
+		t.Fatalf("fm = %q present = %v", fm, present)
 	}
 	if body != "hello\nworld" {
 		t.Fatalf("body = %q", body)
 	}
 
-	// No frontmatter: whole text is body.
-	fm, body = splitFrontmatter("no frontmatter here")
-	if fm != "" || body != "no frontmatter here" {
-		t.Fatalf("expected empty fm and unchanged body, got %q / %q", fm, body)
+	// No frontmatter: whole text is body, present = false.
+	fm, body, present = splitFrontmatter("no frontmatter here")
+	if fm != "" || body != "no frontmatter here" || present {
+		t.Fatalf("expected empty fm, unchanged body, absent; got %q / %q / %v", fm, body, present)
 	}
 
-	// Unterminated frontmatter is tolerated (permissive): treated as body.
-	fm, _ = splitFrontmatter("---\ntype: Metric\nno closing delim")
-	if fm != "" {
-		t.Fatalf("unterminated fm should yield empty fm, got %q", fm)
+	// Unterminated frontmatter is tolerated (permissive): treated as body,
+	// and reported as not-present (a §9 rule-1 fact Validate surfaces).
+	fm, _, present = splitFrontmatter("---\ntype: Metric\nno closing delim")
+	if fm != "" || present {
+		t.Fatalf("unterminated fm should yield empty fm and present=false, got %q / %v", fm, present)
 	}
 }
 

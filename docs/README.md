@@ -19,6 +19,7 @@ One page per package. Each follows the same shape: what it's for, the core types
 - [Graph](concepts/graph.md) — `pkg/graph`: `Graph[S]`, nodes, routers, checkpoints, interrupt/resume, hooks.
 - [Agent](concepts/agent.md) — `pkg/agent`: `agent.Run`, `NewReAct`, `NewPlanAndExecute`.
 - [Memory](concepts/memory.md) — `pkg/memory`: short-term windows, long-term stores, chunkers, retrievers.
+- [OKF](concepts/okf.md) — `memory/okf`: a git-versioned markdown knowledge backend — BM25 store, link graph, progressive-disclosure browsing, and agent tools.
 - [Embedder](concepts/embedder.md) — `pkg/embedder`: generic HTTP client for self-hosted embedding servers (TEI, Infinity, vLLM-embeddings).
 - [Observability](concepts/observability.md) — `pkg/observability`: OTel-native spans, SQLite store, `galdor ui`.
 - [Council](concepts/council.md) — `pkg/council`: Supervisor and Swarm multi-agent patterns.

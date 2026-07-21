@@ -20,12 +20,14 @@ import (
 
 const delim = "---"
 
-// splitFrontmatter returns (frontmatterText, body). frontmatterText is ""
-// when the document has no frontmatter block.
-func splitFrontmatter(text string) (string, string) {
+// splitFrontmatter returns (frontmatterText, body, present). present is
+// false when the document has no well-formed frontmatter block — §9's
+// first conformance rule requires one on every concept, so callers that
+// validate need the distinction; the loader itself stays permissive.
+func splitFrontmatter(text string) (string, string, bool) {
 	lines := strings.Split(text, "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != delim {
-		return "", text
+		return "", text, false
 	}
 	end := -1
 	for i := 1; i < len(lines); i++ {
@@ -37,12 +39,12 @@ func splitFrontmatter(text string) (string, string) {
 	if end == -1 {
 		// Unterminated frontmatter: treat the whole thing as body rather
 		// than rejecting the document (permissive conformance).
-		return "", text
+		return "", text, false
 	}
 	fm := strings.Join(lines[1:end], "\n")
 	body := strings.Join(lines[end+1:], "\n")
 	body = strings.TrimPrefix(body, "\n")
-	return fm, body
+	return fm, body, true
 }
 
 // parseFrontmatter parses the frontmatter subset into a string→value map,
