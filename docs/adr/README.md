@@ -23,6 +23,7 @@ This directory contains the canonical ADRs for galdor. Each ADR is a small Markd
 | [ADR-015](ADR-015-structured-output.md) | Schema-bound structured output | Accepted |
 | [ADR-016](ADR-016-okf-knowledge-backend.md) | OKF knowledge backend (`memory/okf`) | Accepted |
 | [ADR-017](ADR-017-hybrid-retriever-rrf.md) | Hybrid retrieval via Reciprocal Rank Fusion | Accepted |
+| [ADR-018](ADR-018-guardrails.md) | Guardrails (`pkg/guardrail`) | Accepted |
 
 ## Conventions
 

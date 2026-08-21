@@ -74,8 +74,9 @@ galdor's observability stack lives in the same binary:
 
 ## Architecture decision records
 
-Fifteen ADRs are recorded and Accepted (ADR-001 … ADR-015), covering the
+Eighteen ADRs are recorded and Accepted (ADR-001 … ADR-018), covering the
 foundational decisions, the provider/tool/graph/agent shapes, observability
 and the SQLite store, the Web UI, typed errors, the CLI surface, the
-declarative config format and CLI module split, and schema-bound structured
-output. See [`docs/adr/`](docs/adr/) for the canonical index and records.
+declarative config format and CLI module split, schema-bound structured
+output, the OKF knowledge backend, hybrid retrieval, and guardrails. See
+[`docs/adr/`](docs/adr/) for the canonical index and records.

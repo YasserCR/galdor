@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/YasserCR/galdor/pkg/graph"
+	"github.com/YasserCR/galdor/pkg/guardrail"
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
 	"github.com/YasserCR/galdor/pkg/tool"
@@ -90,6 +91,18 @@ type PlanExecuteConfig struct {
 	// (replanner).
 	PlannerPrompt   string
 	ReplannerPrompt string
+
+	// InputGuards validate the user request (PlanExecuteState.Input)
+	// before the planner runs. They run in order; the first non-nil
+	// error blocks the run (matchable with
+	// errors.Is(err, guardrail.ErrBlocked)). Optional.
+	InputGuards []guardrail.InputGuard
+
+	// OutputGuards validate every assistant message the executor
+	// sub-agent produces (before it is recorded in Past or fed to the
+	// replanner) and the final answer before it is returned. They run
+	// in order; the first non-nil error blocks the run. Optional.
+	OutputGuards []guardrail.OutputGuard
 }
 
 func (cfg *PlanExecuteConfig) validate() error {
@@ -199,6 +212,9 @@ func NewPlanAndExecute(cfg PlanExecuteConfig) (*graph.Runnable[PlanExecuteState]
 		if s.Input == "" {
 			return s, errors.New("agent: PlanExecuteState.Input is empty")
 		}
+		if err := guardrail.CheckInput(ctx, cfg.InputGuards, schema.UserMessage(s.Input)); err != nil {
+			return s, err
+		}
 		resp, err := cfg.plannerProvider().Generate(ctx, provider.Request{
 			Model: cfg.plannerModel(),
 			Messages: []schema.Message{
@@ -229,6 +245,12 @@ func NewPlanAndExecute(cfg PlanExecuteConfig) (*graph.Runnable[PlanExecuteState]
 			Tools:         cfg.Tools,
 			Model:         cfg.executorModel(),
 			MaxIterations: maxStep,
+			// The executor's turns produce the text that lands in Past
+			// and feeds the replanner, so the output guards must vet
+			// them; the input was already vetted by planNode, and the
+			// executor prompt is machine-built from it, so input guards
+			// are not re-run here.
+			OutputGuards: cfg.OutputGuards,
 		}
 		// Build the per-step prompt: original input + completed steps
 		// for context + the current step. The executor sub-agent
@@ -273,6 +295,9 @@ func NewPlanAndExecute(cfg PlanExecuteConfig) (*graph.Runnable[PlanExecuteState]
 			return s, fmt.Errorf("agent: replanner output: %w", err)
 		}
 		if final != "" {
+			if err := guardrail.CheckOutput(ctx, cfg.OutputGuards, schema.AssistantMessage(final)); err != nil {
+				return s, err
+			}
 			s.Final = final
 			s.Plan = nil
 			return s, nil

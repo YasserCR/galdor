@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/YasserCR/galdor/pkg/graph"
+	"github.com/YasserCR/galdor/pkg/guardrail"
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
 	"github.com/YasserCR/galdor/pkg/tool"
@@ -27,6 +28,14 @@ type State struct {
 	// Iterations counts how many times the model node executed in
 	// this run.
 	Iterations int
+
+	// InputGuarded is the index into Messages up to which input guards
+	// have already run. The model node vets user messages from this
+	// watermark on and then advances it, so re-invoking the runnable
+	// with a carried-over State guards newly appended user turns
+	// exactly once instead of skipping or re-judging them. Leave it
+	// zero when seeding a fresh State.
+	InputGuarded int
 
 	// StoppedAtIterationCap is set when the loop terminated because it
 	// hit MaxIterations while the model's last turn still had pending
@@ -75,6 +84,18 @@ type Config struct {
 	// Useful for "always answer through tools" agents; default is
 	// ToolChoiceAuto when Tools is set, none otherwise.
 	ForceToolUse bool
+
+	// InputGuards validate each user message before it first reaches
+	// the model: the seed conversation on the first turn, plus any user
+	// messages appended before a later re-invocation with a carried-over
+	// State. They run in order; the first non-nil error blocks the run
+	// (matchable with errors.Is(err, guardrail.ErrBlocked)). Optional.
+	InputGuards []guardrail.InputGuard
+
+	// OutputGuards validate every assistant message produced by the
+	// model before it is recorded or returned. They run in order; the
+	// first non-nil error blocks the run. Optional.
+	OutputGuards []guardrail.OutputGuard
 }
 
 func (cfg *Config) validate() error {
@@ -131,6 +152,24 @@ func NewReAct(cfg Config) (*graph.Runnable[State], error) {
 	}
 
 	modelNode := func(ctx context.Context, s State) (State, error) {
+		// Vet every user message appended since the InputGuarded
+		// watermark: the seed conversation on the first turn, and any
+		// user turns the caller added before re-invoking with a
+		// carried-over State. Tool-result and assistant messages are
+		// not input, so mid-run turns add nothing to check.
+		if s.InputGuarded > len(s.Messages) {
+			s.InputGuarded = len(s.Messages)
+		}
+		for _, m := range s.Messages[s.InputGuarded:] {
+			if m.Role != schema.RoleUser {
+				continue
+			}
+			if err := guardrail.CheckInput(ctx, cfg.InputGuards, m); err != nil {
+				return s, err
+			}
+		}
+		s.InputGuarded = len(s.Messages)
+
 		req := provider.Request{
 			Model:         cfg.Model,
 			Messages:      s.Messages,
@@ -150,6 +189,9 @@ func NewReAct(cfg Config) (*graph.Runnable[State], error) {
 		resp, err := cfg.Provider.Generate(ctx, req)
 		if err != nil {
 			return s, fmt.Errorf("agent: model: %w", err)
+		}
+		if err := guardrail.CheckOutput(ctx, cfg.OutputGuards, resp.Message); err != nil {
+			return s, err
 		}
 		s.Messages = append(s.Messages, resp.Message)
 		s.Iterations++

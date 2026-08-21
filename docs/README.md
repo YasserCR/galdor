@@ -18,6 +18,7 @@ One page per package. Each follows the same shape: what it's for, the core types
 - [Tool](concepts/tool.md) — `pkg/tool`: generic `Tool[In, Out]`, `Registry`, `ExecuteCalls`, builtins.
 - [Graph](concepts/graph.md) — `pkg/graph`: `Graph[S]`, nodes, routers, checkpoints, interrupt/resume, hooks.
 - [Agent](concepts/agent.md) — `pkg/agent`: `agent.Run`, `NewReAct`, `NewPlanAndExecute`.
+- [Guardrail](concepts/guardrail.md) — `pkg/guardrail`: input/output guards, deterministic and LLM-as-judge.
 - [Memory](concepts/memory.md) — `pkg/memory`: short-term windows, long-term stores, chunkers, retrievers.
 - [OKF](concepts/okf.md) — `memory/okf`: a git-versioned markdown knowledge backend — BM25 store, link graph, progressive-disclosure browsing, and agent tools.
 - [Embedder](concepts/embedder.md) — `pkg/embedder`: generic HTTP client for self-hosted embedding servers (TEI, Infinity, vLLM-embeddings).

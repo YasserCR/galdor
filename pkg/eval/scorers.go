@@ -2,13 +2,13 @@ package eval
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/YasserCR/galdor/internal/judgecall"
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
 )
@@ -162,12 +162,6 @@ func (j LLMJudge) Name() string {
 
 // Score implements Scorer.
 func (j LLMJudge) Score(ctx context.Context, c Case, actual string) (Score, error) {
-	if j.Provider == nil {
-		return Score{}, errors.New("eval: LLMJudge.Provider is nil")
-	}
-	if j.Model == "" {
-		return Score{}, errors.New("eval: LLMJudge.Model is empty")
-	}
 	threshold := j.PassThreshold
 	if threshold <= 0 {
 		threshold = 0.7
@@ -187,18 +181,11 @@ Respond with ONLY a single integer between 0 and 100. No prose. No punctuation. 
 	}
 	user := buildJudgeUserPrompt(c, actual)
 
-	resp, err := j.Provider.Generate(ctx, provider.Request{
-		Model:     j.Model,
-		MaxTokens: &maxTok,
-		Messages: []schema.Message{
-			schema.SystemMessage(sys),
-			schema.UserMessage(user),
-		},
-	})
+	resp, err := judgecall.Do(ctx, j.Provider, j.Model, sys, schema.UserMessage(user), maxTok)
 	if err != nil {
 		return Score{}, fmt.Errorf("llm_judge: %w", err)
 	}
-	raw := resp.Message.Text()
+	raw := resp.Text()
 	n, ok := parseJudgeScore(raw)
 	if !ok {
 		return Score{Value: 0, Pass: false, Explanation: "could not parse score from judge reply: " + raw}, nil

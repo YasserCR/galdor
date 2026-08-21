@@ -375,6 +375,7 @@ Smaller, feature-focused examples live alongside:
 | [`structured-output`](examples/structured-output/) | `GenerateStructured[T]`: a Go struct in, a decoded value out |
 | [`trial-suite`](examples/trial-suite/) | A `galdor trial` eval suite in YAML — the CI gate, no Go |
 | [`cast-agent`](examples/cast-agent/) | A `galdor cast` agent in YAML, with `--trace` into the dashboard |
+| [`guardrails`](examples/guardrails/) | Deterministic and LLM-as-judge input/output guards, offline |
 | [`council-team`](examples/council-team/) | A `galdor council` supervisor/swarm topology in YAML |
 | [`spellbook`](examples/spellbook/) | Versioned prompt templates managed with `galdor spellbook` |
 

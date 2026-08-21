@@ -2,9 +2,11 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/YasserCR/galdor/pkg/guardrail"
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
 )
@@ -156,6 +158,78 @@ func TestPlanAndExecute_RejectsMissingProvider(t *testing.T) {
 	}
 	if _, err := NewPlanAndExecute(PlanExecuteConfig{Provider: &scriptedProvider{}}); err == nil {
 		t.Fatal("expected error for missing Model")
+	}
+}
+
+func TestPlanAndExecute_InputGuardBlocksBeforePlanner(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{schema.AssistantMessage(`["step"]`)}}
+	_, err := RunPlanAndExecute(context.Background(), PlanExecuteConfig{
+		Provider: p,
+		Model:    "scripted-1",
+		InputGuards: []guardrail.InputGuard{
+			guardrail.InputGuardFunc{ID: "deny", Check: func(_ context.Context, _ schema.Message) error {
+				return errors.New("blocked by policy")
+			}},
+		},
+	}, "secret request")
+	if !errors.Is(err, guardrail.ErrBlocked) {
+		t.Fatalf("err must match ErrBlocked, got %v", err)
+	}
+	if p.calls.Load() != 0 {
+		t.Errorf("planner must not run when an input guard blocks; calls = %d", p.calls.Load())
+	}
+}
+
+func TestPlanAndExecute_OutputGuardBlocksFinalAnswer(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{
+		schema.AssistantMessage(`["step"]`),
+		schema.AssistantMessage("did it"),
+		schema.AssistantMessage(`{"plan": [], "final": "forbidden answer"}`),
+	}}
+	_, err := RunPlanAndExecute(context.Background(), PlanExecuteConfig{
+		Provider: p,
+		Model:    "scripted-1",
+		OutputGuards: []guardrail.OutputGuard{
+			guardrail.OutputGuardFunc{ID: "no-secret", Check: func(_ context.Context, m schema.Message) error {
+				if m.Text() == "forbidden answer" {
+					return errors.New("forbidden content")
+				}
+				return nil
+			}},
+		},
+	}, "request")
+	if !errors.Is(err, guardrail.ErrBlocked) {
+		t.Fatalf("err must match ErrBlocked, got %v", err)
+	}
+}
+
+func TestPlanAndExecute_OutputGuardVetsExecutorTurns(t *testing.T) {
+	t.Parallel()
+	// The executor's answer carries the secret; the guard must veto it
+	// before it lands in Past or reaches the replanner.
+	p := &scriptedProvider{Plan: []schema.Message{
+		schema.AssistantMessage(`["fetch the secret"]`),
+		schema.AssistantMessage("the secret is hunter2"),
+	}}
+	_, err := RunPlanAndExecute(context.Background(), PlanExecuteConfig{
+		Provider: p,
+		Model:    "scripted-1",
+		OutputGuards: []guardrail.OutputGuard{
+			guardrail.OutputGuardFunc{ID: "no-secret", Check: func(_ context.Context, m schema.Message) error {
+				if strings.Contains(m.Text(), "hunter2") {
+					return errors.New("secret detected")
+				}
+				return nil
+			}},
+		},
+	}, "do the thing")
+	if !errors.Is(err, guardrail.ErrBlocked) {
+		t.Fatalf("executor output must be guarded, got %v", err)
+	}
+	if got := p.calls.Load(); got != 2 {
+		t.Errorf("calls = %d, want 2 (plan + blocked executor turn; the replanner must not run)", got)
 	}
 }
 

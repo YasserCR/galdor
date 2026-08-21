@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/YasserCR/galdor/pkg/guardrail"
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
 	"github.com/YasserCR/galdor/pkg/tool"
@@ -312,5 +314,135 @@ func TestReAct_ForceToolUseSetsRequired(t *testing.T) {
 	}
 	if p.lastReq.ToolChoice != provider.ToolChoiceRequired {
 		t.Errorf("ToolChoice = %q, want required", p.lastReq.ToolChoice)
+	}
+}
+
+func TestReAct_InputGuardBlocksBeforeModel(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{schema.AssistantMessage("never reached")}}
+	_, err := Run(context.Background(), Config{
+		Provider: p,
+		Model:    "x",
+		InputGuards: []guardrail.InputGuard{
+			guardrail.InputGuardFunc{ID: "deny", Check: func(_ context.Context, _ schema.Message) error {
+				return errors.New("blocked by policy")
+			}},
+		},
+	}, "secret input")
+	if !errors.Is(err, guardrail.ErrBlocked) {
+		t.Fatalf("err must match ErrBlocked, got %v", err)
+	}
+	if p.calls.Load() != 0 {
+		t.Errorf("model must not be called when an input guard blocks; calls = %d", p.calls.Load())
+	}
+}
+
+func TestReAct_OutputGuardBlocksModelResponse(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{schema.AssistantMessage("refused answer")}}
+	_, err := Run(context.Background(), Config{
+		Provider: p,
+		Model:    "x",
+		OutputGuards: []guardrail.OutputGuard{
+			guardrail.OutputGuardFunc{ID: "no-refusal", Check: func(_ context.Context, m schema.Message) error {
+				if m.Text() == "refused answer" {
+					return errors.New("refusal detected")
+				}
+				return nil
+			}},
+		},
+	}, "question")
+	if !errors.Is(err, guardrail.ErrBlocked) {
+		t.Fatalf("err must match ErrBlocked, got %v", err)
+	}
+}
+
+func TestReAct_InputGuardVetsNewMessagesAcrossInvokes(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{
+		schema.AssistantMessage("turn one"),
+		schema.AssistantMessage("turn two"),
+	}}
+	var seen []string
+	r, err := NewReAct(Config{
+		Provider: p,
+		Model:    "x",
+		InputGuards: []guardrail.InputGuard{
+			guardrail.InputGuardFunc{ID: "record", Check: func(_ context.Context, m schema.Message) error {
+				seen = append(seen, m.Text())
+				return nil
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := r.Invoke(context.Background(), State{Messages: []schema.Message{schema.UserMessage("first")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Messages = append(s.Messages, schema.UserMessage("second"))
+	if _, err := r.Invoke(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	// The guard must see each user message exactly once: no skipping the
+	// second turn, no re-judging the first.
+	if len(seen) != 2 || seen[0] != "first" || seen[1] != "second" {
+		t.Errorf("guarded messages = %v, want [first second]", seen)
+	}
+}
+
+func TestReAct_InputGuardBlocksNewMessageOnLaterInvoke(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{
+		schema.AssistantMessage("turn one"),
+		schema.AssistantMessage("never reached"),
+	}}
+	r, err := NewReAct(Config{
+		Provider: p,
+		Model:    "x",
+		InputGuards: []guardrail.InputGuard{
+			guardrail.InputGuardFunc{ID: "no-pii", Check: func(_ context.Context, m schema.Message) error {
+				if strings.Contains(m.Text(), "4111") {
+					return errors.New("credit-card number detected")
+				}
+				return nil
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := r.Invoke(context.Background(), State{Messages: []schema.Message{schema.UserMessage("hello")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Messages = append(s.Messages, schema.UserMessage("my card is 4111 1111 1111 1111"))
+	_, err = r.Invoke(context.Background(), s)
+	if !errors.Is(err, guardrail.ErrBlocked) {
+		t.Fatalf("a later user turn must still be input-guarded, got %v", err)
+	}
+	if got := p.calls.Load(); got != 1 {
+		t.Errorf("model calls = %d, want 1 (second turn must not reach the model)", got)
+	}
+}
+
+func TestReAct_OutputGuardAllowsCleanAnswer(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{schema.AssistantMessage("fine answer")}}
+	final, err := Run(context.Background(), Config{
+		Provider: p,
+		Model:    "x",
+		OutputGuards: []guardrail.OutputGuard{
+			guardrail.OutputGuardFunc{ID: "no-refusal", Check: func(_ context.Context, m schema.Message) error {
+				return nil
+			}},
+		},
+	}, "question")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final != "fine answer" {
+		t.Errorf("FinalText = %q", final)
 	}
 }

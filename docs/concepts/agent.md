@@ -17,6 +17,9 @@ type Config struct {
     StopSequences []string
 
     ForceToolUse  bool            // sets ToolChoiceRequired on first turn
+
+    InputGuards  []guardrail.InputGuard    // optional: vet input before the model
+    OutputGuards []guardrail.OutputGuard   // optional: vet output before returning
 }
 
 type State struct {
@@ -201,6 +204,7 @@ See [`examples/cast-agent`](../../examples/cast-agent/) for a complete file.
 - [Graph](graph.md) — everything you can do to a `*Runnable[S]` works here too.
 - [Provider](provider.md) — the `Provider` your agent talks to.
 - [Tool](tool.md) — building and registering tools.
+- [Guardrail](guardrail.md) — the guards you can pass via `Config.InputGuards` / `OutputGuards`.
 - [Multi-agent pattern](../patterns/multi-agent.md) — when one ReAct is not enough.
 - [Human-in-the-loop pattern](../patterns/human-in-the-loop.md) — pausing an agent for review.
 - Examples: [`agent-react`](../../examples/agent-react/), [`tools-loop`](../../examples/tools-loop/), [`integration-support-bot`](../../examples/integration-support-bot/).

@@ -11,6 +11,51 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-20
+
+### Added
+- **`pkg/guardrail`: input/output guardrails.** A config-driven way to vet
+  messages around the model call. `InputGuard` / `OutputGuard` are named
+  policy checks that veto a message by returning a non-nil error (the run
+  fails; `errors.Is(err, guardrail.ErrBlocked)` identifies a block). Two
+  flavors share the same interfaces:
+  - `InputGuardFunc` / `OutputGuardFunc` — deterministic guards (regex,
+    denylist, schema checks) as plain functions.
+  - `LLMJudge` — an LLM-as-judge guard that makes its own model call to vote
+    `ALLOW` / `BLOCK`; implements both interfaces, and self-describes as
+    `KindLLM` via the optional `Kinded` interface (`KindOf` defaults
+    everything else to `KindDeterministic`). The judge sees the message's
+    content parts verbatim plus a rendering of its tool calls (so content
+    in tool arguments is vetted too), skips the model call when there is
+    nothing to judge, parses replies negation-aware ("Not allowed" never
+    reads as an allow), and fails closed on anything ambiguous
+    (`ErrJudgeBlocked`).
+  `BlockError` carries the guard name, `Kind` and the guard's own error for
+  observability. A guard that cannot evaluate a message (e.g. the judge's
+  provider errored) still fails the run, but with `ErrEvalFailed` instead
+  of `ErrBlocked`, so metrics don't count outages as policy blocks.
+- **`pkg/agent` consumes guards via config.** `Config` and
+  `PlanExecuteConfig` gain `InputGuards` / `OutputGuards` slices — pass the
+  guards you want and the agent runs them with no further wiring. ReAct
+  runs input guards on each user message before it first reaches the model
+  (including messages appended between invocations of a carried-over
+  `State`, tracked by the `State.InputGuarded` watermark) and output guards
+  on every assistant message; Plan-and-Execute runs input guards on the
+  request before the planner and output guards on every executor assistant
+  turn and on the final answer.
+
+### Changed
+- **`pkg/eval`: `LLMJudge` shares its judge plumbing with `pkg/guardrail`**
+  (internal `judgecall` helper: provider/model validation + the one-shot
+  system+user call). API and scoring behavior are unchanged; only the
+  misconfiguration error strings differ slightly.
+
+### Docs
+- New `docs/concepts/guardrail.md` concept page (linked from the docs index
+  and the agent page), `examples/guardrails` demonstrating deterministic and
+  LLM-as-judge guards offline (registered in the root README examples
+  table), and ADR-018 recording the design.
+
 ## [1.3.0] - 2026-07-21
 
 ### Added

@@ -23,6 +23,14 @@
 //	    Provider: p, Model: "claude-haiku-4-5", Tools: registry,
 //	}, "research X then summarize")
 //
+// Both Config and PlanExecuteConfig accept optional guardrails (see
+// pkg/guardrail). ReAct vets each user message before it first reaches
+// the model — including messages appended between re-invocations of a
+// carried-over State — and every assistant message the model produces.
+// Plan-and-Execute vets the request before the planner, every executor
+// assistant turn, and the final answer; the planner's and replanner's
+// JSON emissions are not guarded.
+//
 // Construction returns an error rather than panicking, so configs
 // can be validated at startup. Run / RunPlanAndExecute are one-shot
 // wrappers; for finer control over the conversation (multi-turn
