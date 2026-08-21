@@ -2,7 +2,7 @@ module github.com/YasserCR/galdor/providers/google
 
 go 1.25.13
 
-require github.com/YasserCR/galdor v1.4.0
+require github.com/YasserCR/galdor v1.4.1
 
 require github.com/google/uuid v1.6.0 // indirect
 

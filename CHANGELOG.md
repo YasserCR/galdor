@@ -11,6 +11,21 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-20
+
+### Security
+- **Bump the minimum Go to 1.25.13** across every module to pick up six
+  standard-library fixes flagged by govulncheck as reachable from galdor
+  code: **GO-2026-6218**, **GO-2026-6091**, **GO-2026-6090**,
+  **GO-2026-6089**, **GO-2026-5972** and **GO-2026-5026** (`net/http` ×2,
+  `crypto/tls`, `net/url`, `html/template`, `encoding/asn1`).
+  `GOTOOLCHAIN=auto` pulls the patched toolchain. `govulncheck` is clean
+  under go1.25.13.
+
+### Fixed
+- `pkg/guardrail`: simplified the judge reply tokenizer's rune predicate
+  (staticcheck QF1001); no behavior change.
+
 ## [1.4.0] - 2026-08-20
 
 ### Added
