@@ -160,7 +160,7 @@ func classifyJudgeReply(raw string) string {
 
 	var hasAllow, hasBlock, negated bool
 	words := strings.FieldsFunc(raw, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z')
 	})
 	for _, word := range words {
 		switch w := strings.ToUpper(word); {
