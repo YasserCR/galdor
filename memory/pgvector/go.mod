@@ -1,6 +1,6 @@
 module github.com/YasserCR/galdor/memory/pgvector
 
-go 1.25.12
+go 1.25.13
 
 require (
 	github.com/YasserCR/galdor v1.4.0
