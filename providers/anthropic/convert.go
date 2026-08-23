@@ -60,11 +60,17 @@ func buildRequest(req provider.Request, stream bool) (*messageRequest, error) {
 	for _, m := range req.Messages {
 		switch m.Role {
 		case schema.RoleSystem:
-			out.System = append(out.System, wireSystemBlock{
-				Type:         "text",
-				Text:         m.Text(),
-				CacheControl: cacheControl(m.CacheControl),
-			})
+			// An empty text block is rejected outright: with omitempty on
+			// the field the key disappears and the API answers
+			// "text: Field required". A blank system message carries
+			// nothing anyway, so it is dropped rather than sent.
+			if text := m.Text(); text != "" {
+				out.System = append(out.System, wireSystemBlock{
+					Type:         "text",
+					Text:         text,
+					CacheControl: cacheControl(m.CacheControl),
+				})
+			}
 		case schema.RoleUser:
 			wm, err := userMessageToWire(m)
 			if err != nil {
@@ -84,7 +90,13 @@ func buildRequest(req provider.Request, stream bool) (*messageRequest, error) {
 			block := wireContentBlock{
 				Type:      "tool_result",
 				ToolUseID: m.ToolCallID,
-				Content:   []wireContentBlock{{Type: "text", Text: m.Text()}},
+			}
+			// A tool that ran and returned nothing is ordinary. Wrapping
+			// that in an empty text block is not: the API requires the
+			// text key, which omitempty removes. content is optional on a
+			// tool_result, so leave it off instead.
+			if text := m.Text(); text != "" {
+				block.Content = []wireContentBlock{{Type: "text", Text: text}}
 			}
 			if n := len(out.Messages); n > 0 && out.Messages[n-1].Role == "user" {
 				out.Messages[n-1].Content = append(out.Messages[n-1].Content, block)
@@ -141,6 +153,10 @@ func userMessageToWire(m schema.Message) (wireMessage, error) {
 	if err != nil {
 		return wireMessage{}, err
 	}
+	if len(blocks) == 0 {
+		return wireMessage{}, fmt.Errorf(
+			"%w: user message has no content to send", provider.ErrInvalidRequest)
+	}
 	return wireMessage{Role: "user", Content: blocks}, nil
 }
 
@@ -167,6 +183,11 @@ func assistantMessageToWire(m schema.Message) (wireMessage, error) {
 			Input: input,
 		})
 	}
+	if len(blocks) == 0 {
+		return wireMessage{}, fmt.Errorf(
+			"%w: assistant message has neither content nor tool calls",
+			provider.ErrInvalidRequest)
+	}
 	applyCacheControl(blocks, m.CacheControl)
 	return wireMessage{Role: "assistant", Content: blocks}, nil
 }
@@ -184,6 +205,14 @@ func partsToWire(parts []schema.ContentPart, cc *schema.CacheControl) ([]wireCon
 	for _, p := range parts {
 		switch p.Type {
 		case schema.ContentTypeText:
+			// Skip a blank part rather than emit {"type":"text"}: the
+			// text key is dropped by omitempty and the API rejects the
+			// whole turn with "text: Field required". A model that
+			// answers with tool calls alone produces exactly this, so
+			// the failure landed on an entirely normal exchange.
+			if p.Text == "" {
+				continue
+			}
 			out = append(out, wireContentBlock{Type: "text", Text: p.Text})
 		case schema.ContentTypeImage:
 			if p.Image == nil {

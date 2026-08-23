@@ -294,3 +294,81 @@ func TestResponseFromWire_SurfacesThinking(t *testing.T) {
 		t.Errorf("thinking part = %+v, want text/signature preserved", found)
 	}
 }
+
+// TestBuildRequest_EmptyTextBlocksAreNotSent covers the turn a model
+// produces when it answers with tool calls and no prose. The text part is
+// blank, and `text` carries omitempty, so the block went out as
+// {"type":"text"} and Anthropic rejected the whole request with
+// "messages.N.content.0.text.text: Field required" — a normal exchange
+// failing on a block that carried nothing.
+func TestBuildRequest_EmptyTextBlocksAreNotSent(t *testing.T) {
+	t.Parallel()
+
+	assistant := schema.AssistantMessage("")
+	assistant.ToolCalls = []schema.ToolCall{{ID: "call_1", Name: "search"}}
+
+	req, err := buildRequest(provider.Request{
+		Model: "claude-haiku-4-5",
+		Messages: []schema.Message{
+			schema.SystemMessage(""),
+			schema.UserMessage("hola"),
+			assistant,
+			schema.ToolResultMessage("call_1", ""),
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("buildRequest: %v", err)
+	}
+
+	if len(req.System) != 0 {
+		t.Errorf("System = %+v, want a blank system message dropped", req.System)
+	}
+
+	for i, m := range req.Messages {
+		for j, b := range m.Content {
+			if b.Type == "text" && b.Text == "" {
+				t.Errorf("messages[%d].content[%d] is an empty text block", i, j)
+			}
+			for k, inner := range b.Content {
+				if inner.Type == "text" && inner.Text == "" {
+					t.Errorf("messages[%d].content[%d].content[%d] is an empty text block", i, j, k)
+				}
+			}
+		}
+	}
+
+	// The assistant turn keeps its tool call even though its prose was blank.
+	var toolUse int
+	for _, m := range req.Messages {
+		for _, b := range m.Content {
+			if b.Type == "tool_use" {
+				toolUse++
+			}
+		}
+	}
+	if toolUse != 1 {
+		t.Errorf("tool_use blocks = %d, want 1", toolUse)
+	}
+}
+
+// TestBuildRequest_MessageWithNothingToSend turns what used to be a
+// remote 400 into a local error naming the message that is at fault.
+func TestBuildRequest_MessageWithNothingToSend(t *testing.T) {
+	t.Parallel()
+
+	for name, msg := range map[string]schema.Message{
+		"user":      schema.UserMessage(""),
+		"assistant": schema.AssistantMessage(""),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := buildRequest(provider.Request{
+				Model:    "claude-haiku-4-5",
+				Messages: []schema.Message{msg},
+			}, false)
+			if !errors.Is(err, provider.ErrInvalidRequest) {
+				t.Fatalf("err = %v, want ErrInvalidRequest", err)
+			}
+		})
+	}
+}

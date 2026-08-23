@@ -32,6 +32,15 @@ hygiene (docs, build metadata).
   classification with it, leaving the caller a bare status and no reason.
   The field now accepts either shape, and a partial decode is used for
   what it did manage to read.
+- **anthropic: stop sending empty text blocks.** `text` carries
+  `omitempty`, so a blank text part went out as `{"type":"text"}` and the
+  API rejected the entire turn with
+  `messages.N.content.0.text.text: Field required`. A model answering with
+  tool calls and no prose produces exactly that, which made an ordinary
+  exchange fail. Blank text parts, blank system messages and the empty
+  result of a tool that returns nothing are now left out — `content` is
+  optional on a `tool_result` — and a message with nothing at all to send
+  is reported locally as `ErrInvalidRequest` instead of as a remote 400.
 
 ## [1.4.1] - 2026-08-20
 
