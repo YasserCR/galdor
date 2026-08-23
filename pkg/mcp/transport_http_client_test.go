@@ -3,6 +3,9 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -91,5 +94,43 @@ func TestNewStreamableHTTPClientTransport_RejectsBadURL(t *testing.T) {
 		if _, err := mcp.NewStreamableHTTPClientTransport(bad); err == nil {
 			t.Errorf("expected error for %q", bad)
 		}
+	}
+}
+
+// TestHTTPClientTransport_SSEFramedReply dials a server that answers the
+// POST with an event stream whose first line is `event:`, which is what
+// two of the public Streamable HTTP servers do. Before the framing was
+// recognised past the first line the reply never reached the dispatch
+// loop and the caller waited out its whole deadline.
+func TestHTTPClientTransport_SSEFramedReply(t *testing.T) {
+	t.Parallel()
+
+	const reply = `{"jsonrpc":"2.0","id":1,"result":{"ok":true}}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Mcp-Session-Id", "s-1")
+		_, _ = io.WriteString(w, "event: message\r\ndata: "+reply+"\r\n\r\n")
+	}))
+	defer srv.Close()
+
+	tr, err := mcp.NewStreamableHTTPClientTransport(srv.URL)
+	if err != nil {
+		t.Fatalf("NewStreamableHTTPClientTransport: %v", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := tr.Send(ctx, []byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	got, err := tr.Recv(ctx)
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	if string(got) != reply {
+		t.Fatalf("Recv = %q, want %q", got, reply)
 	}
 }

@@ -186,21 +186,54 @@ func (t *httpClientTransport) Close() error {
 	return nil
 }
 
-// normalizeReplyBody strips a leading SSE "data:" framing if a server
-// chose to wrap the JSON-RPC reply in an event stream. galdor's own
-// server replies with a bare application/json body, so this is a
-// defensive accommodation for spec-compliant peers, not a parser.
+// normalizeReplyBody unwraps a Server-Sent Events frame when a server
+// chose to wrap its JSON-RPC reply in one. galdor's own server replies
+// with a bare application/json body, so this is a defensive
+// accommodation for spec-compliant peers, not a parser.
+//
+// The framing is recognised anywhere in the body rather than only at its
+// start. Servers routinely put an "event: message" line ahead of the
+// payload, and such a body used to fall straight through untouched and
+// then fail to parse as JSON — the caller saw no error, only a reply
+// that never arrived, which surfaces as a timeout.
 func normalizeReplyBody(raw []byte) []byte {
 	trimmed := bytes.TrimSpace(raw)
-	if !bytes.HasPrefix(trimmed, []byte("data:")) {
+	// A JSON-RPC reply is an object, or an array for a batch. Anything
+	// else that carries a data: line is a frame to unwrap.
+	if len(trimmed) == 0 || trimmed[0] == '{' || trimmed[0] == '[' {
 		return trimmed
 	}
+
 	var buf bytes.Buffer
+	inEvent := false
 	for _, line := range bytes.Split(trimmed, []byte("\n")) {
 		line = bytes.TrimSpace(line)
-		if rest, ok := bytes.CutPrefix(line, []byte("data:")); ok {
-			buf.Write(bytes.TrimSpace(rest))
+		// A blank line ends the event. Only the first one is ours: a POST
+		// is answered with a single reply, and concatenating the data of
+		// several events would produce a body that parses as nothing.
+		if len(line) == 0 {
+			if inEvent {
+				break
+			}
+			continue
 		}
+		rest, ok := bytes.CutPrefix(line, []byte("data:"))
+		if !ok {
+			// event:, id:, retry: and comments carry no payload.
+			continue
+		}
+		if inEvent {
+			// Successive data lines of one event join with a newline,
+			// per the SSE specification.
+			buf.WriteByte('\n')
+		}
+		buf.Write(bytes.TrimSpace(rest))
+		inEvent = true
+	}
+	if !inEvent {
+		// Not a frame after all: hand back what came in so the caller
+		// reports a parse error against the real body.
+		return trimmed
 	}
 	return buf.Bytes()
 }

@@ -11,6 +11,20 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+### Fixed
+- **mcp: unwrap an SSE reply whose frame does not open with `data:`.** A
+  Streamable HTTP server may answer a POST with an event stream, and most
+  of them put an `event: message` line ahead of the payload. The
+  unwrapping keyed off a `data:` prefix on the body, so those replies fell
+  through untouched, failed to parse as JSON and never reached the
+  dispatch loop — the caller saw no error, only a request that waited out
+  its full deadline. Two of the public servers tested
+  (`mcp.deepwiki.com`, `mcp.context7.com`) behave this way. The framing is
+  now recognised anywhere in the body, successive `data:` lines join with
+  a newline per the specification, and unwrapping stops at the first
+  event so a stream carrying several does not get concatenated into one
+  unparseable body.
+
 ## [1.4.1] - 2026-08-20
 
 ### Security
