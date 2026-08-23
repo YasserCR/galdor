@@ -476,3 +476,58 @@ func TestStream_SurfacesReasoning(t *testing.T) {
 		t.Fatalf("reasoning part wrong: %+v", stopMsg)
 	}
 }
+
+// TestGenerate_NumericErrorCode covers the envelope OpenRouter sends on a
+// rate limit: error.code is a number where the API documents a string.
+// Decoding it used to fail, and since the envelope is decoded in one shot
+// the failure took the human-readable message with it — the caller got a
+// bare status and no reason.
+func TestGenerate_NumericErrorCode(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"code":429,"message":"rate limited upstream"}}`)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	_, err := p.Generate(context.Background(), provider.Request{
+		Model:    "gpt-4o-mini",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	var apiErr *provider.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err not *APIError: %v", err)
+	}
+	if apiErr.Message != "rate limited upstream" {
+		t.Errorf("Message = %q, want the message to survive the numeric code", apiErr.Message)
+	}
+	if !errors.Is(err, provider.ErrRateLimited) {
+		t.Errorf("err = %v, want ErrRateLimited", err)
+	}
+}
+
+// TestFlexString covers the shapes the field arrives in across the
+// OpenAI-compatible gateways.
+func TestFlexString(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{`"context_length_exceeded"`, "context_length_exceeded"},
+		{`429`, "429"},
+		{`null`, ""},
+		{`""`, ""},
+	}
+	for _, tc := range cases {
+		var got flexString
+		if err := json.Unmarshal([]byte(tc.in), &got); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", tc.in, err)
+		}
+		if string(got) != tc.want {
+			t.Errorf("Unmarshal(%s) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

@@ -1,6 +1,9 @@
 package openai
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // Wire types mirror the OpenAI Chat Completions API at /v1/chat/completions.
 // They are kept intentionally separate from galdor's shared schema so
@@ -141,9 +144,9 @@ type chatChunk struct {
 }
 
 type chunkError struct {
-	Type    string `json:"type"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Type    string     `json:"type"`
+	Code    flexString `json:"code"`
+	Message string     `json:"message"`
 }
 
 type chunkChoice struct {
@@ -162,9 +165,37 @@ type chunkDelta struct {
 // errorResponse is the body shape OpenAI returns on 4xx/5xx.
 type errorResponse struct {
 	Error struct {
-		Type    string `json:"type"`
-		Code    string `json:"code"`
-		Param   string `json:"param,omitempty"`
-		Message string `json:"message"`
+		Type    string     `json:"type"`
+		Code    flexString `json:"code"`
+		Param   string     `json:"param,omitempty"`
+		Message string     `json:"message"`
 	} `json:"error"`
+}
+
+// flexString decodes a field the API documents as a string but that some
+// OpenAI-compatible gateways send as a number. OpenRouter answers a rate
+// limit with {"error":{"code":429,...}}, and because the envelope is
+// decoded in one shot the type mismatch took the human-readable message
+// down with it: the caller was left with a bare status and no reason.
+//
+// Anything that is not a JSON string is kept as its literal text, which
+// is what the classification below wants to compare against anyway.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || bytes.Equal(b, []byte("null")) {
+		*f = ""
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexString(s)
+		return nil
+	}
+	*f = flexString(b)
+	return nil
 }

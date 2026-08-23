@@ -176,7 +176,7 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 		// stream with a synthesized (apparently successful) MessageStop.
 		if chunk.Error != nil {
 			ae := &provider.APIError{Provider: providerName, Message: chunk.Error.Message}
-			if k := kindForType(chunk.Error.Type, chunk.Error.Code); k != nil {
+			if k := kindForType(chunk.Error.Type, string(chunk.Error.Code)); k != nil {
 				ae.Kind = k
 			}
 			return provider.Event{}, ae

@@ -22,9 +22,14 @@ func normalizeHTTPError(resp *http.Response) error {
 	}
 
 	var er errorResponse
-	if len(body) > 0 && json.Unmarshal(body, &er) == nil && er.Error.Message != "" {
+	// The decode error is deliberately ignored rather than used as a
+	// gate. encoding/json fills in every field it could before reporting
+	// a type mismatch, so discarding the result over one cosmetic field
+	// cost the caller the only human-readable account of the failure.
+	_ = json.Unmarshal(body, &er)
+	if er.Error.Message != "" {
 		apiErr.Message = er.Error.Message
-		if k := kindForType(er.Error.Type, er.Error.Code); k != nil {
+		if k := kindForType(er.Error.Type, string(er.Error.Code)); k != nil {
 			apiErr.Kind = k
 		}
 	}

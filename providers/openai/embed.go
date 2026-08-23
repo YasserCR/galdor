@@ -220,9 +220,9 @@ type embedResponse struct {
 func normalizeEmbedError(status int, body []byte) error {
 	var env struct {
 		Error struct {
-			Message string `json:"message"`
-			Type    string `json:"type"`
-			Code    string `json:"code"`
+			Message string     `json:"message"`
+			Type    string     `json:"type"`
+			Code    flexString `json:"code"`
 		} `json:"error"`
 	}
 	_ = json.Unmarshal(body, &env)

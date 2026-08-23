@@ -24,6 +24,14 @@ hygiene (docs, build metadata).
   a newline per the specification, and unwrapping stops at the first
   event so a stream carrying several does not get concatenated into one
   unparseable body.
+- **openai: keep the error message when `error.code` is a number.** The
+  API documents the field as a string; OpenRouter answers a rate limit
+  with `{"error":{"code":429,…}}`. `encoding/json` reports the mismatch
+  after filling in everything else, and the decode error was being used
+  as a gate — so a numeric code threw away the message and the
+  classification with it, leaving the caller a bare status and no reason.
+  The field now accepts either shape, and a partial decode is used for
+  what it did manage to read.
 
 ## [1.4.1] - 2026-08-20
 
