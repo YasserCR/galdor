@@ -42,6 +42,9 @@ import (
 // Close shuts down the HTTP server and unblocks any in-flight Recv.
 // Safe to call multiple times.
 //
+// This is the SERVER side: it binds a listener on addr. To reach a
+// remote SSE server, use NewSSEClientTransport, which dials one.
+//
 // Spec: https://modelcontextprotocol.io/specification/2024-11-05/basic/transports
 func NewSSETransport(addr string) Transport {
 	return newSSETransport(addr)

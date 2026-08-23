@@ -11,6 +11,19 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+### Added
+- **mcp: `NewSSEClientTransport`, the client side of the HTTP+SSE
+  transport.** Only the server side existed. `NewSSETransport` binds a
+  listener on the address it is handed, so pointing it at a remote
+  server's URL connected to nobody: it waited for a caller that never
+  arrived and the handshake timed out, which read as an unreachable
+  server rather than as a missing transport. The new constructor dials
+  instead — GET the stream, take the POST target from the `endpoint`
+  event, read replies as `message` events — and covers the same
+  request/response scope as the Streamable HTTP client. The stream opens
+  on first use, so a transport that is built and never used holds no
+  connection. Authentication goes through `WithSSEHTTPClient`.
+
 ### Fixed
 - **mcp: unwrap an SSE reply whose frame does not open with `data:`.** A
   Streamable HTTP server may answer a POST with an event stream, and most
