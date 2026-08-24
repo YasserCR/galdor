@@ -11,6 +11,8 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-23
+
 ### Added
 - **mcp: `NewSSEClientTransport`, the client side of the HTTP+SSE
   transport.** Only the server side existed. `NewSSETransport` binds a
@@ -1170,7 +1172,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/YasserCR/galdor/compare/v1.4.1...v1.5.0
 [1.0.0]: https://github.com/YasserCR/galdor/compare/v0.15.1...v1.0.0
 [0.15.1]: https://github.com/YasserCR/galdor/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/YasserCR/galdor/compare/v0.14.0...v0.15.0
