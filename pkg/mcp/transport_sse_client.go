@@ -271,7 +271,7 @@ func (t *sseClientTransport) Send(ctx context.Context, msg any) error {
 		return errors.New("mcp: transport closed")
 	default:
 	}
-	t.start()
+	t.start() //nolint:contextcheck // the stream has its own lifecycle (ended by Close), not the per-call ctx
 
 	endpoint, err := t.awaitEndpoint(ctx)
 	if err != nil {
@@ -318,7 +318,7 @@ func (t *sseClientTransport) Send(ctx context.Context, msg any) error {
 // Recv returns the next message from the stream, or io.EOF once the
 // transport is closed and the queue is drained.
 func (t *sseClientTransport) Recv(ctx context.Context) ([]byte, error) {
-	t.start()
+	t.start() //nolint:contextcheck // the stream has its own lifecycle (ended by Close), not the per-call ctx
 	select {
 	case b := <-t.messages:
 		return b, nil

@@ -123,8 +123,8 @@ func TestHTTPClientTransport_SSEFramedReply(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := tr.Send(ctx, []byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)); err != nil {
-		t.Fatalf("Send: %v", err)
+	if sendErr := tr.Send(ctx, []byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)); sendErr != nil {
+		t.Fatalf("Send: %v", sendErr)
 	}
 	got, err := tr.Recv(ctx)
 	if err != nil {

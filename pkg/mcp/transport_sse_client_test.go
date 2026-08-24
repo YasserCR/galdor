@@ -3,6 +3,7 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -215,7 +216,7 @@ func TestSSEClientTransport_CloseUnblocksRecv(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			t.Errorf("Recv = %v, want io.EOF", err)
 		}
 	case <-time.After(5 * time.Second):
