@@ -24,13 +24,27 @@ step "go version"
 go version
 
 step "tidy (each module)"
+# CI compares against HEAD because it runs on a clean checkout. Here the tree
+# usually carries the edit being tested, so the comparison is against a
+# snapshot taken just before tidy — otherwise every uncommitted change reads
+# as "go.mod is out of date" and the real signal is lost in the noise.
+SNAP="$(mktemp -d)"
+trap 'rm -rf "$SNAP"' EXIT
+for mod in $TIDY_MODULES; do
+  mkdir -p "$SNAP/$mod"
+  cp "$mod/go.mod" "$SNAP/$mod/go.mod"
+  [ -f "$mod/go.sum" ] && cp "$mod/go.sum" "$SNAP/$mod/go.sum"
+done
 for mod in $TIDY_MODULES; do
   ( cd "$mod" && go mod tidy )
-  if [ -n "$(git status --porcelain -- "$mod/go.mod" "$mod/go.sum")" ]; then
-    echo "$mod go.mod or go.sum is out of date; run 'go mod tidy'"
-    git --no-pager diff -- "$mod/go.mod" "$mod/go.sum"
-    failed=1
-  fi
+  for f in go.mod go.sum; do
+    [ -f "$mod/$f" ] || continue
+    if ! diff -q "$SNAP/$mod/$f" "$mod/$f" >/dev/null 2>&1; then
+      echo "$mod/$f is out of date; run 'go mod tidy'"
+      diff -u "$SNAP/$mod/$f" "$mod/$f" || true
+      failed=1
+    fi
+  done
 done
 
 step "build (workspace)";  go build ./...; check $? build
