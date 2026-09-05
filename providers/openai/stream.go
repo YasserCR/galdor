@@ -44,10 +44,11 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.S
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, normalizeHTTPError(resp)
+		return nil, p.normalizeHTTPError(resp)
 	}
 
 	return &streamReader{
+		name:      p.name,
 		body:      resp.Body,
 		scanner:   newSSEScanner(resp.Body),
 		toolByIdx: map[int]*toolState{},
@@ -61,6 +62,7 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.S
 // ToolCallDelta if the first chunk carries tool data), so Recv drains
 // pending before parsing the next chunk.
 type streamReader struct {
+	name       string // provider identity carried on in-stream errors
 	body       io.ReadCloser
 	scanner    *sseScanner
 	toolByIdx  map[int]*toolState // by tool_calls[i].index
@@ -175,7 +177,7 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 		// Surface an in-stream error frame instead of silently ending the
 		// stream with a synthesized (apparently successful) MessageStop.
 		if chunk.Error != nil {
-			ae := &provider.APIError{Provider: providerName, Message: chunk.Error.Message}
+			ae := &provider.APIError{Provider: r.name, Message: chunk.Error.Message}
 			if k := kindForType(chunk.Error.Type, string(chunk.Error.Code)); k != nil {
 				ae.Kind = k
 			}

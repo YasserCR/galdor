@@ -34,7 +34,7 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, normalizeHTTPError(resp)
+		return nil, p.normalizeHTTPError(resp)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -45,10 +45,10 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 	var msg chatResponse
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		return nil, provider.Classify(&provider.APIError{
-			Provider: providerName,
+			Provider: p.name,
 			Kind:     provider.ErrServer,
 			Message:  "decode response: " + err.Error(),
 		})
 	}
-	return responseFromWire(&msg, raw)
+	return responseFromWire(p.name, &msg, raw)
 }

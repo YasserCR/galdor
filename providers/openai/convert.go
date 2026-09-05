@@ -239,10 +239,11 @@ func responseFormatToWire(rf *provider.ResponseFormat) *wireRespFormat {
 }
 
 // responseFromWire collapses a non-streaming Chat Completions response
-// into a galdor provider.Response. It returns an error when the choice's
-// content can't be decoded — silently dropping it would surface as an empty
+// into a galdor provider.Response. name is the provider identity carried
+// on any decode error. It returns an error when the choice's content
+// can't be decoded — silently dropping it would surface as an empty
 // (but successful) response, hiding a real wire-format mismatch.
-func responseFromWire(r *chatResponse, raw []byte) (*provider.Response, error) {
+func responseFromWire(name string, r *chatResponse, raw []byte) (*provider.Response, error) {
 	msg := schema.Message{Role: schema.RoleAssistant}
 	stopReason := schema.StopReason("")
 
@@ -259,7 +260,7 @@ func responseFromWire(r *chatResponse, raw []byte) (*provider.Response, error) {
 			text, err := decodeContent(c.Message.Content)
 			if err != nil {
 				return nil, provider.Classify(&provider.APIError{
-					Provider: providerName,
+					Provider: name,
 					Kind:     provider.ErrServer,
 					Message:  "decode response content: " + err.Error(),
 				})

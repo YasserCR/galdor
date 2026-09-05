@@ -31,6 +31,14 @@ type Config struct {
 	// MiniMax, Mistral, etc.) — see README for known good values.
 	BaseURL string
 
+	// Name overrides the identifier this provider reports via Name() and
+	// carries on every *provider.APIError it returns. Defaults to
+	// "openai". Set it alongside BaseURL when pointing at an
+	// OpenAI-compatible gateway (e.g. "openrouter", "groq") so errors
+	// and traces name the party that actually answered instead of the
+	// adapter.
+	Name string
+
 	// Organization is sent as openai-organization when non-empty.
 	Organization string
 
@@ -48,6 +56,7 @@ type Config struct {
 
 // Provider is the OpenAI Chat Completions adapter. Safe for concurrent use.
 type Provider struct {
+	name         string
 	apiKey       string
 	baseURL      string
 	organization string
@@ -62,12 +71,16 @@ func New(cfg Config) (*Provider, error) {
 		return nil, errors.New("openai: APIKey is required")
 	}
 	p := &Provider{
+		name:         strings.TrimSpace(cfg.Name),
 		apiKey:       cfg.APIKey,
 		baseURL:      cfg.BaseURL,
 		organization: cfg.Organization,
 		project:      cfg.Project,
 		httpClient:   cfg.HTTPClient,
 		userAgent:    cfg.UserAgent,
+	}
+	if p.name == "" {
+		p.name = providerName
 	}
 	if p.baseURL == "" {
 		p.baseURL = defaultBaseURL
@@ -79,8 +92,9 @@ func New(cfg Config) (*Provider, error) {
 	return p, nil
 }
 
-// Name implements provider.Provider.
-func (p *Provider) Name() string { return providerName }
+// Name implements provider.Provider. It reports Config.Name when one was
+// set, and the adapter's own identifier ("openai") otherwise.
+func (p *Provider) Name() string { return p.name }
 
 // Capabilities implements provider.Provider.
 //

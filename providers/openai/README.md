@@ -59,9 +59,21 @@ segment; the adapter only appends `/chat/completions`.
 p, _ := openai.New(openai.Config{
     APIKey:  os.Getenv("MINIMAX_API_KEY"),
     BaseURL: "https://api.minimax.io/v1",
+    Name:    "minimax",
 })
 resp, _ := p.Generate(ctx, provider.Request{Model: "MiniMax-M2", ...})
 ```
+
+Set `Name` alongside `BaseURL`: it is what `Name()` reports and what
+prefixes every error the provider returns. Without it, a failure at a
+gateway reads `openai: ...`, pointing at a party that was never
+involved. It defaults to `"openai"`.
+
+When a gateway routes to a third-party upstream (OpenRouter), its own
+error message is often just `Provider returned error`; the adapter
+appends the `error.metadata` the gateway attaches (upstream name and raw
+response), and falls back to the raw HTTP body when the error envelope
+doesn't parse at all, so the actual cause always reaches the caller.
 
 Known compatible endpoints (consult each provider's docs for the correct
 `BaseURL` and model names):

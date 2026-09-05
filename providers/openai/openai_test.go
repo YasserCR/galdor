@@ -508,6 +508,132 @@ func TestGenerate_NumericErrorCode(t *testing.T) {
 	}
 }
 
+func TestGenerate_UpstreamMetadataSurvives(t *testing.T) {
+	t.Parallel()
+	// OpenRouter's documented envelope for an upstream failure: a generic
+	// top-level message plus error.metadata carrying the actual cause.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"error":{"code":502,"message":"Provider returned error","metadata":{"raw":"{\"error\":{\"message\":\"model overloaded\"}}","provider_name":"Zhipu"}}}`)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	_, err := p.Generate(context.Background(), provider.Request{
+		Model:    "glm-4",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	var apiErr *provider.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err not *APIError: %v", err)
+	}
+	for _, want := range []string{"Provider returned error", "upstream Zhipu", "model overloaded"} {
+		if !strings.Contains(apiErr.Message, want) {
+			t.Errorf("Message = %q, want it to contain %q", apiErr.Message, want)
+		}
+	}
+}
+
+func TestGenerate_UnparseableErrorBodyKept(t *testing.T) {
+	t.Parallel()
+	// A body that isn't the expected envelope is still the only account
+	// of the failure; it must reach the caller instead of a bare status.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, "<html>gateway exploded</html>")
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	_, err := p.Generate(context.Background(), provider.Request{
+		Model:    "gpt-4o-mini",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	var apiErr *provider.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err not *APIError: %v", err)
+	}
+	if !strings.Contains(apiErr.Message, "gateway exploded") {
+		t.Errorf("Message = %q, want the raw body kept", apiErr.Message)
+	}
+}
+
+func TestNew_NameOverride(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"error":{"message":"Provider returned error"}}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{APIKey: "x", BaseURL: srv.URL, Name: "openrouter"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name() != "openrouter" {
+		t.Errorf("Name() = %q, want openrouter", p.Name())
+	}
+	_, err = p.Generate(context.Background(), provider.Request{
+		Model:    "glm-4",
+		Messages: []schema.Message{schema.UserMessage("hi")},
+	})
+	var apiErr *provider.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err not *APIError: %v", err)
+	}
+	if apiErr.Provider != "openrouter" {
+		t.Errorf("APIError.Provider = %q, want openrouter", apiErr.Provider)
+	}
+	if !strings.HasPrefix(err.Error(), "openrouter:") {
+		t.Errorf("Error() = %q, want the openrouter: prefix", err.Error())
+	}
+}
+
+// TestFormatErrorMetadata covers the metadata shapes gateways send: the
+// documented {provider_name, raw} pair, partial variants, and junk.
+func TestFormatErrorMetadata(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"absent", ``, ""},
+		{"null", `null`, ""},
+		{"empty object", `{}`, ""},
+		{"name and raw string", `{"provider_name":"Zhipu","raw":"model overloaded"}`, "upstream Zhipu: model overloaded"},
+		{"name only", `{"provider_name":"Zhipu"}`, "upstream Zhipu"},
+		{"raw object only", `{"raw":{"code":500}}`, `upstream: {"code":500}`},
+		{"unexpected shape", `[1,2]`, "metadata: [1,2]"},
+	}
+	for _, tc := range cases {
+		var meta json.RawMessage
+		if tc.in != "" {
+			meta = json.RawMessage(tc.in)
+		}
+		if got := formatErrorMetadata(meta); got != tc.want {
+			t.Errorf("%s: formatErrorMetadata(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestTruncateBody(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("x", maxErrorBodyLen+100)
+	got := truncateBody(long)
+	if len(got) > maxErrorBodyLen+len("... (truncated)") {
+		t.Errorf("len = %d, want capped", len(got))
+	}
+	if !strings.HasSuffix(got, "... (truncated)") {
+		t.Errorf("truncated body must say so, got suffix %q", got[len(got)-20:])
+	}
+	if short := truncateBody("ok"); short != "ok" {
+		t.Errorf("short body altered: %q", short)
+	}
+}
+
 // TestFlexString covers the shapes the field arrives in across the
 // OpenAI-compatible gateways.
 func TestFlexString(t *testing.T) {

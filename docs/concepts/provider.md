@@ -70,8 +70,11 @@ The OpenAI adapter accepts a `BaseURL` so it can drive any compatible endpoint â
 p, err := openai.New(openai.Config{
     APIKey:  os.Getenv("GROQ_API_KEY"),
     BaseURL: "https://api.groq.com/openai/v1",
+    Name:    "groq",
 })
 ```
+
+Set `Name` when you set `BaseURL`: it is what `Name()` reports and what prefixes the provider's errors and trace attributes, so a failure at Groq reads `groq: ...` instead of `openai: ...`. It defaults to `"openai"`.
 
 The runnable [`examples/provider-interface`](../../examples/provider-interface/) demonstrates the full surface with an in-process stub.
 

@@ -11,6 +11,25 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+### Added
+- **`providers/openai`: `Config.Name`.** Names the party the adapter is
+  actually talking to when `BaseURL` points at an OpenAI-compatible
+  gateway. It is reported by `Name()` and carried on every
+  `*provider.APIError` (and so on trace attributes), turning
+  `openai: Provider returned error` into
+  `openrouter: Provider returned error`. Defaults to `"openai"`.
+
+### Fixed
+- **`providers/openai`: gateway error causes no longer discarded.** The
+  error envelope decode now captures `error.metadata` — where gateways
+  that route to a third-party upstream (OpenRouter) put the upstream's
+  name and raw response — and appends it to `APIError.Message`
+  (`Provider returned error (upstream Zhipu: ...)`). When the body does
+  not parse into the expected envelope at all, the raw body is kept
+  (truncated) instead of reporting a bare status code. Same class of bug
+  as the earlier `flexString` fix: an envelope decoded too narrowly cost
+  the caller the only account of the failure.
+
 ## [1.5.0] - 2026-08-23
 
 ### Added

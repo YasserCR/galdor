@@ -169,6 +169,14 @@ type errorResponse struct {
 		Code    flexString `json:"code"`
 		Param   string     `json:"param,omitempty"`
 		Message string     `json:"message"`
+		// Metadata is not part of OpenAI's own envelope, but gateways
+		// that route to a third-party upstream (OpenRouter) put the
+		// upstream's raw response and name here — often the only
+		// informative part of the body, next to a generic top-level
+		// message like "Provider returned error". Captured as raw JSON
+		// so an unexpected shape cannot take the rest of the decode
+		// down; see formatErrorMetadata.
+		Metadata json.RawMessage `json:"metadata,omitempty"`
 	} `json:"error"`
 }
 
