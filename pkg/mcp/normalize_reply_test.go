@@ -64,18 +64,22 @@ func TestNormalizeReplyBody(t *testing.T) {
 	}
 }
 
-// TestNormalizeReplyBody_StopsAtTheFirstEvent guards the boundary between
-// events. A POST is answered with one reply; concatenating the data of
-// every event in the body would hand the dispatch loop something that
-// parses as nothing.
-func TestNormalizeReplyBody_StopsAtTheFirstEvent(t *testing.T) {
+// TestNormalizeReplyBodies_KeepsEveryEvent guards the boundary between
+// events: each is one payload, in order, never concatenated into a body
+// that parses as nothing — and never cut to the first, because a server
+// may send a notification ahead of the reply on the same stream.
+func TestNormalizeReplyBodies_KeepsEveryEvent(t *testing.T) {
 	t.Parallel()
 
-	const body = "event: message\ndata: {\"id\":1}\n\n" +
-		"event: message\ndata: {\"id\":2}\n\n"
+	const body = "event: message\ndata: {\"method\":\"notifications/message\"}\n\n" +
+		"event: message\ndata: {\"id\":1}\n\n"
 
-	if got := string(normalizeReplyBody([]byte(body))); got != `{"id":1}` {
-		t.Fatalf("normalizeReplyBody = %q, want the first event only", got)
+	got := normalizeReplyBodies([]byte(body))
+	if len(got) != 2 || string(got[0]) != `{"method":"notifications/message"}` || string(got[1]) != `{"id":1}` {
+		t.Fatalf("normalizeReplyBodies = %q, want both events in order", got)
+	}
+	if first := string(normalizeReplyBody([]byte(body))); first != `{"method":"notifications/message"}` {
+		t.Fatalf("normalizeReplyBody = %q, want the first event", first)
 	}
 }
 

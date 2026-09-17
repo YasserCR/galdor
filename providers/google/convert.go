@@ -58,10 +58,15 @@ func buildRequest(req provider.Request) (*generateRequest, error) {
 				return nil, err
 			}
 			for _, tc := range m.ToolCalls {
-				parts = append(parts, wirePart{FunctionCall: &wireFunctionCall{
-					Name: tc.Name,
-					Args: tc.Arguments,
-				}})
+				// The signature goes back on the part it came with: Gemini 3
+				// refuses the request otherwise.
+				parts = append(parts, wirePart{
+					FunctionCall: &wireFunctionCall{
+						Name: tc.Name,
+						Args: tc.Arguments,
+					},
+					ThoughtSignature: tc.Signature,
+				})
 			}
 			out.Contents = append(out.Contents, wireContent{Role: "model", Parts: parts})
 		case schema.RoleTool:
@@ -254,6 +259,7 @@ func responseFromWire(r *generateResponse, raw []byte) *provider.Response {
 					ID:        synthToolID(p.FunctionCall.Name, i),
 					Name:      p.FunctionCall.Name,
 					Arguments: p.FunctionCall.Args,
+					Signature: p.ThoughtSignature,
 				})
 			case p.Thought && p.Text != "":
 				// Thought summaries (returned only when Request.Reasoning

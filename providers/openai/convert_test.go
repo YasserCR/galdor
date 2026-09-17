@@ -414,3 +414,37 @@ func TestBuildRequest_ReasoningMovesParamsForOSeries(t *testing.T) {
 		t.Errorf("temperature/top_p must be dropped for reasoning models (M8)")
 	}
 }
+
+// OpenAI retired max_tokens and its newer models reject it; the gateways
+// that speak this API mostly know only max_tokens. The field follows the
+// endpoint.
+func TestTokenCapFollowsTheEndpoint(t *testing.T) {
+	t.Parallel()
+	limit := 300
+	req := provider.Request{Model: "gpt-5", MaxTokens: &limit,
+		Messages: []schema.Message{schema.UserMessage("hola")}}
+
+	toOpenAI, err := buildRequestFor(req, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if toOpenAI.MaxTokens != nil || toOpenAI.MaxCompletionTokens == nil || *toOpenAI.MaxCompletionTokens != 300 {
+		t.Errorf("to OpenAI: max_tokens=%v max_completion_tokens=%v", toOpenAI.MaxTokens, toOpenAI.MaxCompletionTokens)
+	}
+	toGateway, err := buildRequestFor(req, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if toGateway.MaxCompletionTokens != nil || toGateway.MaxTokens == nil || *toGateway.MaxTokens != 300 {
+		t.Errorf("to a gateway: max_tokens=%v max_completion_tokens=%v", toGateway.MaxTokens, toGateway.MaxCompletionTokens)
+	}
+
+	own, _ := New(Config{APIKey: "k"})
+	if !own.completionTokens() {
+		t.Error("the default endpoint is OpenAI and wants max_completion_tokens")
+	}
+	gateway, _ := New(Config{APIKey: "k", BaseURL: "https://api.deepseek.com/v1"})
+	if gateway.completionTokens() {
+		t.Error("a gateway is sent max_tokens")
+	}
+}

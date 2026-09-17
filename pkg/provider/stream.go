@@ -93,6 +93,12 @@ type ToolCallDelta struct {
 	ID             string
 	Name           string
 	ArgumentsDelta string
+
+	// Signature carries the provider's opaque token for this call when it
+	// has one (schema.ToolCall.Signature). Set on the first delta of the
+	// call, or on whichever delta the provider attached it to; consumers
+	// keep the last non-empty value.
+	Signature string
 }
 
 // CollectStream consumes r to completion and assembles a single Response.
@@ -156,6 +162,9 @@ func CollectStream(ctx context.Context, r StreamReader) (*Response, error) {
 			if d.ArgumentsDelta != "" {
 				tb.args.WriteString(d.ArgumentsDelta)
 			}
+			if d.Signature != "" {
+				tb.signature = d.Signature
+			}
 		case EventMessageStop:
 			stopReason = ev.StopReason
 			if ev.Usage != (schema.Usage{}) {
@@ -193,6 +202,7 @@ func CollectStream(ctx context.Context, r StreamReader) (*Response, error) {
 			ID:        tb.id,
 			Name:      tb.name,
 			Arguments: []byte(tb.args.String()),
+			Signature: tb.signature,
 		})
 	}
 
@@ -205,7 +215,8 @@ func CollectStream(ctx context.Context, r StreamReader) (*Response, error) {
 }
 
 type toolBuilder struct {
-	id   string
-	name string
-	args strings.Builder
+	id        string
+	name      string
+	args      strings.Builder
+	signature string
 }

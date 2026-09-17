@@ -92,6 +92,14 @@ func New(cfg Config) (*Provider, error) {
 	return p, nil
 }
 
+// completionTokens reports whether the endpoint wants the token cap as
+// max_completion_tokens: OpenAI's own API does, and rejects max_tokens on
+// its newer models. Everything else that speaks this API is sent
+// max_tokens, which is what the gateways understand.
+func (p *Provider) completionTokens() bool {
+	return strings.HasPrefix(strings.ToLower(p.baseURL), "https://api.openai.com/")
+}
+
 // Name implements provider.Provider. It reports Config.Name when one was
 // set, and the adapter's own identifier ("openai") otherwise.
 func (p *Provider) Name() string { return p.name }

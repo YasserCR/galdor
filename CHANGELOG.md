@@ -11,6 +11,39 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-17
+
+### Added
+- **`schema.ToolCall.Signature`, `provider.ToolCallDelta.Signature`.** An
+  opaque token some providers attach to a call and require back with its
+  result. `providers/google` fills it from Gemini's `thoughtSignature` on
+  `functionCall` parts and sends it back on the same part when the history
+  is replayed. Gemini 3 rejects the request that carries a tool result
+  when the call arrives without its signature (`400 Function call is
+  missing a thought_signature`), so a thread that used a tool once could
+  never continue. Callers that persist conversations must persist the
+  field with the call; it is `omitempty`, and empty for every other
+  provider.
+
+### Fixed
+- **`providers/openai`: the token cap goes as `max_completion_tokens` to
+  OpenAI itself.** OpenAI retired `max_tokens` and its newer models reject
+  it outright. The field now follows the endpoint: `api.openai.com` gets
+  `max_completion_tokens`, every gateway that speaks the same API keeps
+  `max_tokens`, which is what they understand.
+- **`pkg/mcp`: a Streamable HTTP reply framed as SSE keeps every event.**
+  The specification lets a server put notifications and requests on the
+  POST's stream ahead of the reply, and servers that report progress do.
+  Only the first event used to reach the dispatch loop — a notification it
+  discards — and the caller waited on a reply that had arrived, then
+  timed out, for a tool that had run.
+- **`providers/anthropic`, `providers/google`, `providers/openai`: a 2xx
+  that is not a stream is an error.** A plain JSON reply from an endpoint
+  that ignored `stream:true`, an error envelope or an HTML page used to
+  read as an empty stream, which consumers took for an empty answer; the
+  reply in the body was lost and there was nothing to retry. The stream
+  now fails with the start of the body in the message.
+
 ## [1.6.0] - 2026-09-05
 
 ### Added
@@ -1193,7 +1226,8 @@ First tagged release. Delivers Phases 0–10 of the roadmap, including:
 
 See [ROADMAP.md](ROADMAP.md) for the full surface delivered.
 
-[Unreleased]: https://github.com/YasserCR/galdor/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/YasserCR/galdor/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/YasserCR/galdor/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/YasserCR/galdor/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/YasserCR/galdor/compare/v1.4.1...v1.5.0
 [1.0.0]: https://github.com/YasserCR/galdor/compare/v0.15.1...v1.0.0

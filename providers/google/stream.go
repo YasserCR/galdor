@@ -116,6 +116,12 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			return provider.Event{}, err
 		}
 		if !ok {
+			// A 2xx that carried no stream at all is a failure with the
+			// body in it, not an empty answer.
+			if body, none := r.scanner.noStream(); none && !r.stopped {
+				r.stopped = true
+				return provider.Event{}, noStreamError(body)
+			}
 			// Gemini's SSE stream has no [DONE] sentinel; the connection
 			// just closes once the final frame is sent. Synthesize the
 			// terminal MessageStop from accumulated state if we haven't
@@ -217,6 +223,7 @@ func (r *streamReader) handleFrame(f *generateResponse) {
 					ID:             id,
 					Name:           p.FunctionCall.Name,
 					ArgumentsDelta: string(p.FunctionCall.Args),
+					Signature:      p.ThoughtSignature,
 				},
 			})
 		case p.Thought && p.Text != "":
@@ -239,6 +246,46 @@ func (r *streamReader) handleFrame(f *generateResponse) {
 // by Gemini but are accepted defensively.
 type sseScanner struct {
 	s *bufio.Scanner
+
+	// frames counts the data: frames seen; stray keeps the start of what
+	// arrived that was not SSE at all, so a 2xx body that is a plain JSON
+	// reply or an error envelope fails with the body in the message
+	// instead of reading as an empty answer.
+	frames int
+	stray  strings.Builder
+}
+
+// noStream reports whether the body ended without a single SSE frame, and
+// what it held instead.
+func (s *sseScanner) noStream() (string, bool) {
+	if s.frames > 0 {
+		return "", false
+	}
+	return strings.TrimSpace(s.stray.String()), true
+}
+
+const strayLimit = 240
+
+func (s *sseScanner) keepStray(line string) {
+	if s.stray.Len() >= strayLimit {
+		return
+	}
+	if s.stray.Len() > 0 {
+		s.stray.WriteByte(' ')
+	}
+	room := strayLimit - s.stray.Len()
+	if len(line) > room {
+		line = line[:room] + "…"
+	}
+	s.stray.WriteString(line)
+}
+
+// noStreamError describes a successful response that was not a stream.
+func noStreamError(body string) error {
+	if body == "" {
+		return fmt.Errorf("google: the endpoint answered without a stream and with an empty body")
+	}
+	return fmt.Errorf("google: the endpoint answered without a stream: %s", body)
 }
 
 func newSSEScanner(r io.Reader) *sseScanner {
@@ -273,6 +320,7 @@ func (s *sseScanner) nextLine() (string, bool, error) {
 			}
 			buf.WriteString(line[len("data: "):])
 			collected = true
+			s.frames++
 			continue
 		}
 		if strings.HasPrefix(line, "data:") {
@@ -281,8 +329,13 @@ func (s *sseScanner) nextLine() (string, bool, error) {
 			}
 			buf.WriteString(strings.TrimPrefix(line, "data:"))
 			collected = true
+			s.frames++
 			continue
 		}
+		if strings.HasPrefix(line, "id:") || strings.HasPrefix(line, "retry:") {
+			continue
+		}
+		s.keepStray(line)
 	}
 	if err := s.s.Err(); err != nil {
 		return "", false, fmt.Errorf("sse scan: %w", err)

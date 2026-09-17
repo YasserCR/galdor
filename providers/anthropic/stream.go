@@ -117,6 +117,13 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			return provider.Event{}, err
 		}
 		if !ok {
+			// A 2xx that carried no stream at all — a plain message, an
+			// error envelope, an HTML page — is a failure with the body
+			// in it, not an empty answer.
+			if body, none := r.scanner.noStream(); none && !r.stopped {
+				r.stopped = true
+				return provider.Event{}, noStreamError(body)
+			}
 			// EOF before a message_delta/message_stop frame — the
 			// connection dropped or the response was truncated mid-stream.
 			// Synthesize the terminal MessageStop from the accumulated
@@ -352,6 +359,46 @@ type sseEvent struct {
 // time.
 type sseScanner struct {
 	s *bufio.Scanner
+
+	// frames counts the SSE lines seen; stray keeps the start of what
+	// arrived that was not SSE at all, so a 2xx body that is a plain
+	// message or an error envelope fails with the body in the message
+	// instead of reading as an empty answer.
+	frames int
+	stray  strings.Builder
+}
+
+// noStream reports whether the body ended without a single SSE frame, and
+// what it held instead.
+func (s *sseScanner) noStream() (string, bool) {
+	if s.frames > 0 {
+		return "", false
+	}
+	return strings.TrimSpace(s.stray.String()), true
+}
+
+const strayLimit = 240
+
+func (s *sseScanner) keepStray(line string) {
+	if s.stray.Len() >= strayLimit {
+		return
+	}
+	if s.stray.Len() > 0 {
+		s.stray.WriteByte(' ')
+	}
+	room := strayLimit - s.stray.Len()
+	if len(line) > room {
+		line = line[:room] + "…"
+	}
+	s.stray.WriteString(line)
+}
+
+// noStreamError describes a successful response that was not a stream.
+func noStreamError(body string) error {
+	if body == "" {
+		return fmt.Errorf("anthropic: the endpoint answered without a stream and with an empty body")
+	}
+	return fmt.Errorf("anthropic: the endpoint answered without a stream: %s", body)
 }
 
 func newSSEScanner(r io.Reader) *sseScanner {
@@ -384,18 +431,25 @@ func (s *sseScanner) next(_ context.Context) (sseEvent, bool, error) {
 		switch {
 		case strings.HasPrefix(line, "event: "):
 			eventType = strings.TrimSpace(line[len("event: "):])
+			s.frames++
 		case strings.HasPrefix(line, "data: "):
 			if data.Len() > 0 {
 				data.WriteByte('\n')
 			}
 			data.WriteString(line[len("data: "):])
+			s.frames++
 		case strings.HasPrefix(line, "event:"):
 			eventType = strings.TrimSpace(line[len("event:"):])
+			s.frames++
 		case strings.HasPrefix(line, "data:"):
 			if data.Len() > 0 {
 				data.WriteByte('\n')
 			}
 			data.WriteString(strings.TrimPrefix(line, "data:"))
+			s.frames++
+		case strings.HasPrefix(line, "id:"), strings.HasPrefix(line, "retry:"):
+		default:
+			s.keepStray(line)
 		}
 	}
 	if err := s.s.Err(); err != nil {

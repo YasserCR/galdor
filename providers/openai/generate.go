@@ -15,7 +15,7 @@ func (p *Provider) Generate(ctx context.Context, req provider.Request) (*provide
 	if err := p.Capabilities().ValidateRequest(req); err != nil {
 		return nil, err
 	}
-	wire, err := buildRequest(req, false)
+	wire, err := buildRequestFor(req, false, p.completionTokens())
 	if err != nil {
 		return nil, err
 	}

@@ -22,7 +22,7 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) (provider.S
 	if err := p.Capabilities().ValidateRequest(req); err != nil {
 		return nil, err
 	}
-	wire, err := buildRequest(req, true)
+	wire, err := buildRequestFor(req, true, p.completionTokens())
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +128,14 @@ func (r *streamReader) Recv(ctx context.Context) (provider.Event, error) {
 			return provider.Event{}, err
 		}
 		if !ok {
+			// A 2xx that carried no stream at all — a plain completion
+			// from an endpoint that ignored stream:true, an error
+			// envelope, an HTML page — is a failure with the body in it,
+			// not an empty answer.
+			if body, none := r.scanner.noStream(); none && !r.stopped {
+				r.stopped = true
+				return provider.Event{}, noStreamError(r.name, body)
+			}
 			// EOF before [DONE]. OpenAI itself terminates the stream
 			// with `data: [DONE]`, but several OpenAI-compatible
 			// providers (MiniMax among them) just close the connection
@@ -306,6 +314,39 @@ func (r *streamReader) touchToolState(td *wireToolCall) *toolState {
 // silently accepted if present (for compatible providers that do).
 type sseScanner struct {
 	s *bufio.Scanner
+
+	// frames counts the data: frames seen; stray keeps the start of what
+	// arrived that was not SSE at all. A 2xx body that is a plain JSON
+	// completion, an error envelope or an HTML page used to read as an
+	// empty stream, which the consumer took for an empty answer.
+	frames int
+	stray  strings.Builder
+}
+
+// noStream reports whether the body ended without a single SSE frame, and
+// what it held instead, so the failure names the body rather than nothing.
+func (s *sseScanner) noStream() (string, bool) {
+	if s.frames > 0 {
+		return "", false
+	}
+	return strings.TrimSpace(s.stray.String()), true
+}
+
+// strayLimit caps how much of a non-SSE body is kept for the error.
+const strayLimit = 240
+
+func (s *sseScanner) keepStray(line string) {
+	if s.stray.Len() >= strayLimit {
+		return
+	}
+	if s.stray.Len() > 0 {
+		s.stray.WriteByte(' ')
+	}
+	room := strayLimit - s.stray.Len()
+	if len(line) > room {
+		line = line[:room] + "…"
+	}
+	s.stray.WriteString(line)
 }
 
 func newSSEScanner(r io.Reader) *sseScanner {
@@ -342,6 +383,7 @@ func (s *sseScanner) nextLine() (string, bool, error) {
 			}
 			buf.WriteString(line[len("data: "):])
 			collected = true
+			s.frames++
 			continue
 		}
 		if strings.HasPrefix(line, "data:") {
@@ -350,8 +392,13 @@ func (s *sseScanner) nextLine() (string, bool, error) {
 			}
 			buf.WriteString(strings.TrimPrefix(line, "data:"))
 			collected = true
+			s.frames++
 			continue
 		}
+		if strings.HasPrefix(line, "id:") || strings.HasPrefix(line, "retry:") {
+			continue
+		}
+		s.keepStray(line)
 	}
 	if err := s.s.Err(); err != nil {
 		return "", false, fmt.Errorf("sse scan: %w", err)
@@ -360,4 +407,12 @@ func (s *sseScanner) nextLine() (string, bool, error) {
 		return buf.String(), true, nil
 	}
 	return "", false, nil
+}
+
+// noStreamError describes a successful response that was not a stream.
+func noStreamError(name, body string) error {
+	if body == "" {
+		return fmt.Errorf("%s: the endpoint answered without a stream and with an empty body", name)
+	}
+	return fmt.Errorf("%s: the endpoint answered without a stream: %s", name, body)
 }

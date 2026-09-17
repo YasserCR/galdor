@@ -475,3 +475,62 @@ func TestStream_SurfacesReasoning(t *testing.T) {
 		t.Fatalf("reasoning part wrong: %+v", stopMsg)
 	}
 }
+
+// Gemini 3 attaches a thoughtSignature to every functionCall part and
+// rejects the follow-up request that carries the call without it. The
+// signature has to survive the stream, the ToolCall, and the way back.
+func TestStream_ToolCallKeepsItsThoughtSignature(t *testing.T) {
+	t.Parallel()
+	body := strings.Join([]string{
+		`data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"weather","args":{"city":"Quito"}},"thoughtSignature":"sig-abc"}]},"index":0}],"modelVersion":"gemini-3-pro-preview"}`,
+		"",
+		`data: {"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":4},"modelVersion":"gemini-3-pro-preview"}`,
+		"",
+		"",
+	}, "\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv)
+	resp, err := provider.CollectStream(context.Background(), mustStream(t, p,
+		provider.Request{
+			Model:    "gemini-3-pro-preview",
+			Messages: []schema.Message{schema.UserMessage("weather?")},
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Message.ToolCalls) != 1 || resp.Message.ToolCalls[0].Signature != "sig-abc" {
+		t.Fatalf("calls = %+v, want the signature kept", resp.Message.ToolCalls)
+	}
+
+	// And back on the wire, on the same part as the call.
+	w, err := buildRequest(provider.Request{
+		Model: "gemini-3-pro-preview",
+		Messages: []schema.Message{
+			schema.UserMessage("weather?"),
+			resp.Message,
+			schema.ToolResultMessage(resp.Message.ToolCalls[0].ID, "sunny"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, c := range w.Contents {
+		for _, part := range c.Parts {
+			if part.FunctionCall != nil {
+				found = true
+				if part.ThoughtSignature != "sig-abc" {
+					t.Errorf("functionCall part carries signature %q, want sig-abc", part.ThoughtSignature)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the call was not replayed")
+	}
+}

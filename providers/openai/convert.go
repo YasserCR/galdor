@@ -14,17 +14,31 @@ import (
 // prompt as a role=system message, and tool results as role=tool messages
 // with tool_call_id.
 func buildRequest(req provider.Request, stream bool) (*chatRequest, error) {
+	return buildRequestFor(req, stream, false)
+}
+
+// buildRequestFor is buildRequest with the endpoint's dialect of the token
+// cap. OpenAI itself retired max_tokens: its newer models reject it with
+// "Unsupported parameter: max_tokens is not supported with this model. Use
+// max_completion_tokens instead", and every current model accepts the
+// replacement. The gateways that speak this API mostly know only
+// max_tokens, so the choice follows where the request goes, not the model.
+func buildRequestFor(req provider.Request, stream bool, completionTokens bool) (*chatRequest, error) {
 	if req.Model == "" {
 		return nil, fmt.Errorf("%w: Model is required", provider.ErrInvalidRequest)
 	}
 
 	out := &chatRequest{
 		Model:       req.Model,
-		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
 		Stop:        req.StopSequences,
 		Stream:      stream,
+	}
+	if completionTokens {
+		out.MaxCompletionTokens = req.MaxTokens
+	} else {
+		out.MaxTokens = req.MaxTokens
 	}
 	if stream {
 		out.StreamOptions = &wireStreamOpts{IncludeUsage: true}
@@ -71,8 +85,10 @@ func buildRequest(req provider.Request, stream bool) (*chatRequest, error) {
 		// o-series reasoning models reject max_tokens (use
 		// max_completion_tokens) and reject temperature / top_p. Move and
 		// drop them so the request is accepted.
-		out.MaxCompletionTokens = out.MaxTokens
-		out.MaxTokens = nil
+		if out.MaxTokens != nil {
+			out.MaxCompletionTokens = out.MaxTokens
+			out.MaxTokens = nil
+		}
 		out.Temperature = nil
 		out.TopP = nil
 	}

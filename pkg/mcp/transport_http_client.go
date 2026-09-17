@@ -145,20 +145,26 @@ func (t *httpClientTransport) Send(ctx context.Context, msg any) error {
 		return fmt.Errorf("mcp: server returned HTTP %d: %s", resp.StatusCode, msg)
 	}
 
-	reply := normalizeReplyBody(raw)
-	if len(reply) == 0 {
-		// Notification (202 Accepted) or otherwise empty: nothing to
-		// deliver to the dispatch loop.
-		return nil
+	// Every event in the body goes to the dispatch loop, in order. The
+	// specification lets a server put notifications and requests on the
+	// POST's stream ahead of the reply — a tool reporting progress does —
+	// and delivering the first event alone handed the loop a notification
+	// it discards and left the caller waiting on a reply that had arrived.
+	for _, reply := range normalizeReplyBodies(raw) {
+		if len(reply) == 0 {
+			// Notification (202 Accepted) or otherwise empty: nothing to
+			// deliver to the dispatch loop.
+			continue
+		}
+		select {
+		case t.replies <- reply:
+		case <-t.done:
+			return fmt.Errorf("mcp: transport closed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	select {
-	case t.replies <- reply:
-		return nil
-	case <-t.done:
-		return fmt.Errorf("mcp: transport closed")
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return nil
 }
 
 // Recv returns the next queued JSON-RPC reply, or io.EOF once the
@@ -197,24 +203,42 @@ func (t *httpClientTransport) Close() error {
 // then fail to parse as JSON — the caller saw no error, only a reply
 // that never arrived, which surfaces as a timeout.
 func normalizeReplyBody(raw []byte) []byte {
+	bodies := normalizeReplyBodies(raw)
+	if len(bodies) == 0 {
+		return nil
+	}
+	return bodies[0]
+}
+
+// normalizeReplyBodies is normalizeReplyBody for every event in the body,
+// in order. A bare JSON body is one reply; a frame with several events is
+// one payload per event, each the join of its data lines.
+func normalizeReplyBodies(raw []byte) [][]byte {
 	trimmed := bytes.TrimSpace(raw)
 	// A JSON-RPC reply is an object, or an array for a batch. Anything
 	// else that carries a data: line is a frame to unwrap.
-	if len(trimmed) == 0 || trimmed[0] == '{' || trimmed[0] == '[' {
-		return trimmed
+	if len(trimmed) == 0 {
+		return nil
+	}
+	if trimmed[0] == '{' || trimmed[0] == '[' {
+		return [][]byte{trimmed}
 	}
 
+	var out [][]byte
 	var buf bytes.Buffer
 	inEvent := false
+	flush := func() {
+		if inEvent {
+			out = append(out, append([]byte(nil), buf.Bytes()...))
+		}
+		buf.Reset()
+		inEvent = false
+	}
 	for _, line := range bytes.Split(trimmed, []byte("\n")) {
 		line = bytes.TrimSpace(line)
-		// A blank line ends the event. Only the first one is ours: a POST
-		// is answered with a single reply, and concatenating the data of
-		// several events would produce a body that parses as nothing.
+		// A blank line ends the event.
 		if len(line) == 0 {
-			if inEvent {
-				break
-			}
+			flush()
 			continue
 		}
 		rest, ok := bytes.CutPrefix(line, []byte("data:"))
@@ -230,10 +254,11 @@ func normalizeReplyBody(raw []byte) []byte {
 		buf.Write(bytes.TrimSpace(rest))
 		inEvent = true
 	}
-	if !inEvent {
+	flush()
+	if len(out) == 0 {
 		// Not a frame after all: hand back what came in so the caller
 		// reports a parse error against the real body.
-		return trimmed
+		return [][]byte{trimmed}
 	}
-	return buf.Bytes()
+	return out
 }

@@ -47,6 +47,12 @@ type wirePart struct {
 	// Thought summary part (Gemini 2.5 thinking models). When true, the
 	// part's Text is surfaced as a schema.ContentTypeThinking part.
 	Thought bool `json:"thought,omitempty"`
+
+	// ThoughtSignature is the opaque token Gemini attaches to a part —
+	// functionCall parts above all — and requires back on that part when
+	// the turn is replayed. Gemini 3 rejects a request whose functionCall
+	// arrives without the signature it was sent with.
+	ThoughtSignature string `json:"thoughtSignature,omitempty"`
 }
 
 type wireBlob struct {
