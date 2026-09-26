@@ -57,20 +57,17 @@ for mod in $LINT_MODULES; do
   ( cd "$mod" && golangci-lint run --config="$CFG" ./... ) || failed=1
 done
 
-# gosec and govulncheck need their binaries; skipped rather than faked
-# when they are not installed, and said so out loud.
-if command -v gosec >/dev/null; then
-  step "gosec (each module)"
-  for mod in $LINT_MODULES; do ( cd "$mod" && gosec -quiet ./... ) || failed=1; done
-else
-  echo "gosec not installed — that job is NOT covered by this run"
-fi
-if command -v govulncheck >/dev/null; then
-  step "govulncheck (each module)"
-  for mod in $LINT_MODULES; do ( cd "$mod" && govulncheck ./... >/dev/null ) || failed=1; done
-else
-  echo "govulncheck not installed — that job is NOT covered by this run"
-fi
+# gosec and govulncheck run at the versions ci.yml pins, built with the
+# pinned Go, rather than whatever binary is on PATH: a stale local binary
+# once reported green while the pipeline could not even install the tool.
+pin() { sed -n "s/^  $1: *//p" .github/workflows/ci.yml; }
+GOSEC="github.com/securego/gosec/v2/cmd/gosec@$(pin GOSEC_VERSION)"
+GOVULNCHECK="golang.org/x/vuln/cmd/govulncheck@$(pin GOVULNCHECK_VERSION)"
+
+step "gosec $GOSEC"
+for mod in $LINT_MODULES; do ( cd "$mod" && go run "$GOSEC" -quiet ./... ) || failed=1; done
+step "govulncheck $GOVULNCHECK"
+for mod in $LINT_MODULES; do ( cd "$mod" && go run "$GOVULNCHECK" ./... >/dev/null ) || failed=1; done
 
 printf '\n'
 if [ "$failed" -eq 0 ]; then echo "green"; else echo "RED"; fi

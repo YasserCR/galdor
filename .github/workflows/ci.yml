@@ -36,6 +36,12 @@ env:
   # FORCE flag tells the new actions to use Node 24 even on runners
   # that still default to Node 20.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # Security tools are pinned, not @latest: a new release may require a
+  # newer Go than the pipeline's and fail to install (govulncheck v1.8.0
+  # needs go 1.26). Bump these only to a version whose go directive fits
+  # the jobs' go-version. scripts/ci-local.sh reads both from here.
+  GOVULNCHECK_VERSION: v1.7.0
+  GOSEC_VERSION: v2.29.0
 
 jobs:
   test:
@@ -128,7 +134,7 @@ jobs:
           cache: true
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
 
       - name: Run govulncheck (${{ matrix.module }})
         run: |
@@ -153,7 +159,7 @@ jobs:
           cache: true
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: go install github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}
 
       - name: Run gosec (${{ matrix.module }})
         run: |
