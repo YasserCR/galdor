@@ -24,9 +24,10 @@ type ToolCall struct {
 
 	// Signature is an opaque token some providers attach to a call and
 	// require back, unchanged, when the call is replayed with its result.
-	// Gemini 3 sends one as thoughtSignature on every functionCall part
-	// and rejects a follow-up request whose functionCall lacks it. Empty
-	// for providers that have no such thing; callers that persist a
-	// conversation must persist it with the call.
+	// Gemini 3 sends one as thoughtSignature on the functionCall parts of
+	// a turn (with parallel calls, only the first carries it) and rejects
+	// a follow-up request whose signed functionCall comes back without
+	// it. Empty for calls and providers that have none; callers that
+	// persist a conversation must persist it with the call.
 	Signature string `json:"signature,omitempty"`
 }

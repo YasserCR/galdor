@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -37,12 +40,36 @@ type State struct {
 	// zero when seeding a fresh State.
 	InputGuarded int
 
+	// InputGuardedDigest fingerprints Messages[:InputGuarded] as they
+	// were when input guards last ran. It is maintained by the runtime;
+	// leave it empty. Carry it over with the rest of the State (it
+	// survives checkpoints and JSON): when the history no longer
+	// matches it — trimmed to a window, reordered or rewritten between
+	// invocations — the watermark no longer says which messages were
+	// vetted, so every user message present is vetted again rather than
+	// letting a new turn slip below a stale position. When it is empty
+	// the watermark is trusted as is.
+	InputGuardedDigest string
+
 	// StoppedAtIterationCap is set when the loop terminated because it
 	// hit MaxIterations while the model's last turn still had pending
 	// tool calls — i.e. the run was truncated, not completed. FinalText
 	// will be a best-effort value (often empty) in that case. Run
 	// surfaces this as ErrMaxIterations.
 	StoppedAtIterationCap bool
+}
+
+// messagesDigest fingerprints a conversation prefix, so the model node
+// can tell whether the messages below the InputGuarded watermark are
+// still the ones it vetted. It returns "" when the messages cannot be
+// encoded, which makes the watermark trusted as is.
+func messagesDigest(msgs []schema.Message) string {
+	b, err := json.Marshal(msgs)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 // ErrMaxIterations is returned by Run when the loop stopped at
@@ -157,16 +184,20 @@ func NewReAct(cfg Config) (*graph.Runnable[State], error) {
 		// user turns the caller added before re-invoking with a
 		// carried-over State. Tool-result and assistant messages are
 		// not input, so mid-run turns add nothing to check.
-		if s.InputGuarded > len(s.Messages) {
-			s.InputGuarded = len(s.Messages)
-		}
-		for _, m := range s.Messages[s.InputGuarded:] {
-			if m.Role != schema.RoleUser {
-				continue
+		if len(cfg.InputGuards) > 0 {
+			from := min(s.InputGuarded, len(s.Messages))
+			if s.InputGuardedDigest != "" && s.InputGuardedDigest != messagesDigest(s.Messages[:from]) {
+				from = 0
 			}
-			if err := guardrail.CheckInput(ctx, cfg.InputGuards, m); err != nil {
-				return s, err
+			for _, m := range s.Messages[from:] {
+				if m.Role != schema.RoleUser {
+					continue
+				}
+				if err := guardrail.CheckInput(ctx, cfg.InputGuards, m); err != nil {
+					return s, err
+				}
 			}
+			s.InputGuardedDigest = messagesDigest(s.Messages)
 		}
 		s.InputGuarded = len(s.Messages)
 

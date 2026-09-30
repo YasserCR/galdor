@@ -102,7 +102,7 @@ cfg := agent.Config{
 answer, err := agent.Run(ctx, cfg, "…")
 ```
 
-- **ReAct** (`agent.Config`): input guards run on each user message **before it first reaches the model** — the seed conversation on the first turn, plus any user messages you append before re-invoking with a carried-over `State` (the `State.InputGuarded` watermark tracks what has been vetted, so nothing is skipped or re-judged). Output guards run on **every** assistant message before it is recorded or returned.
+- **ReAct** (`agent.Config`): input guards run on each user message **before it first reaches the model** — the seed conversation on the first turn, plus any user messages you append before re-invoking with a carried-over `State` (the `State.InputGuarded` watermark tracks what has been vetted, so nothing is skipped or re-judged). If you trim, reorder or rewrite the history of a carried-over `State` between invocations, the runtime notices (it keeps a fingerprint of the vetted messages in `State.InputGuardedDigest`) and vets every user message still present; carry both fields over with the rest of the `State`. Output guards run on **every** assistant message before it is recorded or returned.
 - **Plan-and-Execute** (`PlanExecuteConfig`): input guards run on `PlanExecuteState.Input` before the planner; output guards run on **every assistant message the executor produces** (before it lands in `Past` or feeds the replanner) and on the final answer before it is returned. The planner's and replanner's JSON emissions are not guarded.
 
 Empty (or nil) guard slices are a no-op — the checks are skipped and there is no extra overhead.

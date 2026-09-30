@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/YasserCR/galdor/pkg/provider"
 	"github.com/YasserCR/galdor/pkg/schema"
@@ -63,8 +64,9 @@ func buildRequest(req provider.Request, stream bool) (*messageRequest, error) {
 			// An empty text block is rejected outright: with omitempty on
 			// the field the key disappears and the API answers
 			// "text: Field required". A blank system message carries
-			// nothing anyway, so it is dropped rather than sent.
-			if text := m.Text(); text != "" {
+			// nothing anyway, so it is dropped rather than sent; one that
+			// is only whitespace carries nothing either.
+			if text := m.Text(); strings.TrimSpace(text) != "" {
 				out.System = append(out.System, wireSystemBlock{
 					Type:         "text",
 					Text:         text,
@@ -94,8 +96,9 @@ func buildRequest(req provider.Request, stream bool) (*messageRequest, error) {
 			// A tool that ran and returned nothing is ordinary. Wrapping
 			// that in an empty text block is not: the API requires the
 			// text key, which omitempty removes. content is optional on a
-			// tool_result, so leave it off instead.
-			if text := m.Text(); text != "" {
+			// tool_result, so leave it off instead — also when the result
+			// is only whitespace.
+			if text := m.Text(); strings.TrimSpace(text) != "" {
 				block.Content = []wireContentBlock{{Type: "text", Text: text}}
 			}
 			if n := len(out.Messages); n > 0 && out.Messages[n-1].Role == "user" {
@@ -209,8 +212,10 @@ func partsToWire(parts []schema.ContentPart, cc *schema.CacheControl) ([]wireCon
 			// text key is dropped by omitempty and the API rejects the
 			// whole turn with "text: Field required". A model that
 			// answers with tool calls alone produces exactly this, so
-			// the failure landed on an entirely normal exchange.
-			if p.Text == "" {
+			// the failure landed on an entirely normal exchange. A part
+			// that is only whitespace carries nothing either and is
+			// skipped the same way; text with content is sent verbatim.
+			if strings.TrimSpace(p.Text) == "" {
 				continue
 			}
 			out = append(out, wireContentBlock{Type: "text", Text: p.Text})

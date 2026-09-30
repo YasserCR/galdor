@@ -11,6 +11,57 @@ hygiene (docs, build metadata).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-29
+
+### Added
+- **`agent.State.InputGuardedDigest`.** A fingerprint of the messages the
+  input guards have vetted, kept by the runtime next to the
+  `InputGuarded` watermark. The watermark alone is a position in
+  `Messages`, so a caller that trimmed a carried-over history to a window
+  and appended a turn put that turn below the stale position, and it
+  reached the model without being checked. When the history no longer
+  matches the fingerprint — trimmed, reordered or rewritten between
+  invocations — every user message still present is vetted again. The
+  field is exported so it survives checkpoints and JSON; a `State` without
+  it (persisted by an earlier version, or built by hand) keeps the
+  previous behavior and trusts the watermark.
+
+### Changed
+- **`providerset`: an OpenAI-compatible alias reports its own name.**
+  `groq`, `together`, `mistral`, `minimax`, `deepseek`, `vllm` and
+  `ollama` now set `openai.Config.Name` to the alias, so `Name()`, error
+  messages and trace attributes read `groq` instead of `openai`. Code that
+  compared `Name()` against `"openai"` for these aliases must compare
+  against the alias.
+
+### Fixed
+- **`pkg/guardrail`: the LLM judge no longer reads a negated verdict as
+  ALLOW.** A reply only counted as negated when it contained one of seven
+  words (`not`, `no`, `never`, `don't`, `cannot`, `can't`, `won't`), so a
+  judge answering "This isn't allowed", "Shouldn't be allowed", "Doesn't
+  allow" or "Nothing allowed here" let the message through. Negative
+  contractions and `nothing`, `none`, `nobody`, `nor`, `neither` now count
+  too; such a reply is ambiguous and the guard fails closed. A judge that
+  answers with the bare word it is asked for is unaffected.
+- **`pkg/guardrail`: the model's reasoning is not sent to the judge.**
+  Thinking and redacted-thinking parts of the judged message were passed
+  to the judge as part of a user turn, where they do not belong: with a
+  Gemini judge, a redacted part failed the request before it was sent
+  (`unsupported content type`), so every guarded turn failed with
+  `ErrEvalFailed`; with any judge, the verdict was on the chain of thought
+  instead of on what the user sees. They are now left out, and a message
+  that carries only reasoning is allowed without a judge call, like any
+  other message with nothing to judge.
+- **`providers/anthropic`: whitespace-only text is treated as blank.**
+  Text parts, system messages and tool results made only of whitespace
+  are left out like empty ones, and a user message with nothing else is
+  reported locally as `ErrInvalidRequest`. Text with content is still sent
+  verbatim.
+
+### Docs
+- `schema.ToolCall.Signature`: Gemini signs only the first of several
+  parallel calls in a turn.
+
 ## [1.7.0] - 2026-09-17
 
 ### Added

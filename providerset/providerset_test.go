@@ -71,8 +71,8 @@ func TestNew_OpenAICompatAliases(t *testing.T) {
 	t.Parallel()
 
 	// Every alias in the table must construct successfully when given
-	// a key. The Provider always reports "openai" because the OpenAI
-	// adapter drives all of them.
+	// a key, and report the alias as its name: the OpenAI adapter drives
+	// all of them, but errors and traces must name the party answering.
 	for alias := range openAICompatBaseURLs {
 		t.Run(alias, func(t *testing.T) {
 			t.Parallel()
@@ -80,8 +80,8 @@ func TestNew_OpenAICompatAliases(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got := p.Name(); got != "openai" {
-				t.Fatalf("Name() = %q, want %q", got, "openai")
+			if got := p.Name(); got != alias {
+				t.Fatalf("Name() = %q, want %q", got, alias)
 			}
 		})
 	}
@@ -110,7 +110,7 @@ func TestNew_BaseURLOverrideWinsOverTable(t *testing.T) {
 	t.Parallel()
 
 	custom := "https://internal.example.com/v1"
-	// Override doesn't change Name() but should not error. We can't
+	// Override keeps the alias as Name() and should not error. We can't
 	// introspect the BaseURL from outside the adapter, so we settle
 	// for "constructs cleanly" and exercise the branch via FromEnv
 	// in another test.
@@ -118,8 +118,8 @@ func TestNew_BaseURLOverrideWinsOverTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if p.Name() != "openai" {
-		t.Fatalf("Name() = %q, want openai", p.Name())
+	if p.Name() != "groq" {
+		t.Fatalf("Name() = %q, want groq", p.Name())
 	}
 }
 
@@ -192,8 +192,8 @@ func TestFromEnv_AliasResolved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if p.Name() != "openai" {
-		t.Fatalf("Name() = %q, want openai", p.Name())
+	if p.Name() != "groq" {
+		t.Fatalf("Name() = %q, want groq", p.Name())
 	}
 }
 

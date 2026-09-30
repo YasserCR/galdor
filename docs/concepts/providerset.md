@@ -52,7 +52,7 @@ With `LLM_PROVIDER=openai` and `LLM_API_KEY=sk-...`, you get the OpenAI adapter.
 
 ### 3. Talk to an OpenAI-compatible endpoint
 
-Aliases resolve to `providers/openai` with a preset `BaseURL`:
+Aliases resolve to `providers/openai` with a preset `BaseURL`, and with the alias as the provider's `Name`: `Name()`, error messages and trace attributes read `groq`, not `openai`.
 
 | Alias      | BaseURL                                |
 | ---------- | -------------------------------------- |

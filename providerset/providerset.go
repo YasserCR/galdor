@@ -108,6 +108,9 @@ func New(cfg Config) (provider.Provider, error) {
 			apiKey = "no-key"
 		}
 		return openai.New(openai.Config{
+			// The alias names the party that answers, so errors and
+			// traces read "groq: ..." rather than "openai: ...".
+			Name:       name,
 			APIKey:     apiKey,
 			BaseURL:    resolved,
 			HTTPClient: cfg.HTTPClient,

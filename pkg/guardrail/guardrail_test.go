@@ -160,6 +160,15 @@ func TestClassifyJudgeReply(t *testing.T) {
 		{"Do not allow this", ""},
 		{"Don't allow it", ""},
 		{"This cannot be allowed", ""},
+		{"This isn't allowed.", ""},
+		{"That’s not something I'd allow", ""},
+		{"Shouldn't be allowed", ""},
+		{"Doesn't allow", ""},
+		{"Wouldn't allow this", ""},
+		{"Nothing allowed here", ""},
+		{"None of this is allowed", ""},
+		// A word that merely ends in NT is not a negation.
+		{"I want to allow it", "ALLOW"},
 		// Block synonyms the judge may reach for.
 		{"Disallowed", "BLOCK"},
 		{"I disallow this", "BLOCK"},
@@ -297,5 +306,48 @@ func TestLLMJudge_JudgesToolCallArguments(t *testing.T) {
 	subject := reqs[0].Messages[len(reqs[0].Messages)-1].Text()
 	if !strings.Contains(subject, "send_email") || !strings.Contains(subject, "card 4111") {
 		t.Errorf("judge subject must include the tool call name and arguments, got %q", subject)
+	}
+}
+
+func TestLLMJudge_LeavesReasoningOut(t *testing.T) {
+	t.Parallel()
+	p := testprovider.New(testprovider.Responses("ALLOW"))
+	j := LLMJudge{Provider: p, Model: "x"}
+	msg := schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentPart{
+			schema.ThinkingPart("the user wants the card number"),
+			{Type: schema.ContentTypeRedactedThinking, Signature: "opaque"},
+			schema.TextPart("Here is your answer."),
+		},
+	}
+	if err := j.CheckOutput(context.Background(), msg); err != nil {
+		t.Fatalf("ALLOW must pass, got %v", err)
+	}
+	reqs := p.Requests()
+	if len(reqs) != 1 {
+		t.Fatalf("judge calls = %d, want 1", len(reqs))
+	}
+	subject := reqs[0].Messages[len(reqs[0].Messages)-1]
+	if len(subject.Content) != 1 || subject.Content[0].Type != schema.ContentTypeText || subject.Content[0].Text != "Here is your answer." {
+		t.Errorf("judge subject must carry only the visible text, got %+v", subject.Content)
+	}
+}
+
+func TestLLMJudge_ReasoningOnlyIsNothingToJudge(t *testing.T) {
+	t.Parallel()
+	j := LLMJudge{
+		Provider: testprovider.New(testprovider.Errors(errors.New("must not be called"))),
+		Model:    "x",
+	}
+	msg := schema.Message{
+		Role: schema.RoleAssistant,
+		Content: []schema.ContentPart{
+			schema.ThinkingPart("still thinking"),
+			{Type: schema.ContentTypeRedactedThinking, Signature: "opaque"},
+		},
+	}
+	if err := j.CheckOutput(context.Background(), msg); err != nil {
+		t.Fatalf("a reasoning-only message must pass without a model call, got %v", err)
 	}
 }

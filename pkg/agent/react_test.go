@@ -427,6 +427,124 @@ func TestReAct_InputGuardBlocksNewMessageOnLaterInvoke(t *testing.T) {
 	}
 }
 
+// A caller that trims a carried-over history to a window and appends a
+// new turn must not slip that turn below the stale watermark.
+func TestReAct_InputGuardVetsTurnAppendedAfterTrimming(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{
+		schema.AssistantMessage("turn one"),
+		schema.AssistantMessage("turn two"),
+		schema.AssistantMessage("never reached"),
+	}}
+	r, err := NewReAct(Config{
+		Provider: p,
+		Model:    "x",
+		InputGuards: []guardrail.InputGuard{
+			guardrail.InputGuardFunc{ID: "no-pii", Check: func(_ context.Context, m schema.Message) error {
+				if strings.Contains(m.Text(), "4111") {
+					return errors.New("credit-card number detected")
+				}
+				return nil
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := r.Invoke(context.Background(), State{Messages: []schema.Message{schema.UserMessage("hello")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Messages = append(s.Messages, schema.UserMessage("and again"))
+	if s, err = r.Invoke(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	// Keep the last two messages, then add a turn: the new slice is
+	// shorter than the watermark, so a bare position would skip it.
+	s.Messages = append(append([]schema.Message(nil), s.Messages[len(s.Messages)-2:]...),
+		schema.UserMessage("my card is 4111 1111 1111 1111"))
+	_, err = r.Invoke(context.Background(), s)
+	if !errors.Is(err, guardrail.ErrBlocked) {
+		t.Fatalf("a turn appended after trimming must be input-guarded, got %v", err)
+	}
+	if got := p.calls.Load(); got != 2 {
+		t.Errorf("model calls = %d, want 2 (the trimmed turn must not reach the model)", got)
+	}
+}
+
+// Re-vetting after a rewrite covers every user message still present,
+// and an untouched history is still vetted exactly once per message.
+func TestReAct_InputGuardRevetsRewrittenHistoryOnly(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{
+		schema.AssistantMessage("a1"),
+		schema.AssistantMessage("a2"),
+		schema.AssistantMessage("a3"),
+	}}
+	var seen []string
+	r, err := NewReAct(Config{
+		Provider: p,
+		Model:    "x",
+		InputGuards: []guardrail.InputGuard{
+			guardrail.InputGuardFunc{ID: "record", Check: func(_ context.Context, m schema.Message) error {
+				seen = append(seen, m.Text())
+				return nil
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := r.Invoke(context.Background(), State{Messages: []schema.Message{schema.UserMessage("u1")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Messages = append(s.Messages, schema.UserMessage("u2"))
+	if s, err = r.Invoke(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	// Drop the first exchange (u1, a1) and add u3.
+	s.Messages = append(append([]schema.Message(nil), s.Messages[2:]...), schema.UserMessage("u3"))
+	if _, err := r.Invoke(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"u1", "u2", "u2", "u3"}
+	if strings.Join(seen, ",") != strings.Join(want, ",") {
+		t.Errorf("guarded messages = %v, want %v", seen, want)
+	}
+}
+
+// A State persisted before the digest existed (or built by hand with a
+// watermark) keeps its meaning: an empty digest trusts the position.
+func TestReAct_InputGuardTrustsWatermarkWithoutDigest(t *testing.T) {
+	t.Parallel()
+	p := &scriptedProvider{Plan: []schema.Message{schema.AssistantMessage("a2")}}
+	var seen []string
+	r, err := NewReAct(Config{
+		Provider: p,
+		Model:    "x",
+		InputGuards: []guardrail.InputGuard{
+			guardrail.InputGuardFunc{ID: "record", Check: func(_ context.Context, m schema.Message) error {
+				seen = append(seen, m.Text())
+				return nil
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := State{
+		Messages:     []schema.Message{schema.UserMessage("u1"), schema.AssistantMessage("a1"), schema.UserMessage("u2")},
+		InputGuarded: 2,
+	}
+	if _, err := r.Invoke(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(seen, ",") != "u2" {
+		t.Errorf("guarded messages = %v, want [u2]", seen)
+	}
+}
+
 func TestReAct_OutputGuardAllowsCleanAnswer(t *testing.T) {
 	t.Parallel()
 	p := &scriptedProvider{Plan: []schema.Message{schema.AssistantMessage("fine answer")}}

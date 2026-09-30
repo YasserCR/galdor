@@ -29,8 +29,9 @@ var ErrJudgeBlocked = errors.New("llm judge blocked")
 // The judge sees the message's content parts verbatim (a vision-capable
 // judge model can vet non-text parts too) plus a textual rendering of any
 // tool calls, which live outside Content and would otherwise escape the
-// check. A message with nothing to judge — no content parts and no tool
-// calls — is allowed without a model call.
+// check. The model's reasoning (thinking parts) is not shown to the
+// judge. A message with nothing to judge — no content parts besides
+// reasoning and no tool calls — is allowed without a model call.
 //
 // A judge that returns anything other than a clear ALLOW or BLOCK fails
 // closed (the message is blocked) — for a guardrail, blocking on an
@@ -118,13 +119,21 @@ Respond with ONLY the word ALLOW or BLOCK. No prose. No punctuation. No code fen
 }
 
 // judgeSubject builds the user message shown to the judge: the judged
-// message's content parts verbatim (minus empty text parts) plus a
-// textual rendering of its tool calls, so content smuggled into tool
-// arguments is vetted alongside the prose.
+// message's content parts verbatim (minus empty text parts and the
+// model's reasoning) plus a textual rendering of its tool calls, so
+// content smuggled into tool arguments is vetted alongside the prose.
+//
+// Reasoning parts are left out: they are not what the user sees, and the
+// judge receives the subject as a user turn, where reasoning parts do
+// not belong and a provider may refuse them. A message that carries only
+// reasoning is therefore one with nothing to judge.
 func judgeSubject(msg schema.Message) schema.Message {
 	parts := make([]schema.ContentPart, 0, len(msg.Content)+1)
 	for _, p := range msg.Content {
-		if p.Type == schema.ContentTypeText && strings.TrimSpace(p.Text) == "" {
+		switch {
+		case p.Type == schema.ContentTypeText && strings.TrimSpace(p.Text) == "",
+			p.Type == schema.ContentTypeThinking,
+			p.Type == schema.ContentTypeRedactedThinking:
 			continue
 		}
 		parts = append(parts, p)
@@ -171,7 +180,7 @@ func classifyJudgeReply(raw string) string {
 			hasBlock = true
 		case strings.HasPrefix(w, "ALLOW"):
 			hasAllow = true
-		case w == "NOT", w == "NO", w == "NEVER", w == "DONT", w == "CANNOT", w == "CANT", w == "WONT":
+		case negations[w]:
 			negated = true
 		}
 	}
@@ -184,6 +193,20 @@ func classifyJudgeReply(raw string) string {
 	default:
 		return ""
 	}
+}
+
+// negations are the words that keep an ALLOW in the same reply from
+// counting, uppercased and with apostrophes already dropped ("isn't"
+// arrives as ISNT). The list is explicit rather than "ends in NT" so
+// that ordinary words such as WANT never read as a negation.
+var negations = map[string]bool{
+	"NOT": true, "NO": true, "NEVER": true, "NOR": true, "NEITHER": true,
+	"NONE": true, "NOTHING": true, "NOBODY": true, "CANNOT": true,
+	"DONT": true, "DOESNT": true, "DIDNT": true,
+	"ISNT": true, "ARENT": true, "WASNT": true, "WERENT": true,
+	"CANT": true, "COULDNT": true, "WONT": true, "WOULDNT": true,
+	"SHOULDNT": true, "SHANT": true, "MUSTNT": true, "MIGHTNT": true, "NEEDNT": true,
+	"HASNT": true, "HAVENT": true, "HADNT": true, "AINT": true,
 }
 
 // Compile-time interface assertions.

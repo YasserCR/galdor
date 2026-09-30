@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/YasserCR/galdor/pkg/provider"
@@ -370,5 +371,52 @@ func TestBuildRequest_MessageWithNothingToSend(t *testing.T) {
 				t.Fatalf("err = %v, want ErrInvalidRequest", err)
 			}
 		})
+	}
+}
+
+// TestBuildRequest_WhitespaceTextIsBlank covers text that is present but
+// carries nothing: it is dropped like empty text, while text with content
+// is sent verbatim, surrounding whitespace included.
+func TestBuildRequest_WhitespaceTextIsBlank(t *testing.T) {
+	t.Parallel()
+
+	assistant := schema.AssistantMessage(" \n\t")
+	assistant.ToolCalls = []schema.ToolCall{{ID: "call_1", Name: "search"}}
+
+	req, err := buildRequest(provider.Request{
+		Model: "claude-haiku-4-5",
+		Messages: []schema.Message{
+			schema.SystemMessage("   "),
+			schema.UserMessage("  hola  "),
+			assistant,
+			schema.ToolResultMessage("call_1", "\n"),
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("buildRequest: %v", err)
+	}
+	if len(req.System) != 0 {
+		t.Errorf("System = %+v, want a whitespace-only system message dropped", req.System)
+	}
+	if got := req.Messages[0].Content[0].Text; got != "  hola  " {
+		t.Errorf("user text = %q, want it sent verbatim", got)
+	}
+	for i, m := range req.Messages {
+		for j, b := range m.Content {
+			if b.Type == "text" && strings.TrimSpace(b.Text) == "" {
+				t.Errorf("messages[%d].content[%d] is a blank text block: %q", i, j, b.Text)
+			}
+			if b.Type == "tool_result" && len(b.Content) != 0 {
+				t.Errorf("messages[%d].content[%d]: a whitespace-only tool result must carry no content, got %+v", i, j, b.Content)
+			}
+		}
+	}
+
+	_, err = buildRequest(provider.Request{
+		Model:    "claude-haiku-4-5",
+		Messages: []schema.Message{schema.UserMessage("  ")},
+	}, false)
+	if !errors.Is(err, provider.ErrInvalidRequest) {
+		t.Fatalf("a whitespace-only user message: err = %v, want ErrInvalidRequest", err)
 	}
 }
